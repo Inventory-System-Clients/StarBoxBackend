@@ -3,43 +3,10 @@ import { Roteiro, Loja, Usuario } from "../models/index.js";
 
 const router = express.Router();
 
-// Página de execução de roteiro: retorna lojas e máquinas do roteiro
-router.get(":id/executar", async (req, res) => {
-  try {
-    const roteiro = await Roteiro.findByPk(req.params.id, {
-      include: [
-        {
-          model: Loja,
-          as: "lojas",
-          attributes: ["id", "nome", "cidade", "estado"],
-          include: [
-            {
-              model: Maquina,
-              as: "maquinas",
-              attributes: [
-                "id",
-                "nome",
-                "codigo",
-                "tipo",
-                "capacidadePadrao",
-                "lojaId",
-              ],
-            },
-          ],
-        },
-      ],
-    });
-    if (!roteiro)
-      return res.status(404).json({ error: "Roteiro não encontrado" });
-    res.json(roteiro);
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao buscar execução do roteiro" });
-  }
-});
-import express from "express";
-import { Roteiro, Loja, Usuario } from "../models/index.js";
 
-const router = express.Router();
+
+
+
 
 // Criar novo roteiro
 router.post("/", async (req, res) => {
@@ -104,6 +71,40 @@ router.post("/mover-loja", async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Erro ao mover/adicionar loja" });
+  }
+});
+
+// Página de execução de roteiro: retorna lojas e máquinas do roteiro
+router.get(":id/executar", async (req, res) => {
+  try {
+    const roteiro = await Roteiro.findByPk(req.params.id, {
+      include: [
+        {
+          model: Loja,
+          as: "lojas",
+          attributes: ["id", "nome", "cidade", "estado"],
+          include: [
+            {
+              model: Maquina,
+              as: "maquinas",
+              attributes: [
+                "id",
+                "nome",
+                "codigo",
+                "tipo",
+                "capacidadePadrao",
+                "lojaId",
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    if (!roteiro)
+      return res.status(404).json({ error: "Roteiro não encontrado" });
+    res.json(roteiro);
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao buscar execução do roteiro" });
   }
 });
 
