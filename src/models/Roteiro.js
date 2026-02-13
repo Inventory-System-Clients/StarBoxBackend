@@ -7,7 +7,7 @@ const Roteiro = sequelize.define("Roteiro", {
     allowNull: false,
   },
   funcionarioId: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.UUID,
     allowNull: true,
   },
   funcionarioNome: {
