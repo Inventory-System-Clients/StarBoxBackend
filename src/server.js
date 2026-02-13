@@ -28,7 +28,7 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
   "http://localhost:5174",
-  "https://agarramaisop.selfmachine.com.br",
+  "https://starbox.selfmachine.com.br",
   process.env.FRONTEND_URL,
 ].filter(Boolean); // Remove undefined se FRONTEND_URL não estiver definida
 
