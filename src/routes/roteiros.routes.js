@@ -48,17 +48,24 @@ router.post("/:id/iniciar", async (req, res) => {
 router.post("/mover-loja", async (req, res) => {
   try {
     const { lojaId, roteiroOrigemId, roteiroDestinoId } = req.body;
-    const roteiroOrigem = await Roteiro.findByPk(roteiroOrigemId);
     const roteiroDestino = await Roteiro.findByPk(roteiroDestinoId);
-    if (!roteiroOrigem || !roteiroDestino)
-      return res.status(404).json({ error: "Roteiro não encontrado" });
-    // Remove loja do roteiro origem
-    await roteiroOrigem.removeLoja(lojaId);
-    // Adiciona loja ao roteiro destino
+    if (!roteiroDestino)
+      return res
+        .status(404)
+        .json({ error: "Roteiro de destino não encontrado" });
+
+    if (roteiroOrigemId) {
+      const roteiroOrigem = await Roteiro.findByPk(roteiroOrigemId);
+      if (!roteiroOrigem)
+        return res
+          .status(404)
+          .json({ error: "Roteiro de origem não encontrado" });
+      await roteiroOrigem.removeLoja(lojaId);
+    }
     await roteiroDestino.addLoja(lojaId);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: "Erro ao mover loja" });
+    res.status(500).json({ error: "Erro ao mover/adicionar loja" });
   }
 });
 
