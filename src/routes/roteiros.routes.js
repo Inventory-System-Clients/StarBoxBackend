@@ -1,5 +1,10 @@
+import express from "express";
+import { Roteiro, Loja, Usuario } from "../models/index.js";
+
+const router = express.Router();
+
 // Página de execução de roteiro: retorna lojas e máquinas do roteiro
-router.get("/:id/executar", async (req, res) => {
+router.get(":id/executar", async (req, res) => {
   try {
     const roteiro = await Roteiro.findByPk(req.params.id, {
       include: [
