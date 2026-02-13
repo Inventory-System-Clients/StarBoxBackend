@@ -1,8 +1,3 @@
-import {
-  listarMaquinas,
-  obterMaquina,
-  calcularQuantidadeAtual,
-} from "../controllers/maquinaController.js";
 import express from "express";
 import {
   listarMaquinas,
@@ -11,6 +6,7 @@ import {
   atualizarMaquina,
   deletarMaquina,
   obterEstoqueAtual,
+  calcularQuantidadeAtual,
 } from "../controllers/maquinaController.js";
 import {
   autenticar,
