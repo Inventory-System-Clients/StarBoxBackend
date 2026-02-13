@@ -13,8 +13,7 @@ import MovimentacaoEstoqueLojaProduto from "./MovimentacaoEstoqueLojaProduto.js"
 import AlertaIgnorado from "./AlertaIgnorado.js";
 import Veiculo from "./Veiculo.js";
 import RegistroDinheiro from "./RegistroDinheiro.js";
-import RoteiroModel from "./Roteiro.js";
-const Roteiro = RoteiroModel(sequelize);
+import Roteiro from "./Roteiro.js";
 Roteiro.associate({ Usuario, Loja });
 // Movimentação de Veículo -> Veículo e Usuário
 MovimentacaoVeiculo.belongsTo(Veiculo, {
