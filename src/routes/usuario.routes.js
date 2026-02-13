@@ -19,18 +19,19 @@ const router = express.Router();
 router.use(autenticar, autorizarRole("ADMIN"));
 
 router.get("/", listarUsuarios);
+router.get("/funcionarios", listarFuncionarios);
 router.get("/:id", obterUsuario);
 router.post("/", registrarLog("CRIAR_USUARIO", "Usuario"), criarUsuario);
 router.put("/:id", registrarLog("EDITAR_USUARIO", "Usuario"), atualizarUsuario);
 router.delete(
   "/:id",
   registrarLog("DELETAR_USUARIO", "Usuario"),
-  deletarUsuario
+  deletarUsuario,
 );
 router.patch(
   "/:id/reativar",
   registrarLog("REATIVAR_USUARIO", "Usuario"),
-  reativarUsuario
+  reativarUsuario,
 );
 
 export default router;

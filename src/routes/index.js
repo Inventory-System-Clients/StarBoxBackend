@@ -13,7 +13,7 @@ import movimentacaoEstoqueLojaRoutes from "./movimentacaoEstoqueLoja.routes.js";
 import veiculoRoutes from "./veiculo.routes.js";
 import alertasVeiculosRoutes from "./alertasVeiculos.routes.js";
 import movimentacaoVeiculoRoutes from "./movimentacaoVeiculo.routes.js";
-import registroDinheiroRoutes from "./registroDinheiro.routes.js";
+import roteirosRoutes from "./roteiros.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -32,6 +32,7 @@ router.use("/veiculos", veiculoRoutes);
 router.use("/alertas-veiculos", alertasVeiculosRoutes);
 
 router.use("/movimentacao-veiculos", movimentacaoVeiculoRoutes);
-router.use("/registro-dinheiro", registroDinheiroRoutes);
+
+router.use("/roteiros", roteirosRoutes);
 
 export default router;
