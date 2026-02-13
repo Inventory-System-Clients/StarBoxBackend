@@ -1,4 +1,34 @@
 import { Maquina, Loja, Movimentacao } from "../models/index.js";
+// Calcula quantidade atual e sugestão de abastecimento
+export const calcularQuantidadeAtual = async (req, res) => {
+  try {
+    const { maquinaId, contadorIn, contadorOut } = req.query;
+    if (!maquinaId || contadorIn === undefined || contadorOut === undefined) {
+      return res
+        .status(400)
+        .json({
+          error: "maquinaId, contadorIn e contadorOut são obrigatórios",
+        });
+    }
+    const maquina = await Maquina.findByPk(maquinaId);
+    if (!maquina) {
+      return res.status(404).json({ error: "Máquina não encontrada" });
+    }
+    const capacidade = parseInt(maquina.capacidadePadrao) || 0;
+    const inVal = parseInt(contadorIn) || 0;
+    const outVal = parseInt(contadorOut) || 0;
+    const quantidadeAtual = capacidade - (outVal - inVal);
+    const sugestaoAbastecimento = Math.max(0, capacidade - quantidadeAtual);
+    res.json({
+      quantidadeAtual: quantidadeAtual >= 0 ? quantidadeAtual : 0,
+      sugestaoAbastecimento,
+      capacidadePadrao: capacidade,
+    });
+  } catch (error) {
+    console.error("Erro ao calcular quantidade atual:", error);
+    res.status(500).json({ error: "Erro ao calcular quantidade atual" });
+  }
+};
 
 // US05 - Listar máquinas
 export const listarMaquinas = async (req, res) => {

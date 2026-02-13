@@ -1,3 +1,8 @@
+import {
+  listarMaquinas,
+  obterMaquina,
+  calcularQuantidadeAtual,
+} from "../controllers/maquinaController.js";
 import express from "express";
 import {
   listarMaquinas,
@@ -20,26 +25,28 @@ router.get("/", autenticar, listarMaquinas);
 router.get("/:id", autenticar, obterMaquina);
 router.get("/:id/estoque", autenticar, obterEstoqueAtual);
 router.get("/:id/problema", autenticar, problemaMaquina);
+// Endpoint para cálculo automático
+router.get("/:id/calcular-quantidade", autenticar, calcularQuantidadeAtual);
 router.post(
   "/",
   autenticar,
   autorizarRole("ADMIN"),
   registrarLog("CRIAR_MAQUINA", "Maquina"),
-  criarMaquina
+  criarMaquina,
 );
 router.put(
   "/:id",
   autenticar,
   autorizarRole("ADMIN"),
   registrarLog("EDITAR_MAQUINA", "Maquina"),
-  atualizarMaquina
+  atualizarMaquina,
 );
 router.delete(
   "/:id",
   autenticar,
   autorizarRole("ADMIN"),
   registrarLog("DELETAR_MAQUINA", "Maquina"),
-  deletarMaquina
+  deletarMaquina,
 );
 
 export default router;

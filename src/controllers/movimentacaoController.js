@@ -18,27 +18,71 @@ export const registrarMovimentacao = async (req, res) => {
       totalPre,
       sairam,
       abastecidas,
-      fichas,
-      contadorMaquina,
-      contadorIn,
-      contadorOut,
+      contadorInManual,
+      contadorOutManual,
+      contadorInDigital,
+      contadorOutDigital,
       observacoes,
       tipoOcorrencia,
       retiradaEstoque,
       produtos, // Array de { produtoId, quantidadeSaiu, quantidadeAbastecida }
-      quantidade_notas_entrada,
-      valor_entrada_maquininha_pix,
+      roteiroId, // deve ser enviado pelo frontend
     } = req.body;
 
+    // --- ALERTA DE PULAR LOJA NO ROTEIRO ---
+    if (roteiroId && req.usuario && req.usuario.id) {
+      const { Roteiro, Loja, Movimentacao, Maquina } =
+        await import("../models/index.js");
+      // Buscar roteiro e ordem das lojas
+      const roteiro = await Roteiro.findByPk(roteiroId, {
+        include: [{ model: Loja, as: "lojas", attributes: ["id", "nome"] }],
+      });
+      if (roteiro && roteiro.lojas && roteiro.lojas.length > 0) {
+        // Buscar a máquina e a loja da movimentação
+        const maquina = await Maquina.findByPk(maquinaId);
+        const lojaAtualId = maquina ? maquina.lojaId : null;
+        // Buscar movimentações já feitas pelo usuário nesse roteiro
+        const movs = await Movimentacao.findAll({
+          where: {
+            usuarioId: req.usuario.id,
+            roteiroId: roteiroId,
+          },
+          include: [
+            { model: Maquina, as: "maquina", attributes: ["id", "lojaId"] },
+          ],
+          order: [["createdAt", "ASC"]],
+        });
+        // Montar lista de lojas já visitadas
+        const lojasVisitadas = movs
+          .map((m) => m.maquina?.lojaId)
+          .filter(Boolean);
+        // Descobrir próxima loja esperada
+        const roteiroLojasIds = roteiro.lojas.map((l) => l.id);
+        let proximaEsperada = null;
+        for (let i = 0; i < roteiroLojasIds.length; i++) {
+          if (!lojasVisitadas.includes(roteiroLojasIds[i])) {
+            proximaEsperada = roteiroLojasIds[i];
+            break;
+          }
+        }
+        // Se a loja atual não for a próxima esperada, alerta
+        if (lojaAtualId && proximaEsperada && lojaAtualId !== proximaEsperada) {
+          const lojaPuladaIdx = roteiroLojasIds.indexOf(proximaEsperada);
+          const lojaPuladaNome =
+            roteiro.lojas[lojaPuladaIdx]?.nome || "(desconhecida)";
+          return res.status(200).json({
+            alerta: `Você está pulando a loja ${lojaPuladaNome} do roteiro! Confirme se deseja continuar.`,
+            pularLoja: true,
+            lojaEsperada: lojaPuladaNome,
+          });
+        }
+      }
+    }
+
     // Validações
-    if (
-      !maquinaId ||
-      totalPre === undefined ||
-      sairam === undefined ||
-      abastecidas === undefined
-    ) {
+    if (!maquinaId || totalPre === undefined || abastecidas === undefined) {
       return res.status(400).json({
-        error: "maquinaId, totalPre, sairam e abastecidas são obrigatórios",
+        error: "maquinaId, totalPre e abastecidas são obrigatórios",
       });
     }
 
@@ -47,32 +91,32 @@ export const registrarMovimentacao = async (req, res) => {
       where: { maquinaId },
       order: [["createdAt", "DESC"]],
     });
-    // Validação: contadorIn/contadorOut não pode ser menor que o anterior, exceto ADMIN, ou se não enviado ou zero
+    // Validação: contadorIn/contadorOut digitais não pode ser menor que o anterior, exceto ADMIN, ou se não enviado ou zero
     if (ultimaMov) {
-      // contadorIn
+      // contadorInDigital
       if (
-        typeof contadorIn === "number" &&
-        contadorIn > 0 &&
-        typeof ultimaMov.contadorIn === "number" &&
-        ultimaMov.contadorIn !== null &&
-        contadorIn < ultimaMov.contadorIn &&
+        typeof contadorInDigital === "number" &&
+        contadorInDigital > 0 &&
+        typeof ultimaMov.contadorInDigital === "number" &&
+        ultimaMov.contadorInDigital !== null &&
+        contadorInDigital < ultimaMov.contadorInDigital &&
         req.usuario.role !== "ADMIN"
       ) {
         return res.status(400).json({
-          error: `O contador IN (${contadorIn}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
+          error: `O contador IN Digital (${contadorInDigital}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
         });
       }
-      // contadorOut
+      // contadorOutDigital
       if (
-        typeof contadorOut === "number" &&
-        contadorOut > 0 &&
-        typeof ultimaMov.contadorOut === "number" &&
-        ultimaMov.contadorOut !== null &&
-        contadorOut < ultimaMov.contadorOut &&
+        typeof contadorOutDigital === "number" &&
+        contadorOutDigital > 0 &&
+        typeof ultimaMov.contadorOutDigital === "number" &&
+        ultimaMov.contadorOutDigital !== null &&
+        contadorOutDigital < ultimaMov.contadorOutDigital &&
         req.usuario.role !== "ADMIN"
       ) {
         return res.status(400).json({
-          error: `O contador OUT (${contadorOut}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
+          error: `O contador OUT Digital (${contadorOutDigital}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
         });
       }
     }
@@ -88,8 +132,14 @@ export const registrarMovimentacao = async (req, res) => {
     }
 
     // --- Recalcular saída (sairam) para garantir consistência ---
+    // Usar contadores digitais para cálculo
     let saidaRecalculada = 0;
-    if (ultimaMov && typeof ultimaMov.totalPos === "number") {
+    if (
+      typeof contadorInDigital === "number" &&
+      typeof contadorOutDigital === "number"
+    ) {
+      saidaRecalculada = Math.max(0, contadorOutDigital - contadorInDigital);
+    } else if (ultimaMov && typeof ultimaMov.totalPos === "number") {
       saidaRecalculada = Math.max(0, ultimaMov.totalPos - totalPre);
     }
     // Se não houver movimentação anterior, saída é zero
@@ -126,16 +176,13 @@ export const registrarMovimentacao = async (req, res) => {
       totalPre,
       sairam: saidaRecalculada,
       abastecidas,
-      fichas: fichas || 0,
-      contadorMaquina,
-      contadorIn,
-      contadorOut,
-      valorFaturado,
+      contadorInManual,
+      contadorOutManual,
+      contadorInDigital,
+      contadorOutDigital,
       observacoes,
       tipoOcorrencia: tipoOcorrencia || "Normal",
       retiradaEstoque: retiradaEstoque || false,
-      quantidade_notas_entrada: quantidade_notas_entrada ?? null,
-      valor_entrada_maquininha_pix: valor_entrada_maquininha_pix ?? null,
     });
 
     console.log("✅ [registrarMovimentacao] Movimentação criada:", {
