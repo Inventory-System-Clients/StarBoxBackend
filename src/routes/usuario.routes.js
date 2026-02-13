@@ -1,6 +1,7 @@
 import express from "express";
 import {
   listarUsuarios,
+  listarFuncionarios,
   obterUsuario,
   criarUsuario,
   atualizarUsuario,
