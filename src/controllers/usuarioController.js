@@ -1,3 +1,16 @@
+// Listar apenas funcionários
+export const listarFuncionarios = async (req, res) => {
+  try {
+    const funcionarios = await Usuario.findAll({
+      where: { role: "FUNCIONARIO", ativo: true },
+      order: [["nome", "ASC"]],
+    });
+    res.json(funcionarios);
+  } catch (error) {
+    console.error("Erro ao listar funcionários:", error);
+    res.status(500).json({ error: "Erro ao listar funcionários" });
+  }
+};
 import { Usuario, UsuarioLoja, Loja } from "../models/index.js";
 import { Op } from "sequelize";
 
