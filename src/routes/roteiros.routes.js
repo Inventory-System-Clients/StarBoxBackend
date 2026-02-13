@@ -1,12 +1,7 @@
 import express from "express";
-import { Roteiro, Loja, Usuario } from "../models/index.js";
+import { Roteiro, Loja, Usuario, Maquina } from "../models/index.js";
 
 const router = express.Router();
-
-
-
-
-
 
 // Criar novo roteiro
 router.post("/", async (req, res) => {
@@ -75,7 +70,7 @@ router.post("/mover-loja", async (req, res) => {
 });
 
 // Página de execução de roteiro: retorna lojas e máquinas do roteiro
-router.get(":id/executar", async (req, res) => {
+router.get("/:id/executar", async (req, res) => {
   try {
     const roteiro = await Roteiro.findByPk(req.params.id, {
       include: [
