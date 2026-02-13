@@ -19,8 +19,8 @@ const router = express.Router();
 // Todas as rotas requerem autenticação e role ADMIN
 router.use(autenticar, autorizarRole("ADMIN"));
 
-router.get("/", listarUsuarios);
 router.get("/funcionarios", listarFuncionarios);
+router.get("/", listarUsuarios);
 router.get("/:id", obterUsuario);
 router.post("/", registrarLog("CRIAR_USUARIO", "Usuario"), criarUsuario);
 router.put("/:id", registrarLog("EDITAR_USUARIO", "Usuario"), atualizarUsuario);
