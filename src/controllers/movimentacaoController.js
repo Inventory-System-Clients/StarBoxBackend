@@ -27,6 +27,7 @@ export const registrarMovimentacao = async (req, res) => {
       retiradaEstoque,
       produtos, // Array de { produtoId, quantidadeSaiu, quantidadeAbastecida }
       roteiroId, // deve ser enviado pelo frontend
+      fichas, // <-- adicionado para corrigir erro
     } = req.body;
 
     // --- ALERTA DE PULAR LOJA NO ROTEIRO ---
