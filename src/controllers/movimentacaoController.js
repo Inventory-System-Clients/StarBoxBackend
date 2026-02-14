@@ -27,7 +27,8 @@ export const registrarMovimentacao = async (req, res) => {
       retiradaEstoque,
       produtos, // Array de { produtoId, quantidadeSaiu, quantidadeAbastecida }
       roteiroId, // deve ser enviado pelo frontend
-      fichas, // <-- adicionado para corrigir erro
+      // fichas removido
+      quantidade_notas_entrada, // <-- adicionado para corrigir erro
     } = req.body;
 
     // --- ALERTA DE PULAR LOJA NO ROTEIRO ---
@@ -38,7 +39,6 @@ export const registrarMovimentacao = async (req, res) => {
       const roteiro = await Roteiro.findByPk(roteiroId, {
         include: [{ model: Loja, as: "lojas", attributes: ["id", "nome"] }],
       });
-      if (roteiro && roteiro.lojas && roteiro.lojas.length > 0) {
         // Buscar a máquina e a loja da movimentação
         const maquina = await Maquina.findByPk(maquinaId);
         const lojaAtualId = maquina ? maquina.lojaId : null;
@@ -55,9 +55,7 @@ export const registrarMovimentacao = async (req, res) => {
         });
         // Montar lista de lojas já visitadas
         const lojasVisitadas = movs
-          .map((m) => m.maquina?.lojaId)
-          .filter(Boolean);
-        // Descobrir próxima loja esperada
+        const valorFaturado = 0;
         const roteiroLojasIds = roteiro.lojas.map((l) => l.id);
         let proximaEsperada = null;
         for (let i = 0; i < roteiroLojasIds.length; i++) {
@@ -154,10 +152,7 @@ export const registrarMovimentacao = async (req, res) => {
     // Calcular valor faturado: fichas + notas + digital
     const valorFaturado =
       (fichas ? fichas * parseFloat(maquina.valorFicha) : 0) +
-      (quantidade_notas_entrada ? parseFloat(quantidade_notas_entrada) : 0) +
-      (valor_entrada_maquininha_pix
-        ? parseFloat(valor_entrada_maquininha_pix)
-        : 0);
+      (quantidade_notas_entrada ? parseFloat(quantidade_notas_entrada) : 0);
 
     console.log("📝 [registrarMovimentacao] Criando movimentação:", {
       maquinaId,
