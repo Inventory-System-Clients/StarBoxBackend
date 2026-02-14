@@ -39,6 +39,7 @@ export const registrarMovimentacao = async (req, res) => {
       const roteiro = await Roteiro.findByPk(roteiroId, {
         include: [{ model: Loja, as: "lojas", attributes: ["id", "nome"] }],
       });
+      if (roteiro && roteiro.lojas && roteiro.lojas.length > 0) {
         // Buscar a máquina e a loja da movimentação
         const maquina = await Maquina.findByPk(maquinaId);
         const lojaAtualId = maquina ? maquina.lojaId : null;
@@ -55,7 +56,8 @@ export const registrarMovimentacao = async (req, res) => {
         });
         // Montar lista de lojas já visitadas
         const lojasVisitadas = movs
-        const valorFaturado = 0;
+          .map((m) => m.maquina?.lojaId)
+          .filter(Boolean);
         const roteiroLojasIds = roteiro.lojas.map((l) => l.id);
         let proximaEsperada = null;
         for (let i = 0; i < roteiroLojasIds.length; i++) {
@@ -77,6 +79,7 @@ export const registrarMovimentacao = async (req, res) => {
         }
       }
     }
+    const valorFaturado = 0;
 
     // Validações
     if (!maquinaId || totalPre === undefined || abastecidas === undefined) {
