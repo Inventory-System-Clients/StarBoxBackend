@@ -151,10 +151,7 @@ export const registrarMovimentacao = async (req, res) => {
       return res.status(404).json({ error: "Máquina não encontrada" });
     }
 
-    // Calcular valor faturado: fichas + notas + digital
-    const valorFaturado =
-      (fichas ? fichas * parseFloat(maquina.valorFicha) : 0) +
-      (quantidade_notas_entrada ? parseFloat(quantidade_notas_entrada) : 0);
+    // valorFaturado removido (não é mais calculado nem usado)
 
     console.log("📝 [registrarMovimentacao] Criando movimentação:", {
       maquinaId,
