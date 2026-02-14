@@ -8,6 +8,7 @@ import {
   Loja,
 } from "../models/index.js";
 import { Op } from "sequelize";
+import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
@@ -330,6 +331,30 @@ export const registrarMovimentacao = async (req, res) => {
 
     res.locals.entityId = movimentacao.id;
     res.status(201).json(movimentacaoCompleta);
+
+    // Impedir movimentação duplicada para máquina/roteiro/data
+    const hoje = new Date();
+    const dataHoje = hoje.toISOString().slice(0, 10); // yyyy-mm-dd
+    const statusExistente = await MovimentacaoStatusDiario.findOne({
+      where: {
+        maquina_id: maquinaId,
+        roteiro_id: roteiroId,
+        data: dataHoje,
+        concluida: true,
+      },
+    });
+    if (statusExistente) {
+      return res
+        .status(400)
+        .json({ error: "Movimentação já registrada para esta máquina hoje." });
+    }
+    // Após registrar movimentação, marcar como concluída
+    await MovimentacaoStatusDiario.upsert({
+      maquina_id: maquinaId,
+      roteiro_id: roteiroId,
+      data: dataHoje,
+      concluida: true,
+    });
   } catch (error) {
     console.error("Erro ao registrar movimentação:", error);
     res.status(500).json({ error: "Erro ao registrar movimentação" });

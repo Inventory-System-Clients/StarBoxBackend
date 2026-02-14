@@ -14,6 +14,7 @@ import veiculoRoutes from "./veiculo.routes.js";
 import alertasVeiculosRoutes from "./alertasVeiculos.routes.js";
 import movimentacaoVeiculoRoutes from "./movimentacaoVeiculo.routes.js";
 import roteirosRoutes from "./roteiros.routes.js";
+import statusDiarioRoutes from "./statusDiario.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -34,5 +35,6 @@ router.use("/alertas-veiculos", alertasVeiculosRoutes);
 router.use("/movimentacao-veiculos", movimentacaoVeiculoRoutes);
 
 router.use("/roteiros", roteirosRoutes);
+router.use("/status-diario", statusDiarioRoutes);
 
 export default router;
