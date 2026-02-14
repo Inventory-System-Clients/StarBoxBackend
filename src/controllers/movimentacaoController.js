@@ -79,7 +79,6 @@ export const registrarMovimentacao = async (req, res) => {
         }
       }
     }
-    const valorFaturado = 0;
 
     // Validações
     if (!maquinaId || totalPre === undefined || abastecidas === undefined) {
@@ -163,8 +162,6 @@ export const registrarMovimentacao = async (req, res) => {
       sairam: saidaRecalculada,
       abastecidas,
       totalPosCalculado: totalPre - saidaRecalculada + abastecidas,
-      fichas: fichas || 0,
-      valorFaturado,
     });
 
     // Criar movimentação
