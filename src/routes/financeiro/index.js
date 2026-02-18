@@ -1,8 +1,8 @@
 import express from "express";
-import financeiroAuthRoutes from "./financeiro/auth.routes.js";
-import financeiroBillsRoutes from "./financeiro/bills.routes.js";
-import financeiroCategoriesRoutes from "./financeiro/categories.routes.js";
-import financeiroReportsRoutes from "./financeiro/reports.routes.js";
+import financeiroAuthRoutes from "./auth.routes.js";
+import financeiroBillsRoutes from "./bills.routes.js";
+import financeiroCategoriesRoutes from "./categories.routes.js";
+import financeiroReportsRoutes from "./reports.routes.js";
 
 const router = express.Router();
 
