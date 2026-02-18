@@ -165,5 +165,5 @@ EstoqueLoja.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
   MovimentacaoVeiculo,
   RegistroDinheiro,
   Roteiro,
-  Peca,
+  Peca
 };
