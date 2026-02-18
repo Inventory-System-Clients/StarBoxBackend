@@ -28,9 +28,12 @@ export const autenticar = async (req, res, next) => {
 };
 
 // US02 - Middleware de Autorização por Role
-export const autorizarRole = (...rolesPermitidas) => {
+
+// Aceita array ou lista de roles
+export const autorizar = (rolesPermitidas) => {
+  const roles = Array.isArray(rolesPermitidas) ? rolesPermitidas : [...arguments];
   return (req, res, next) => {
-    if (!rolesPermitidas.includes(req.usuario.role)) {
+    if (!roles.includes(req.usuario.role)) {
       return res.status(403).json({
         error: "Acesso negado. Você não tem permissão para esta ação.",
       });

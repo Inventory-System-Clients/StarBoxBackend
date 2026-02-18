@@ -1,4 +1,6 @@
 import MovimentacaoVeiculo from "./MovimentacaoVeiculo.js";
+import CarrinhoPeca from "./CarrinhoPeca.js";
+import Peca from "./Peca.js";
 import Usuario from "./Usuario.js";
 import Loja from "./Loja.js";
 import Maquina from "./Maquina.js";
@@ -146,7 +148,7 @@ Produto.hasMany(EstoqueLoja, {
 EstoqueLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 EstoqueLoja.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 
-export {
+  CarrinhoPeca,
   Usuario,
   Loja,
   Maquina,
@@ -163,4 +165,5 @@ export {
   MovimentacaoVeiculo,
   RegistroDinheiro,
   Roteiro,
+  Peca,
 };
