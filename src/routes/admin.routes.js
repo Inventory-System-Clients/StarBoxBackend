@@ -1,5 +1,5 @@
 import express from "express";
-import { autenticar, autorizarRole } from "../middlewares/auth.js";
+import { autenticar, autorizar } from "../middlewares/auth.js";
 import {
   limparDadosAntigos,
   verificarDadosParaLimpeza,
@@ -11,7 +11,7 @@ const router = express.Router();
 router.get(
   "/verificar-limpeza",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   async (req, res) => {
     try {
       const resultado = await verificarDadosParaLimpeza();
@@ -27,7 +27,7 @@ router.get(
 router.post(
   "/limpar-dados-antigos",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   async (req, res) => {
     try {
       const resultado = await limparDadosAntigos();
