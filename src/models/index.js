@@ -147,7 +147,6 @@ Produto.hasMany(EstoqueLoja, {
 });
 EstoqueLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 EstoqueLoja.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
-
   CarrinhoPeca,
   Usuario,
   Loja,
