@@ -8,7 +8,7 @@ import {
 } from "../controllers/movimentacaoController.js";
 import {
   autenticar,
-  autorizarRole,
+  autorizar,
   registrarLog,
 } from "../middlewares/auth.js";
 
@@ -31,7 +31,7 @@ router.put(
 router.delete(
   "/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar(["ADMIN"]),
   registrarLog("DELETAR_MOVIMENTACAO", "Movimentacao"),
   deletarMovimentacao
 );
