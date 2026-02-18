@@ -30,8 +30,8 @@ export const autenticar = async (req, res, next) => {
 // US02 - Middleware de Autorização por Role
 
 // Aceita array ou lista de roles
-export const autorizar = (rolesPermitidas) => {
-  const roles = Array.isArray(rolesPermitidas) ? rolesPermitidas : [...arguments];
+export const autorizar = (...rolesPermitidas) => {
+  const roles = rolesPermitidas.flat();
   return (req, res, next) => {
     if (!roles.includes(req.usuario.role)) {
       return res.status(403).json({
