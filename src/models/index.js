@@ -1,3 +1,4 @@
+import ContasFinanceiro from "./ContasFinanceiro.js";
 import MovimentacaoVeiculo from "./MovimentacaoVeiculo.js";
 import CarrinhoPeca from "./CarrinhoPeca.js";
 import Peca from "./Peca.js";
@@ -165,5 +166,6 @@ export {
   MovimentacaoVeiculo,
   RegistroDinheiro,
   Roteiro,
-  Peca
+  ContasFinanceiro,
+  Peca,
 };
