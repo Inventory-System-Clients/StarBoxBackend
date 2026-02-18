@@ -9,7 +9,7 @@ import {
   dashboardRelatorio,
 } from "../controllers/relatorioController.js";
 import { alertasAbastecimentoIncompleto } from "../controllers/movimentacaoController.js";
-import { autenticar, autorizarRole } from "../middlewares/auth.js";
+import { autenticar, autorizar } from "../middlewares/auth.js";
 
 const router = express.Router();
 
@@ -17,49 +17,49 @@ const router = express.Router();
 router.get(
   "/balanco-semanal",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   balançoSemanal
 );
 router.get(
   "/alertas-movimentacao-inconsistente",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   buscarAlertasDeInconsistencia
 );
 router.delete(
   "/alertas-movimentacao-inconsistente/:id",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   ignorarAlertaMovimentacao
 );
 router.get(
   "/alertas-estoque",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   alertasEstoque
 );
 router.get(
   "/performance-maquinas",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   performanceMaquinas
 );
 router.get(
   "/impressao",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   relatorioImpressao
 );
 router.get(
   "/dashboard",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   dashboardRelatorio
 );
 router.get(
   "/alertas-abastecimento-incompleto",
   autenticar,
-  autorizarRole("ADMIN"),
+  autorizar("ADMIN"),
   alertasAbastecimentoIncompleto
 );
 
