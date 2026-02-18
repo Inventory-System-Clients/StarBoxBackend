@@ -131,4 +131,4 @@ export const registrarLog = (acao, entidade = null) => {
 };
 
 // Alias para verificar se é ADMIN (convenção)
-export const verificarAdmin = autorizarRole("ADMIN");
+export const verificarAdmin = autorizar("ADMIN");
