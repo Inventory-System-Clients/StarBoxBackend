@@ -15,21 +15,25 @@ import {
 
 const router = express.Router();
 
+
 router.get("/", autenticar, listarProdutos);
 router.get("/categorias", autenticar, listarCategorias);
 router.get("/:id", autenticar, obterProduto);
+router.post(
   "/",
   autenticar,
   autorizar(["ADMIN"]),
   registrarLog("CRIAR_PRODUTO", "Produto"),
   criarProduto
 );
+router.put(
   "/:id",
   autenticar,
   autorizar(["ADMIN"]),
   registrarLog("EDITAR_PRODUTO", "Produto"),
   atualizarProduto
 );
+router.delete(
   "/:id",
   autenticar,
   autorizar(["ADMIN"]),
