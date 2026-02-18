@@ -14,20 +14,24 @@ import {
 
 const router = express.Router();
 
+
 router.get("/", autenticar, listarLojas);
 router.get("/:id", autenticar, obterLoja);
+router.post(
   "/",
   autenticar,
   autorizar(["ADMIN"]),
   registrarLog("CRIAR_LOJA", "Loja"),
   criarLoja
 );
+router.put(
   "/:id",
   autenticar,
   autorizar(["ADMIN"]),
   registrarLog("EDITAR_LOJA", "Loja"),
   atualizarLoja
 );
+router.delete(
   "/:id",
   autenticar,
   autorizar(["ADMIN"]),
