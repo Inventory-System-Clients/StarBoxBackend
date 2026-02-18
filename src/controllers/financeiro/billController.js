@@ -5,7 +5,10 @@ export function getAll(req, res) {
   const where = bill_type ? { bill_type } : {};
   ContasFinanceiro.findAll({ where })
     .then((bills) => res.json(bills))
-    .catch((err) => res.status(500).json({ error: err.message }));
+      .catch((err) => {
+        console.error("Erro detalhado getAll:", err);
+        res.status(500).json({ error: err.message });
+      });
 }
 
 export function create(req, res) {
@@ -37,12 +40,18 @@ export function update(req, res) {
       city: req.body.city,
       bill_type: req.body.bill_type,
       observations: req.body.observations,
-    },
+      .catch((err) => {
+        console.error("Erro detalhado create:", err);
+        res.status(500).json({ error: err.message });
+      });
     { where: { id } },
   )
     .then(() => ContasFinanceiro.findByPk(id))
     .then((bill) => res.json(bill))
-    .catch((err) => res.status(500).json({ error: err.message }));
+      .catch((err) => {
+        console.error("Erro detalhado update:", err);
+        res.status(500).json({ error: err.message });
+      });
 }
 
 export function updateStatus(req, res) {
@@ -51,14 +60,20 @@ export function updateStatus(req, res) {
   ContasFinanceiro.update({ status }, { where: { id } })
     .then(() => ContasFinanceiro.findByPk(id))
     .then((bill) => res.json(bill))
-    .catch((err) => res.status(500).json({ error: err.message }));
+      .catch((err) => {
+        console.error("Erro detalhado updateStatus:", err);
+        res.status(500).json({ error: err.message });
+      });
 }
 
 export function deleteBill(req, res) {
   const id = parseInt(req.params.id);
   ContasFinanceiro.destroy({ where: { id } })
     .then(() => res.json({ success: true }))
-    .catch((err) => res.status(500).json({ error: err.message }));
+      .catch((err) => {
+        console.error("Erro detalhado deleteBill:", err);
+        res.status(500).json({ error: err.message });
+      });
 }
 
 // Compatibilidade com rota
