@@ -10,14 +10,14 @@ import {
 } from "../controllers/usuarioController.js";
 import {
   autenticar,
-  autorizarRole,
+  autorizar,
   registrarLog,
 } from "../middlewares/auth.js";
 
 const router = express.Router();
 
 // Todas as rotas requerem autenticação e role ADMIN
-router.use(autenticar, autorizarRole("ADMIN"));
+router.use(autenticar, autorizar(["ADMIN"]));
 
 router.get("/funcionarios", listarFuncionarios);
 router.get("/", listarUsuarios);
