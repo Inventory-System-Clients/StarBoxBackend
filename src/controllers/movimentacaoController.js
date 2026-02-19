@@ -12,26 +12,28 @@ import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
-      // Validação aprimorada de campos obrigatórios
-      const requiredFields = [
-        "maquinaId",
-        "roteiroId",
-        "totalPre",
-        "abastecidas",
-        "fichas",
-        "contadorIn",
-        "contadorOut",
-        "quantidade_notas_entrada",
-        "valor_entrada_maquininha_pix",
-        "retiradaEstoque",
-        "retiradaProduto",
-        "observacoes",
-        "produtos"
-      ];
-      const missing = requiredFields.filter(f => req.body[f] === undefined);
-      if (missing.length > 0) {
-        return res.status(400).json({ error: "Campos obrigatórios ausentes: " + missing.join(", ") });
-      }
+  // Validação aprimorada de campos obrigatórios
+  const requiredFields = [
+    "maquinaId",
+    "roteiroId",
+    "totalPre",
+    "abastecidas",
+    "fichas",
+    "contadorIn",
+    "contadorOut",
+    "quantidade_notas_entrada",
+    "valor_entrada_maquininha_pix",
+    "retiradaEstoque",
+    "retiradaProduto",
+    "observacoes",
+    "produtos",
+  ];
+  const missing = requiredFields.filter((f) => req.body[f] === undefined);
+  if (missing.length > 0) {
+    return res
+      .status(400)
+      .json({ error: "Campos obrigatórios ausentes: " + missing.join(", ") });
+  }
   try {
     const {
       maquinaId,
@@ -353,6 +355,12 @@ export const registrarMovimentacao = async (req, res) => {
     // Impedir movimentação duplicada para máquina/roteiro/data
     const hoje = new Date();
     const dataHoje = hoje.toISOString().slice(0, 10); // yyyy-mm-dd
+    console.log("[MovStatusDiario] Tentando registrar status:", {
+      maquina_id: maquinaId,
+      roteiro_id: roteiroId,
+      data: dataHoje,
+      concluida: true,
+    });
     const statusExistente = await MovimentacaoStatusDiario.findOne({
       where: {
         maquina_id: maquinaId,
@@ -362,16 +370,23 @@ export const registrarMovimentacao = async (req, res) => {
       },
     });
     if (statusExistente) {
-      res.status(400).json({ error: "Movimentação já registrada para esta máquina hoje." });
+      console.log(
+        "[MovStatusDiario] Já existe status para esta máquina/roteiro/data:",
+        statusExistente.dataValues,
+      );
+      res
+        .status(400)
+        .json({ error: "Movimentação já registrada para esta máquina hoje." });
       return;
     }
     // Após registrar movimentação, marcar como concluída
-    await MovimentacaoStatusDiario.upsert({
+    const upsertResult = await MovimentacaoStatusDiario.upsert({
       maquina_id: maquinaId,
       roteiro_id: roteiroId,
       data: dataHoje,
       concluida: true,
     });
+    console.log("[MovStatusDiario] Resultado do upsert:", upsertResult);
 
     res.locals.entityId = movimentacao.id;
     res.status(201).json(movimentacaoCompleta);
