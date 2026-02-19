@@ -176,33 +176,34 @@ const startServer = async () => {
         iniciarLimpezaAutomatica();
         iniciarResetRoteirosDiario();
       }
-      // Função para resetar status dos roteiros diariamente às 00h
-      const iniciarResetRoteirosDiario = async () => {
-        const { resetarRoteirosDiarios } =
-          await import("./utils/resetRoteiros.js");
-
-        const executarReset = async () => {
-          const agora = new Date();
-          const horas = agora.getHours();
-          const minutos = agora.getMinutes();
-          // Executar apenas à 00:00
-          if (horas === 0 && minutos < 5) {
-            // tolerância de 5 minutos
-            console.log("🔄 Resetando status diário dos roteiros...");
-            try {
-              await resetarRoteirosDiarios();
-            } catch (error) {
-              console.error("❌ Erro no reset diário dos roteiros:", error);
-            }
-          }
-        };
-        // Executar a cada 5 minutos para garantir reset próximo da meia-noite
-        setInterval(executarReset, 5 * 60 * 1000);
-        console.log(
-          "⏰ Reset diário dos roteiros agendado para 00:00 (meia-noite)",
-        );
-      };
     });
+
+    // Função para resetar status dos roteiros diariamente às 00h
+    const iniciarResetRoteirosDiario = async () => {
+      const { resetarRoteirosDiarios } =
+        await import("./utils/resetRoteiros.js");
+
+      const executarReset = async () => {
+        const agora = new Date();
+        const horas = agora.getHours();
+        const minutos = agora.getMinutes();
+        // Executar apenas à 00:00
+        if (horas === 0 && minutos < 5) {
+          // tolerância de 5 minutos
+          console.log("🔄 Resetando status diário dos roteiros...");
+          try {
+            await resetarRoteirosDiarios();
+          } catch (error) {
+            console.error("❌ Erro no reset diário dos roteiros:", error);
+          }
+        }
+      };
+      // Executar a cada 5 minutos para garantir reset próximo da meia-noite
+      setInterval(executarReset, 5 * 60 * 1000);
+      console.log(
+        "⏰ Reset diário dos roteiros agendado para 00:00 (meia-noite)",
+      );
+    };
   } catch (error) {
     console.error("❌ Erro ao conectar com o banco de dados:", error);
     process.exit(1);
