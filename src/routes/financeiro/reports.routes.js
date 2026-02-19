@@ -1,10 +1,14 @@
 import express from "express";
-import * as reportsController from "../../controllers/financeiro/reportsController.js";
+import {
+  dashboard,
+  alerts,
+  exportReport,
+} from "../../controllers/financeiro/reportsController.js";
 
 const router = express.Router();
 
-router.get("/dashboard", reportsController.dashboard);
-router.get("/alerts", reportsController.alerts);
-router.get("/export", reportsController.export);
+router.get("/dashboard", dashboard);
+router.get("/alerts", alerts);
+router.get("/export", exportReport);
 
 export default router;
