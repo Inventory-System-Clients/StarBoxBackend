@@ -18,6 +18,7 @@ import statusDiarioRoutes from "./statusDiario.routes.js";
 import financeiroRoutes from "./financeiro/index.js";
 import pecasRoutes from "./pecas.routes.js";
 import carrinhoPecaRoutes from "./carrinhoPeca.routes.js";
+import roteiroStatusRoutes from "./roteiroStatus.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -42,6 +43,7 @@ router.use("/movimentacao-veiculos", movimentacaoVeiculoRoutes);
 
 router.use("/roteiros", roteirosRoutes);
 router.use("/status-diario", statusDiarioRoutes);
+router.use("/roteiro-status", roteiroStatusRoutes);
 
 // Nova rota para a aba de financeiro
 router.use("/financeiro", financeiroRoutes);
