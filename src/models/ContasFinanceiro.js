@@ -1,6 +1,6 @@
 // Modelo Sequelize para contas financeiras
 import { DataTypes } from "sequelize";
-import sequelize from "../db.js";
+import { sequelize } from '../database/connection.js';
 
 const ContasFinanceiro = sequelize.define(
   "ContasFinanceiro",
