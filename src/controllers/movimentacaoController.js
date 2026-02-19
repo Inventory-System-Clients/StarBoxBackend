@@ -72,11 +72,12 @@ export const registrarMovimentacao = async (req, res) => {
           const lojaPuladaIdx = roteiroLojasIds.indexOf(proximaEsperada);
           const lojaPuladaNome =
             roteiro.lojas[lojaPuladaIdx]?.nome || "(desconhecida)";
-          return res.status(200).json({
+          res.status(200).json({
             alerta: `Você está pulando a loja ${lojaPuladaNome} do roteiro! Confirme se deseja continuar.`,
             pularLoja: true,
             lojaEsperada: lojaPuladaNome,
           });
+          return;
         }
       }
     }
@@ -329,9 +330,6 @@ export const registrarMovimentacao = async (req, res) => {
       ],
     });
 
-    res.locals.entityId = movimentacao.id;
-    res.status(201).json(movimentacaoCompleta);
-
     // Impedir movimentação duplicada para máquina/roteiro/data
     const hoje = new Date();
     const dataHoje = hoje.toISOString().slice(0, 10); // yyyy-mm-dd
@@ -344,9 +342,8 @@ export const registrarMovimentacao = async (req, res) => {
       },
     });
     if (statusExistente) {
-      return res
-        .status(400)
-        .json({ error: "Movimentação já registrada para esta máquina hoje." });
+      res.status(400).json({ error: "Movimentação já registrada para esta máquina hoje." });
+      return;
     }
     // Após registrar movimentação, marcar como concluída
     await MovimentacaoStatusDiario.upsert({
@@ -355,6 +352,10 @@ export const registrarMovimentacao = async (req, res) => {
       data: dataHoje,
       concluida: true,
     });
+
+    res.locals.entityId = movimentacao.id;
+    res.status(201).json(movimentacaoCompleta);
+    return;
   } catch (error) {
     console.error("Erro ao registrar movimentação:", error);
     res.status(500).json({ error: "Erro ao registrar movimentação" });
