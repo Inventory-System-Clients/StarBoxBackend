@@ -36,6 +36,11 @@ export async function getRoteiroExecucaoComStatus(req, res) {
     let roteiroFinalizado = true;
     const lojas = roteiro.lojas.map((loja) => {
       let lojaFinalizada = true;
+      // Movimentações consideradas para esta loja
+      const movimentacoesLoja = statusMaquinas.filter(s => {
+        return loja.maquinas.some(m => m.id === s.maquina_id);
+      });
+      console.log(`[Status Loja] ${loja.nome} - Movimentações consideradas:`, movimentacoesLoja);
       const maquinas = loja.maquinas.map((maquina) => {
         const finalizada = maquinasFinalizadas.has(maquina.id);
         if (!finalizada) lojaFinalizada = false;
@@ -51,6 +56,12 @@ export async function getRoteiroExecucaoComStatus(req, res) {
         nome: loja.nome,
         status: lojaFinalizada ? "finalizado" : "pendente",
         maquinas,
+        movimentacoesConsideradas: movimentacoesLoja.map(s => ({
+          maquina_id: s.maquina_id,
+          roteiro_id: s.roteiro_id,
+          data: s.data,
+          concluida: s.concluida
+        }))
       };
     });
     res.json({
