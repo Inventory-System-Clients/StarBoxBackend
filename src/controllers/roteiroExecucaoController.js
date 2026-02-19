@@ -1,5 +1,6 @@
 import { Op } from "sequelize";
-import { Roteiro, Loja, Maquina, Movimentacao } from "../models/index.js";
+import { Roteiro, Loja, Maquina } from "../models/index.js";
+import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 export async function getRoteiroExecucaoComStatus(req, res) {
   try {
@@ -21,12 +22,17 @@ export async function getRoteiroExecucaoComStatus(req, res) {
     });
     if (!roteiro) return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    // Buscar movimentações do roteiro
-    const movimentacoes = await Movimentacao.findAll({
-      where: { roteiroId: roteiro.id },
-      attributes: ["maquinaId"],
+    // Buscar status diário das máquinas para o roteiro e data de hoje
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    const statusMaquinas = await MovimentacaoStatusDiario.findAll({
+      where: {
+        roteiro_id: roteiro.id,
+        data: dataHoje,
+        concluida: true,
+      },
+      attributes: ["maquina_id"],
     });
-    const maquinasFinalizadas = new Set(movimentacoes.map((m) => m.maquinaId));
+    const maquinasFinalizadas = new Set(statusMaquinas.map((s) => s.maquina_id));
 
     let roteiroFinalizado = true;
     const lojas = roteiro.lojas.map((loja) => {
