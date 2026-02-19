@@ -37,9 +37,12 @@ app.use(
     origin: function (origin, callback) {
       // Permitir requisições sem origin (como mobile apps, Postman, curl)
       if (!origin) return callback(null, true);
-
-      // Se estiver na lista de origens permitidas ou for "*"
-      if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+      if (
+        [
+          "https://starbox.selfmachine.com.br",
+          "http://localhost:5173",
+        ].includes(origin)
+      ) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
@@ -48,8 +51,34 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    preflightContinue: false,
+    optionsSuccessStatus: 204,
   })
 );
+
+// Middleware para garantir headers CORS em todas as respostas, inclusive OPTIONS
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    "https://starbox.selfmachine.com.br",
+    "http://localhost:5173",
+  ];
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+  );
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
