@@ -1,6 +1,6 @@
 // Modelo Sequelize para categorias financeiras
 import { DataTypes } from "sequelize";
-import sequelize from "../database/connection.js";
+import { sequelize } from "../database/connection.js";
 
 const FinanceiroCategory = sequelize.define(
   "FinanceiroCategory",
