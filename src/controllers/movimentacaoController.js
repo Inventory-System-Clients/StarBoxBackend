@@ -12,6 +12,26 @@ import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
+      // Validação aprimorada de campos obrigatórios
+      const requiredFields = [
+        "maquinaId",
+        "roteiroId",
+        "totalPre",
+        "abastecidas",
+        "fichas",
+        "contadorIn",
+        "contadorOut",
+        "quantidade_notas_entrada",
+        "valor_entrada_maquininha_pix",
+        "retiradaEstoque",
+        "retiradaProduto",
+        "observacoes",
+        "produtos"
+      ];
+      const missing = requiredFields.filter(f => req.body[f] === undefined);
+      if (missing.length > 0) {
+        return res.status(400).json({ error: "Campos obrigatórios ausentes: " + missing.join(", ") });
+      }
   try {
     const {
       maquinaId,
