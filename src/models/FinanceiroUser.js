@@ -1,6 +1,6 @@
 // Modelo Sequelize para usuários financeiros
 import { DataTypes } from "sequelize";
-import sequelize from "../database/connection.js";
+import { sequelize } from "../database/connection.js";
 
 const FinanceiroUser = sequelize.define(
   "FinanceiroUser",
