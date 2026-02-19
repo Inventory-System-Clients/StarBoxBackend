@@ -1,3 +1,5 @@
+import ContasFinanceiro from "../../models/ContasFinanceiro.js";
+
 export function alerts(req, res) {
   ContasFinanceiro.findAll()
     .then((bills) => {
