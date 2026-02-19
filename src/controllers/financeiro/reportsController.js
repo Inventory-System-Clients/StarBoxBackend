@@ -97,30 +97,8 @@ export function alerts(req, res) {
         urgency
       };
     });
-  res.json(alerts);
-    ContasFinanceiro.findAll()
-      .then(bills => {
-        const now = new Date();
-        const alerts = bills
-          .filter(b => b.status !== 'paid')
-          .map(b => {
-            const due = b.due_date ? new Date(b.due_date) : null;
-            let days_until_due = null;
-            let urgency = 'green';
-            if (due) {
-              days_until_due = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
-              if (days_until_due <= 1) urgency = 'red';
-              else if (days_until_due <= 3) urgency = 'yellow';
-            }
-            return {
-              ...b.toJSON(),
-              days_until_due,
-              urgency
-            };
-          });
-        res.json(alerts);
-      })
-      .catch(err => res.status(500).json({ error: err.message }));
+
+
 
 export function exportReport(req, res) {
   // Simples exportação mock
