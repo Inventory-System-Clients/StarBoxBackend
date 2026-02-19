@@ -30,7 +30,6 @@ export async function getRoteiroExecucaoComStatus(req, res) {
         data: dataHoje,
         concluida: true,
       },
-      attributes: ["maquina_id"],
     });
     const maquinasFinalizadas = new Set(statusMaquinas.map((s) => s.maquina_id));
 
@@ -59,6 +58,12 @@ export async function getRoteiroExecucaoComStatus(req, res) {
       nome: roteiro.nome,
       status: roteiroFinalizado ? "finalizado" : "pendente",
       lojas,
+      movimentacoesHoje: statusMaquinas.map(s => ({
+        maquina_id: s.maquina_id,
+        roteiro_id: s.roteiro_id,
+        data: s.data,
+        concluida: s.concluida
+      }))
     });
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar execução do roteiro" });
