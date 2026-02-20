@@ -1,8 +1,9 @@
+
 import { Op } from "sequelize";
 import { Roteiro, Loja, Maquina } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
-export async function getRoteiroExecucaoComStatus(req, res) {
+async function getRoteiroExecucaoComStatus(req, res) {
   try {
     const roteiro = await Roteiro.findByPk(req.params.id, {
       include: [
@@ -81,7 +82,7 @@ export async function getRoteiroExecucaoComStatus(req, res) {
 }
 
 // Buscar todos os roteiros, lojas, máquinas e calcular status
-export async function getTodosRoteirosComStatus(req, res) {
+async function getTodosRoteirosComStatus(req, res) {
   try {
     const roteiros = await Roteiro.findAll({
       include: [
