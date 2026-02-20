@@ -1,3 +1,7 @@
+// 4. Editar movimentação (placeholder)
+export const editarMovimentacaoEstoqueLoja = async (req, res) => {
+  return res.status(501).json({ error: "Função de edição não implementada." });
+};
 import MovimentacaoEstoqueLoja from "../models/MovimentacaoEstoqueLoja.js";
 import MovimentacaoEstoqueLojaProduto from "../models/MovimentacaoEstoqueLojaProduto.js";
 import { Loja, Usuario, Produto } from "../models/index.js";
