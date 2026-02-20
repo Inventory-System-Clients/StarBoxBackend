@@ -353,6 +353,14 @@ export const registrarMovimentacao = async (req, res) => {
     // Impedir movimentação duplicada para máquina/roteiro/data
     const hoje = new Date();
     const dataHoje = hoje.toISOString().slice(0, 10); // yyyy-mm-dd
+    console.log("[LOG] Dados recebidos para registrar movimentação:", {
+      maquinaId,
+      roteiroId,
+      dataHoje,
+      usuario: req.usuario ? req.usuario.id : null,
+      produtos,
+    });
+
     const statusExistente = await MovimentacaoStatusDiario.findOne({
       where: {
         maquina_id: maquinaId,
@@ -361,16 +369,29 @@ export const registrarMovimentacao = async (req, res) => {
         concluida: true,
       },
     });
+    console.log("[LOG] Status existente MovimentacaoStatusDiario:", statusExistente);
     if (statusExistente) {
+      console.log("[LOG] Movimentação já registrada para esta máquina hoje. Bloqueando duplicidade.");
       res.status(400).json({ error: "Movimentação já registrada para esta máquina hoje." });
       return;
     }
     // Após registrar movimentação, marcar como concluída
-    await MovimentacaoStatusDiario.upsert({
+    const upsertResult = await MovimentacaoStatusDiario.upsert({
       maquina_id: maquinaId,
       roteiro_id: roteiroId,
       data: dataHoje,
       concluida: true,
+    });
+    console.log("[LOG] Resultado do upsert MovimentacaoStatusDiario:", upsertResult);
+
+    // Logar movimentacaoCompleta antes de retornar
+    console.log("[LOG] Movimentação registrada com sucesso:", {
+      movimentacaoId: movimentacao.id,
+      maquinaId,
+      roteiroId,
+      dataHoje,
+      usuario: req.usuario ? req.usuario.id : null,
+      movimentacaoCompleta,
     });
 
     res.locals.entityId = movimentacao.id;
