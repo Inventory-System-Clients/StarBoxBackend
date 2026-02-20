@@ -434,6 +434,7 @@ export const listarMovimentacoes = async (req, res) => {
         model: Maquina,
         as: "maquina",
         attributes: ["id", "codigo", "nome", "lojaId"],
+        ...(lojaId ? { where: { lojaId } } : {}),
       },
       {
         model: Usuario,
@@ -452,11 +453,6 @@ export const listarMovimentacoes = async (req, res) => {
         ],
       },
     ];
-
-    // Filtrar por loja se especificado
-    if (lojaId) {
-      include[0].where = { lojaId };
-    }
 
     const movimentacoes = await Movimentacao.findAll({
       where,
