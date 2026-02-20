@@ -40,7 +40,6 @@ export async function getRoteiroExecucaoComStatus(req, res) {
       const movimentacoesLoja = statusMaquinas.filter(s => {
         return loja.maquinas.some(m => m.id === s.maquina_id);
       });
-      console.log(`[Status Loja] ${loja.nome} - Movimentações consideradas:`, movimentacoesLoja);
       const maquinas = loja.maquinas.map((maquina) => {
         const finalizada = maquinasFinalizadas.has(maquina.id);
         if (!finalizada) lojaFinalizada = false;
@@ -80,3 +79,84 @@ export async function getRoteiroExecucaoComStatus(req, res) {
     res.status(500).json({ error: "Erro ao buscar execução do roteiro" });
   }
 }
+
+// Buscar todos os roteiros, lojas, máquinas e calcular status
+export async function getTodosRoteirosComStatus(req, res) {
+  try {
+    const roteiros = await Roteiro.findAll({
+      include: [
+        {
+          model: Loja,
+          as: "lojas",
+          attributes: ["id", "nome", "cidade", "estado"],
+          include: [
+            {
+              model: Maquina,
+              as: "maquinas",
+              attributes: ["id", "nome", "codigo", "tipo", "capacidadePadrao", "lojaId"],
+            },
+          ],
+        },
+      ],
+    });
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    // Buscar status diário de todas as máquinas para todos os roteiros
+    const statusMaquinas = await MovimentacaoStatusDiario.findAll({
+      where: {
+        data: dataHoje,
+        concluida: true,
+      },
+    });
+    // Agrupar por roteiro
+    const roteirosComStatus = roteiros.map((roteiro) => {
+      const statusMaquinasRoteiro = statusMaquinas.filter(s => s.roteiro_id === roteiro.id);
+      const maquinasFinalizadas = new Set(statusMaquinasRoteiro.map((s) => s.maquina_id));
+      let roteiroFinalizado = true;
+      const lojas = roteiro.lojas.map((loja) => {
+        let lojaFinalizada = true;
+        const movimentacoesLoja = statusMaquinasRoteiro.filter(s => {
+          return loja.maquinas.some(m => m.id === s.maquina_id);
+        });
+        const maquinas = loja.maquinas.map((maquina) => {
+          const finalizada = maquinasFinalizadas.has(maquina.id);
+          if (!finalizada) lojaFinalizada = false;
+          return {
+            id: maquina.id,
+            nome: maquina.nome,
+            status: finalizada ? "finalizado" : "pendente",
+          };
+        });
+        if (!lojaFinalizada) roteiroFinalizado = false;
+        return {
+          id: loja.id,
+          nome: loja.nome,
+          status: lojaFinalizada ? "finalizado" : "pendente",
+          maquinas,
+          movimentacoesConsideradas: movimentacoesLoja.map(s => ({
+            maquina_id: s.maquina_id,
+            roteiro_id: s.roteiro_id,
+            data: s.data,
+            concluida: s.concluida
+          }))
+        };
+      });
+      return {
+        id: roteiro.id,
+        nome: roteiro.nome,
+        status: roteiroFinalizado ? "finalizado" : "pendente",
+        lojas,
+        movimentacoesHoje: statusMaquinasRoteiro.map(s => ({
+          maquina_id: s.maquina_id,
+          roteiro_id: s.roteiro_id,
+          data: s.data,
+          concluida: s.concluida
+        }))
+      };
+    });
+    res.json(roteirosComStatus);
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao buscar status dos roteiros" });
+  }
+}
+
+export { getRoteiroExecucaoComStatus, getTodosRoteirosComStatus };
