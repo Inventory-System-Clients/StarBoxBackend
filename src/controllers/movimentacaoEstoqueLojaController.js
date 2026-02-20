@@ -1,6 +1,7 @@
 import MovimentacaoEstoqueLoja from "../models/MovimentacaoEstoqueLoja.js";
 import MovimentacaoEstoqueLojaProduto from "../models/MovimentacaoEstoqueLojaProduto.js";
-import { Loja, Usuario, Produto, sequelize } from "../models/index.js"; // Importe o sequelize para transações
+import { Loja, Usuario, Produto } from "../models/index.js";
+import { sequelize } from "../database/connection.js"; // Importe o sequelize para transações
 
 // 1. Listar todas as movimentações
 export const listarMovimentacoesEstoqueLoja = async (req, res) => {
@@ -13,7 +14,9 @@ export const listarMovimentacoesEstoqueLoja = async (req, res) => {
         {
           model: MovimentacaoEstoqueLojaProduto,
           as: "produtosEnviados",
-          include: [{ model: Produto, as: "produto", attributes: ["id", "nome"] }],
+          include: [
+            { model: Produto, as: "produto", attributes: ["id", "nome"] },
+          ],
         },
       ],
     });
@@ -32,12 +35,19 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
     const { EstoqueLoja } = await import("../models/index.js");
 
     if (!lojaId || !Array.isArray(produtos) || produtos.length === 0) {
-      return res.status(400).json({ error: "Loja e Produtos são obrigatórios." });
+      return res
+        .status(400)
+        .json({ error: "Loja e Produtos são obrigatórios." });
     }
 
     const movimentacao = await MovimentacaoEstoqueLoja.create(
-      { lojaId, usuarioId, observacao, dataMovimentacao: dataMovimentacao || new Date() },
-      { transaction: t }
+      {
+        lojaId,
+        usuarioId,
+        observacao,
+        dataMovimentacao: dataMovimentacao || new Date(),
+      },
+      { transaction: t },
     );
 
     for (const item of produtos) {
@@ -51,7 +61,7 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
           quantidade: qtd,
           tipoMovimentacao: tipo,
         },
-        { transaction: t }
+        { transaction: t },
       );
 
       const [estoque, created] = await EstoqueLoja.findOrCreate({
@@ -60,20 +70,36 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
         transaction: t,
       });
 
-      let novaQtd = tipo === "entrada" ? estoque.quantidade + qtd : estoque.quantidade - qtd;
-      await estoque.update({ quantidade: Math.max(0, novaQtd) }, { transaction: t });
+      let novaQtd =
+        tipo === "entrada"
+          ? estoque.quantidade + qtd
+          : estoque.quantidade - qtd;
+      await estoque.update(
+        { quantidade: Math.max(0, novaQtd) },
+        { transaction: t },
+      );
     }
 
     await t.commit();
-    
+
     // Busca os dados completos para retornar
     const resultado = await MovimentacaoEstoqueLoja.findByPk(movimentacao.id, {
-      include: ["loja", "usuario", { model: MovimentacaoEstoqueLojaProduto, as: "produtosEnviados", include: ["produto"] }]
+      include: [
+        "loja",
+        "usuario",
+        {
+          model: MovimentacaoEstoqueLojaProduto,
+          as: "produtosEnviados",
+          include: ["produto"],
+        },
+      ],
     });
     res.status(201).json(resultado);
   } catch (error) {
     await t.rollback();
-    res.status(500).json({ error: "Erro ao criar movimentação", details: error.message });
+    res
+      .status(500)
+      .json({ error: "Erro ao criar movimentação", details: error.message });
   }
 };
 
@@ -85,7 +111,9 @@ export const deletarMovimentacaoEstoqueLoja = async (req, res) => {
     const { EstoqueLoja } = await import("../models/index.js");
 
     const movimentacao = await MovimentacaoEstoqueLoja.findByPk(id, {
-      include: [{ model: MovimentacaoEstoqueLojaProduto, as: "produtosEnviados" }],
+      include: [
+        { model: MovimentacaoEstoqueLojaProduto, as: "produtosEnviados" },
+      ],
     });
 
     if (!movimentacao) return res.status(404).json({ error: "Não encontrada" });
@@ -98,14 +126,21 @@ export const deletarMovimentacaoEstoqueLoja = async (req, res) => {
       });
 
       if (estoque) {
-        let novaQtd = item.tipoMovimentacao === "entrada" 
-          ? estoque.quantidade - item.quantidade 
-          : estoque.quantidade + item.quantidade;
-        await estoque.update({ quantidade: Math.max(0, novaQtd) }, { transaction: t });
+        let novaQtd =
+          item.tipoMovimentacao === "entrada"
+            ? estoque.quantidade - item.quantidade
+            : estoque.quantidade + item.quantidade;
+        await estoque.update(
+          { quantidade: Math.max(0, novaQtd) },
+          { transaction: t },
+        );
       }
     }
 
-    await MovimentacaoEstoqueLojaProduto.destroy({ where: { movimentacaoEstoqueLojaId: id }, transaction: t });
+    await MovimentacaoEstoqueLojaProduto.destroy({
+      where: { movimentacaoEstoqueLojaId: id },
+      transaction: t,
+    });
     await movimentacao.destroy({ transaction: t });
 
     await t.commit();
