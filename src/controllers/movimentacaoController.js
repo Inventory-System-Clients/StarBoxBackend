@@ -355,7 +355,7 @@ export const registrarMovimentacao = async (req, res) => {
     // Impedir movimentação duplicada para máquina/roteiro/data
     const hoje = new Date();
     const dataHoje = hoje.toISOString().slice(0, 10); // yyyy-mm-dd
-<<<<<<< HEAD
+    // LOG detalhado dos dados recebidos
     console.log("[LOG] Dados recebidos para registrar movimentação:", {
       maquinaId,
       roteiroId,
@@ -363,15 +363,13 @@ export const registrarMovimentacao = async (req, res) => {
       usuario: req.usuario ? req.usuario.id : null,
       produtos,
     });
-
-=======
+    // LOG para status diário
     console.log("[MovStatusDiario] Tentando registrar status:", {
       maquina_id: maquinaId,
       roteiro_id: roteiroId,
       data: dataHoje,
       concluida: true,
     });
->>>>>>> 15321890a9d2b03aea2f2598eb870af14c7b10e6
     const statusExistente = await MovimentacaoStatusDiario.findOne({
       where: {
         maquina_id: maquinaId,
@@ -382,18 +380,12 @@ export const registrarMovimentacao = async (req, res) => {
     });
     console.log("[LOG] Status existente MovimentacaoStatusDiario:", statusExistente);
     if (statusExistente) {
-<<<<<<< HEAD
-      console.log("[LOG] Movimentação já registrada para esta máquina hoje. Bloqueando duplicidade.");
+      if (statusExistente.dataValues) {
+        console.log("[MovStatusDiario] Já existe status para esta máquina/roteiro/data:", statusExistente.dataValues);
+      } else {
+        console.log("[LOG] Movimentação já registrada para esta máquina hoje. Bloqueando duplicidade.");
+      }
       res.status(400).json({ error: "Movimentação já registrada para esta máquina hoje." });
-=======
-      console.log(
-        "[MovStatusDiario] Já existe status para esta máquina/roteiro/data:",
-        statusExistente.dataValues,
-      );
-      res
-        .status(400)
-        .json({ error: "Movimentação já registrada para esta máquina hoje." });
->>>>>>> 15321890a9d2b03aea2f2598eb870af14c7b10e6
       return;
     }
     // Após registrar movimentação, marcar como concluída
@@ -403,9 +395,7 @@ export const registrarMovimentacao = async (req, res) => {
       data: dataHoje,
       concluida: true,
     });
-<<<<<<< HEAD
     console.log("[LOG] Resultado do upsert MovimentacaoStatusDiario:", upsertResult);
-
     // Logar movimentacaoCompleta antes de retornar
     console.log("[LOG] Movimentação registrada com sucesso:", {
       movimentacaoId: movimentacao.id,
@@ -415,9 +405,6 @@ export const registrarMovimentacao = async (req, res) => {
       usuario: req.usuario ? req.usuario.id : null,
       movimentacaoCompleta,
     });
-=======
-    console.log("[MovStatusDiario] Resultado do upsert:", upsertResult);
->>>>>>> 15321890a9d2b03aea2f2598eb870af14c7b10e6
 
     res.locals.entityId = movimentacao.id;
     res.status(201).json(movimentacaoCompleta);
