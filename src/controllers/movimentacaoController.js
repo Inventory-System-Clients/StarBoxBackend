@@ -54,55 +54,7 @@ export const registrarMovimentacao = async (req, res) => {
       quantidade_notas_entrada, // <-- adicionado para corrigir erro
     } = req.body;
 
-    // --- ALERTA DE PULAR LOJA NO ROTEIRO ---
-    if (roteiroId && req.usuario && req.usuario.id) {
-      const { Roteiro, Loja, Movimentacao, Maquina } =
-        await import("../models/index.js");
-      // Buscar roteiro e ordem das lojas
-      const roteiro = await Roteiro.findByPk(roteiroId, {
-        include: [{ model: Loja, as: "lojas", attributes: ["id", "nome"] }],
-      });
-      if (roteiro && roteiro.lojas && roteiro.lojas.length > 0) {
-        // Buscar a máquina e a loja da movimentação
-        const maquina = await Maquina.findByPk(maquinaId);
-        const lojaAtualId = maquina ? maquina.lojaId : null;
-        // Buscar movimentações já feitas pelo usuário nesse roteiro
-        const movs = await Movimentacao.findAll({
-          where: {
-            usuarioId: req.usuario.id,
-            roteiroId: roteiroId,
-          },
-          include: [
-            { model: Maquina, as: "maquina", attributes: ["id", "lojaId"] },
-          ],
-          order: [["createdAt", "ASC"]],
-        });
-        // Montar lista de lojas já visitadas
-        const lojasVisitadas = movs
-          .map((m) => m.maquina?.lojaId)
-          .filter(Boolean);
-        const roteiroLojasIds = roteiro.lojas.map((l) => l.id);
-        let proximaEsperada = null;
-        for (let i = 0; i < roteiroLojasIds.length; i++) {
-          if (!lojasVisitadas.includes(roteiroLojasIds[i])) {
-            proximaEsperada = roteiroLojasIds[i];
-            break;
-          }
-        }
-        // Se a loja atual não for a próxima esperada, alerta
-        if (lojaAtualId && proximaEsperada && lojaAtualId !== proximaEsperada) {
-          const lojaPuladaIdx = roteiroLojasIds.indexOf(proximaEsperada);
-          const lojaPuladaNome =
-            roteiro.lojas[lojaPuladaIdx]?.nome || "(desconhecida)";
-          res.status(200).json({
-            alerta: `Você está pulando a loja ${lojaPuladaNome} do roteiro! Confirme se deseja continuar.`,
-            pularLoja: true,
-            lojaEsperada: lojaPuladaNome,
-          });
-          return;
-        }
-      }
-    }
+    // (Removido alerta/bloqueio de pular loja: agora permite movimentação em qualquer loja do roteiro)
 
     // Validações
     if (!maquinaId || totalPre === undefined || abastecidas === undefined) {
