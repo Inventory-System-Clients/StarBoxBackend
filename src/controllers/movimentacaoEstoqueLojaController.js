@@ -1,8 +1,8 @@
 import MovimentacaoEstoqueLoja from "../models/MovimentacaoEstoqueLoja.js";
 import MovimentacaoEstoqueLojaProduto from "../models/MovimentacaoEstoqueLojaProduto.js";
-import { Loja, Usuario, Produto } from "../models/index.js";
+import { Loja, Usuario, Produto, sequelize } from "../models/index.js"; // Importe o sequelize para transações
 
-// Listar todas as movimentações de estoque de loja
+// 1. Listar todas as movimentações
 export const listarMovimentacoesEstoqueLoja = async (req, res) => {
   try {
     const movimentacoes = await MovimentacaoEstoqueLoja.findAll({
@@ -13,9 +13,7 @@ export const listarMovimentacoesEstoqueLoja = async (req, res) => {
         {
           model: MovimentacaoEstoqueLojaProduto,
           as: "produtosEnviados",
-          include: [
-            { model: Produto, as: "produto", attributes: ["id", "nome"] },
-          ],
+          include: [{ model: Produto, as: "produto", attributes: ["id", "nome"] }],
         },
       ],
     });
@@ -25,279 +23,95 @@ export const listarMovimentacoesEstoqueLoja = async (req, res) => {
   }
 };
 
-// Criar nova movimentação
+// 2. Criar nova movimentação (com Transação)
 export const criarMovimentacaoEstoqueLoja = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { lojaId, produtos, observacao, dataMovimentacao } = req.body;
-    // usuarioId será preenchido automaticamente pelo middleware de autenticação
     const usuarioId = req.usuario?.id;
+    const { EstoqueLoja } = await import("../models/index.js");
 
-    console.log("[DEBUG] Payload recebido:", req.body);
-
-    // 1. Validação
     if (!lojaId || !Array.isArray(produtos) || produtos.length === 0) {
-      console.error("[ERRO] Loja ou produtos ausentes", { lojaId, produtos });
-      return res
-        .status(400)
-        .json({ error: "Loja e Produtos são obrigatórios." });
+      return res.status(400).json({ error: "Loja e Produtos são obrigatórios." });
     }
 
-    // 2. Criar a Movimentação (Header)
-    const movimentacao = await MovimentacaoEstoqueLoja.create({
-      lojaId,
-      usuarioId,
-      observacao,
-      dataMovimentacao: dataMovimentacao || new Date(),
-    });
-
-    console.log("[DEBUG] Movimentacao criada ID:", movimentacao.id);
-
-    // 3. Salvar produtos enviados (Itens) e atualizar estoque
-    const { EstoqueLoja } = await import("../models/index.js");
-    for (const [idx, item] of produtos.entries()) {
-      try {
-        await MovimentacaoEstoqueLojaProduto.create({
-          movimentacaoEstoqueLojaId: movimentacao.id,
-          produtoId: item.produtoId,
-          quantidade: Number(item.quantidade),
-          tipoMovimentacao: item.tipoMovimentacao || "saida",
-        });
-
-        // Atualizar estoque da loja
-        const estoque = await EstoqueLoja.findOne({
-          where: { lojaId, produtoId: item.produtoId },
-        });
-        let novaQuantidade = 0;
-        if (estoque) {
-          console.log(
-            `[ESTOQUE] Antes: lojaId=${lojaId}, produtoId=${item.produtoId}, quantidadeAtual=${estoque.quantidade}`
-          );
-          if ((item.tipoMovimentacao || "saida") === "entrada") {
-            novaQuantidade = estoque.quantidade + Number(item.quantidade);
-          } else {
-            novaQuantidade = estoque.quantidade - Number(item.quantidade);
-            if (novaQuantidade < 0) novaQuantidade = 0;
-          }
-          await estoque.update({ quantidade: novaQuantidade });
-          console.log(
-            `[ESTOQUE] Depois: lojaId=${lojaId}, produtoId=${item.produtoId}, novaQuantidade=${novaQuantidade}`
-          );
-        } else {
-          // Se não existe, cria novo registro de estoque
-          novaQuantidade =
-            (item.tipoMovimentacao || "saida") === "entrada"
-              ? Number(item.quantidade)
-              : 0;
-          await EstoqueLoja.create({
-            lojaId,
-            produtoId: item.produtoId,
-            quantidade: novaQuantidade,
-          });
-          console.log(
-            `[ESTOQUE] Criado novo estoque: lojaId=${lojaId}, produtoId=${item.produtoId}, quantidade=${novaQuantidade}`
-          );
-        }
-      } catch (err) {
-        console.error(`[ERRO] Falha ao criar produto idx ${idx}:`, item, err);
-      }
-    }
-
-    // 4. Retornar movimentação completa com os produtos inclusos
-    const movimentacaoCompleta = await MovimentacaoEstoqueLoja.findByPk(
-      movimentacao.id,
-      {
-        include: [
-          { model: Loja, as: "loja", attributes: ["id", "nome"] },
-          { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
-          {
-            model: MovimentacaoEstoqueLojaProduto,
-            as: "produtosEnviados",
-            include: [
-              { model: Produto, as: "produto", attributes: ["id", "nome"] },
-            ],
-          },
-        ],
-      }
+    const movimentacao = await MovimentacaoEstoqueLoja.create(
+      { lojaId, usuarioId, observacao, dataMovimentacao: dataMovimentacao || new Date() },
+      { transaction: t }
     );
 
-    return res.status(201).json(movimentacaoCompleta);
-  } catch (err) {
-    console.error("[ERRO] Exception geral ao criar movimentação:", err);
-    return res.status(500).json({
-      error: "Erro interno ao criar movimentação",
-      details: err.message,
-    });
-  }
-};
+    for (const item of produtos) {
+      const tipo = item.tipoMovimentacao || "saida";
+      const qtd = Number(item.quantidade);
 
-// Editar movimentação
-export const editarMovimentacaoEstoqueLoja = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { lojaId, usuarioId, produtos, observacao, dataMovimentacao } =
-      req.body;
-
-    const movimentacao = await MovimentacaoEstoqueLoja.findByPk(id);
-
-    if (!movimentacao) {
-      return res.status(404).json({ error: "Movimentação não encontrada" });
-    }
-
-    // Atualiza campos
-    movimentacao.lojaId = lojaId || movimentacao.lojaId;
-    movimentacao.usuarioId = usuarioId || movimentacao.usuarioId;
-    movimentacao.observacao = observacao || movimentacao.observacao;
-    movimentacao.dataMovimentacao =
-      dataMovimentacao || movimentacao.dataMovimentacao;
-
-    // Se seu model tiver timestamps automáticos, não precisa desta linha:
-    // movimentacao.atualizadoEm = new Date();
-
-    await movimentacao.save();
-
-    // Atualizar produtos enviados (Remove antigos e cria novos)
-    if (Array.isArray(produtos)) {
-      // Buscar produtos antigos antes de remover
-      const produtosAntigos = await MovimentacaoEstoqueLojaProduto.findAll({
-        where: { movimentacaoEstoqueLojaId: movimentacao.id },
-      });
-
-      await MovimentacaoEstoqueLojaProduto.destroy({
-        where: { movimentacaoEstoqueLojaId: movimentacao.id },
-      });
-
-      // Mapear produtos antigos por produtoId para fácil acesso
-      const mapAntigos = {};
-      for (const prod of produtosAntigos) {
-        mapAntigos[prod.produtoId] = prod;
-      }
-
-      // Atualizar/ajustar estoque da loja para cada produto
-      const { EstoqueLoja } = await import("../models/index.js");
-      for (const item of produtos) {
-        await MovimentacaoEstoqueLojaProduto.create({
+      await MovimentacaoEstoqueLojaProduto.create(
+        {
           movimentacaoEstoqueLojaId: movimentacao.id,
           produtoId: item.produtoId,
-          quantidade: Number(item.quantidade),
-          tipoMovimentacao: item.tipoMovimentacao || "saida",
-        });
+          quantidade: qtd,
+          tipoMovimentacao: tipo,
+        },
+        { transaction: t }
+      );
 
-        // Ajuste de estoque considerando tipo antigo e novo
-        const antigo = mapAntigos[item.produtoId];
-        const quantidadeAntiga = antigo ? Number(antigo.quantidade) : 0;
-        const tipoAntigo = antigo
-          ? antigo.tipoMovimentacao
-          : item.tipoMovimentacao || "saida";
-        const quantidadeNova = Number(item.quantidade);
-        const tipoNovo = item.tipoMovimentacao || "saida";
+      const [estoque, created] = await EstoqueLoja.findOrCreate({
+        where: { lojaId, produtoId: item.produtoId },
+        defaults: { quantidade: 0 },
+        transaction: t,
+      });
 
-        // Buscar estoque atual
-        const estoque = await EstoqueLoja.findOne({
-          where: { lojaId: movimentacao.lojaId, produtoId: item.produtoId },
-        });
-        if (estoque) {
-          let novaQuantidade = estoque.quantidade;
-          // Reverte o efeito do antigo
-          if (tipoAntigo === "entrada") {
-            novaQuantidade -= quantidadeAntiga;
-          } else {
-            novaQuantidade += quantidadeAntiga;
-          }
-          // Aplica o efeito do novo
-          if (tipoNovo === "entrada") {
-            novaQuantidade += quantidadeNova;
-          } else {
-            novaQuantidade -= quantidadeNova;
-          }
-          if (novaQuantidade < 0) novaQuantidade = 0;
-          await estoque.update({ quantidade: novaQuantidade });
-        } else {
-          // Se não existe, cria novo registro de estoque
-          let novaQuantidade = 0;
-          if (tipoNovo === "entrada") {
-            novaQuantidade = quantidadeNova;
-          } else {
-            novaQuantidade = 0;
-          }
-          await EstoqueLoja.create({
-            lojaId: movimentacao.lojaId,
-            produtoId: item.produtoId,
-            quantidade: novaQuantidade,
-          });
-        }
-      }
+      let novaQtd = tipo === "entrada" ? estoque.quantidade + qtd : estoque.quantidade - qtd;
+      await estoque.update({ quantidade: Math.max(0, novaQtd) }, { transaction: t });
     }
 
-    // Retornar movimentação completa
-    const movimentacaoCompleta = await MovimentacaoEstoqueLoja.findByPk(
-      movimentacao.id,
-      {
-        include: [
-          { model: Loja, as: "loja", attributes: ["id", "nome"] },
-          { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
-          {
-            model: MovimentacaoEstoqueLojaProduto,
-            as: "produtosEnviados",
-            include: [
-              { model: Produto, as: "produto", attributes: ["id", "nome"] },
-            ],
-          },
-        ],
-      }
-    );
-
-    return res.json(movimentacaoCompleta);
+    await t.commit();
+    
+    // Busca os dados completos para retornar
+    const resultado = await MovimentacaoEstoqueLoja.findByPk(movimentacao.id, {
+      include: ["loja", "usuario", { model: MovimentacaoEstoqueLojaProduto, as: "produtosEnviados", include: ["produto"] }]
+    });
+    res.status(201).json(resultado);
   } catch (error) {
-    console.error("Erro ao editar:", error);
-    return res.status(500).json({ error: "Erro ao editar movimentação" });
+    await t.rollback();
+    res.status(500).json({ error: "Erro ao criar movimentação", details: error.message });
   }
 };
 
-// Deletar movimentação
+// 3. Deletar movimentação (Estorno de estoque)
 export const deletarMovimentacaoEstoqueLoja = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const movimentacao = await MovimentacaoEstoqueLoja.findByPk(id);
-    if (!movimentacao) {
-      return res.status(404).json({ error: "Movimentação não encontrada" });
-    }
+    const { EstoqueLoja } = await import("../models/index.js");
 
-    // Buscar todos os produtos associados à movimentação
-    const produtosMovimentados = await MovimentacaoEstoqueLojaProduto.findAll({
-      where: { movimentacaoEstoqueLojaId: movimentacao.id },
+    const movimentacao = await MovimentacaoEstoqueLoja.findByPk(id, {
+      include: [{ model: MovimentacaoEstoqueLojaProduto, as: "produtosEnviados" }],
     });
 
-    // Atualizar o estoque da loja para cada produto
-    const { EstoqueLoja } = await import("../models/index.js");
-    for (const item of produtosMovimentados) {
+    if (!movimentacao) return res.status(404).json({ error: "Não encontrada" });
+
+    // Estornar quantidades no estoque
+    for (const item of movimentacao.produtosEnviados) {
       const estoque = await EstoqueLoja.findOne({
         where: { lojaId: movimentacao.lojaId, produtoId: item.produtoId },
+        transaction: t,
       });
+
       if (estoque) {
-        let novaQuantidade = estoque.quantidade;
-        if ((item.tipoMovimentacao || "saida") === "entrada") {
-          // Se era uma entrada, ao deletar deve subtrair do estoque
-          novaQuantidade = estoque.quantidade - item.quantidade;
-        } else {
-          // Se era uma saída, ao deletar deve somar de volta ao estoque
-          novaQuantidade = estoque.quantidade + item.quantidade;
-        }
-        if (novaQuantidade < 0) novaQuantidade = 0;
-        await estoque.update({ quantidade: novaQuantidade });
+        let novaQtd = item.tipoMovimentacao === "entrada" 
+          ? estoque.quantidade - item.quantidade 
+          : estoque.quantidade + item.quantidade;
+        await estoque.update({ quantidade: Math.max(0, novaQtd) }, { transaction: t });
       }
     }
 
-    // Remove os produtos associados
-    await MovimentacaoEstoqueLojaProduto.destroy({
-      where: { movimentacaoEstoqueLojaId: movimentacao.id },
-    });
+    await MovimentacaoEstoqueLojaProduto.destroy({ where: { movimentacaoEstoqueLojaId: id }, transaction: t });
+    await movimentacao.destroy({ transaction: t });
 
-    // Remove a movimentação
-    await movimentacao.destroy();
-
-    return res.json({ message: "Movimentação excluída com sucesso" });
+    await t.commit();
+    res.json({ message: "Excluída e estoque estornado com sucesso" });
   } catch (error) {
-    console.error("Erro ao excluir:", error);
-    return res.status(500).json({ error: "Erro ao excluir movimentação" });
+    await t.rollback();
+    res.status(500).json({ error: "Erro ao excluir", details: error.message });
   }
 };
