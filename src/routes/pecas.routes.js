@@ -9,13 +9,25 @@ import { autenticar, autorizar } from "../middlewares/auth.js";
 
 const router = express.Router();
 
+// Listar todas as peças (sem autenticação para integração inicial)
+router.get("/public", listarPecas);
 // Listar todas as peças (qualquer usuário autenticado)
 router.get("/", autenticar, listarPecas);
 // Cadastrar nova peça (ADMIN, GERENCIADOR)
 router.post("/", autenticar, autorizar(["ADMIN", "GERENCIADOR"]), criarPeca);
 // Editar peça (ADMIN, GERENCIADOR)
-router.put("/:id", autenticar, autorizar(["ADMIN", "GERENCIADOR"]), atualizarPeca);
+router.put(
+  "/:id",
+  autenticar,
+  autorizar(["ADMIN", "GERENCIADOR"]),
+  atualizarPeca,
+);
 // Excluir peça (ADMIN, GERENCIADOR)
-router.delete("/:id", autenticar, autorizar(["ADMIN", "GERENCIADOR"]), excluirPeca);
+router.delete(
+  "/:id",
+  autenticar,
+  autorizar(["ADMIN", "GERENCIADOR"]),
+  excluirPeca,
+);
 
 export default router;
