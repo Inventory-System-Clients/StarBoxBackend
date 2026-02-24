@@ -358,6 +358,19 @@ export const registrarMovimentacao = async (req, res) => {
       movimentacaoCompleta,
     });
 
+    // Remover apenas as peças usadas do carrinho do usuário
+    const pecasUsadas = req.body.pecasUsadas;
+    if (pecasUsadas && Array.isArray(pecasUsadas) && pecasUsadas.length > 0) {
+      const usuarioId = req.usuario.id;
+      for (const peca of pecasUsadas) {
+        await CarrinhoPeca.destroy({
+          where: {
+            usuarioId,
+            pecaId: peca.pecaId,
+          },
+        });
+      }
+    }
     res.locals.entityId = movimentacao.id;
     res.status(201).json(movimentacaoCompleta);
     return;

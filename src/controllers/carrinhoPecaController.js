@@ -17,7 +17,13 @@ export const listarCarrinho = async (req, res) => {
       where: { usuarioId },
       include: [{ model: Peca }],
     });
-    res.json(itens);
+      // Retorna apenas pecaId, quantidade e nome
+      const carrinho = itens.map(item => ({
+        pecaId: item.pecaId,
+        quantidade: item.quantidade,
+        nome: item.Peca ? item.Peca.nome : null
+      }));
+      res.json(carrinho);
   } catch (error) {
     res.status(500).json({ error: "Erro ao listar carrinho" });
   }
