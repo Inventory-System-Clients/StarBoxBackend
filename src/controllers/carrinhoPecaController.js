@@ -42,14 +42,13 @@ export const adicionarAoCarrinho = async (req, res) => {
   try {
     const usuarioId = req.params.id;
     const { pecaId, quantidade } = req.body;
-    console.log(
-      "[Carrinho] Adicionar ao carrinho usuarioId:",
+    console.log("[Carrinho] Dados recebidos para adicionar ao carrinho:", {
       usuarioId,
-      "pecaId:",
-      pecaId,
-      "quantidade:",
-      quantidade,
-    );
+      body: req.body,
+    });
+    if (!pecaId || !quantidade) {
+      console.error("[Carrinho] pecaId ou quantidade ausente!", { pecaId, quantidade });
+    }
     // Permitir ADMIN, GERENCIADOR ou o próprio FUNCIONARIO
     if (
       req.usuario.role !== "ADMIN" &&
@@ -81,12 +80,18 @@ export const adicionarAoCarrinho = async (req, res) => {
       await item.save();
       console.log("[Carrinho] Atualizou quantidade:", item);
     } else {
+      console.log("[Carrinho] Criando novo item no carrinho:", { usuarioId, pecaId, quantidade });
       item = await CarrinhoPeca.create({ usuarioId, pecaId, quantidade });
       console.log("[Carrinho] Criou novo item:", item);
     }
     res.status(201).json(item);
   } catch (error) {
     console.error("[Carrinho] Erro ao adicionar ao carrinho:", error);
+    console.error("[Carrinho] Dados recebidos no erro:", {
+      params: req.params,
+      body: req.body,
+      usuario: req.usuario,
+    });
     res.status(500).json({ error: "Erro ao adicionar ao carrinho" });
   }
 };
