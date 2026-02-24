@@ -6,6 +6,7 @@ import {
   Produto,
   EstoqueLoja,
   Loja,
+  CarrinhoPeca,
 } from "../models/index.js";
 import { Op } from "sequelize";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
