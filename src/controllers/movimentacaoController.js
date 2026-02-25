@@ -171,79 +171,61 @@ export const registrarMovimentacao = async (req, res) => {
 
     // Se produtos foram informados, registrar detalhes
     if (produtos && produtos.length > 0) {
-      // Garantir que quantidadeSaiu dos produtos seja igual ao sairam da movimentação
-      let quantidadeSaiuDistribuida = saidaRecalculada;
-      const detalhesProdutos = produtos.map((p, idx) => {
-        let quantidadeSaiu = 0;
-        // Se só tem um produto, recebe tudo
-        if (produtos.length === 1) {
-          quantidadeSaiu = quantidadeSaiuDistribuida;
-        } else {
-          // Se vier do frontend, usa, senão distribui proporcionalmente (aqui pode ser ajustado conforme regra)
-          quantidadeSaiu = p.quantidadeSaiu || 0;
-        }
-        return {
-          movimentacaoId: movimentacao.id,
-          produtoId: p.produtoId,
-          quantidadeSaiu,
-          quantidadeAbastecida: p.quantidadeAbastecida || 0,
-          retiradaProduto: p.retiradaProduto || 0,
-        };
-      });
-
-      await MovimentacaoProduto.bulkCreate(detalhesProdutos);
-
-      // Descontar do estoque da loja os produtos abastecidos
-      for (const produto of produtos) {
-        if (produto.quantidadeAbastecida && produto.quantidadeAbastecida > 0) {
-          // Só desconta do estoque da loja o que foi abastecido, retiradaProduto não interfere
-          console.log(
-            "🏪 [registrarMovimentacao] Atualizando estoque da loja:",
-            {
-              lojaId: maquina.lojaId,
-              produtoId: produto.produtoId,
-              quantidadeAbastecida: produto.quantidadeAbastecida,
-            },
-          );
-
-          // Buscar estoque do produto na loja da máquina
-          const estoqueLoja = await EstoqueLoja.findOne({
-            where: {
-              lojaId: maquina.lojaId,
-              produtoId: produto.produtoId,
-            },
+      let detalhesProdutos = [];
+      let pecasParaMovimentacao = [];
+      for (const p of produtos) {
+        // Verifica se é produto
+        const produtoExiste = await Produto.findByPk(p.produtoId);
+        if (produtoExiste) {
+          detalhesProdutos.push({
+            movimentacaoId: movimentacao.id,
+            produtoId: p.produtoId,
+            quantidadeSaiu: p.quantidadeSaiu || 0,
+            quantidadeAbastecida: p.quantidadeAbastecida || 0,
+            retiradaProduto: p.retiradaProduto || 0,
           });
-
-          if (estoqueLoja) {
-            const quantidadeAnterior = estoqueLoja.quantidade;
-            // Descontar a quantidade abastecida (não permite ficar negativo)
-            const novaQuantidade = Math.max(
-              0,
-              estoqueLoja.quantidade - produto.quantidadeAbastecida,
-            );
-
-            console.log(
-              "📦 [registrarMovimentacao] Estoque da loja atualizado:",
-              {
-                produtoId: produto.produtoId,
-                quantidadeAnterior,
-                quantidadeAbastecida: produto.quantidadeAbastecida,
-                novaQuantidade,
-              },
-            );
-
-            await estoqueLoja.update({ quantidade: novaQuantidade });
-          } else {
-            console.log(
-              "⚠️ [registrarMovimentacao] Estoque da loja não encontrado:",
-              {
+        } else {
+          // Verifica se é peça
+          const pecaExiste = await Peca.findByPk(p.produtoId);
+          if (pecaExiste) {
+            pecasParaMovimentacao.push({
+              pecaId: p.produtoId,
+              quantidade: p.quantidadeSaiu || 0,
+              nome: pecaExiste.nome,
+              usuarioId: req.usuario.id,
+            });
+            // Remove do carrinho do usuário
+            if (typeof req.usuario.id !== 'undefined') {
+              try {
+                const { removerPecaDoCarrinho } = await import("./carrinhoPecaController.js");
+                await removerPecaDoCarrinho(req.usuario.id, p.produtoId);
+              } catch (err) {
+                console.error("Erro ao remover peça do carrinho:", err);
+              }
+            }
+          }
+        }
+      }
+      if (detalhesProdutos.length > 0) {
+        await MovimentacaoProduto.bulkCreate(detalhesProdutos);
+        // Atualiza estoque da loja para produtos
+        for (const produto of detalhesProdutos) {
+          if (produto.quantidadeAbastecida && produto.quantidadeAbastecida > 0) {
+            const estoqueLoja = await EstoqueLoja.findOne({
+              where: {
                 lojaId: maquina.lojaId,
                 produtoId: produto.produtoId,
               },
-            );
+            });
+            if (estoqueLoja) {
+              const novaQuantidade = Math.max(0, estoqueLoja.quantidade - produto.quantidadeAbastecida);
+              await estoqueLoja.update({ quantidade: novaQuantidade });
+            }
           }
         }
-        // Se houver retiradaProduto, não altera estoque da loja
+      }
+      if (pecasParaMovimentacao.length > 0) {
+        await registrarMovimentacaoPecas(movimentacao.id, pecasParaMovimentacao);
       }
     }
 
