@@ -17,7 +17,7 @@ const MovimentacaoPeca = sequelize.define(
     pecaId: {
       type: DataTypes.UUID,
       allowNull: false,
-      field: 'id',
+      field: 'pecaid',
     },
     quantidade: {
       type: DataTypes.INTEGER,
