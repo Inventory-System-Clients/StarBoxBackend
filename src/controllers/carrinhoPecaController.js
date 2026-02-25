@@ -1,6 +1,19 @@
 import { CarrinhoPeca, Usuario, Peca } from "../models/index.js";
 import { Op } from "sequelize";
 
+// Função utilitária para remover peça do carrinho após movimentação
+export const removerPecaDoCarrinho = async (usuarioId, pecaId) => {
+  try {
+    const item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId } });
+    if (item) {
+      await item.destroy();
+      console.log(`[Carrinho] Peça ${pecaId} removida do carrinho do usuário ${usuarioId}`);
+    }
+  } catch (error) {
+    console.error("[Carrinho] Erro ao remover peça do carrinho após movimentação:", error);
+  }
+};
+
 // Listar peças do carrinho do usuário
 export const listarCarrinho = async (req, res) => {
   try {
