@@ -59,8 +59,14 @@ export const adicionarAoCarrinho = async (req, res) => {
       usuarioId,
       body: req.body,
     });
+    // Validação de tipo para pecaId
     if (!pecaId || !quantidade) {
       console.error("[Carrinho] pecaId ou quantidade ausente!", { pecaId, quantidade });
+      return res.status(400).json({ error: "pecaId ou quantidade ausente" });
+    }
+    if (typeof pecaId !== "string" || !pecaId.match(/^([0-9a-fA-F-]{36})$/)) {
+      console.error("[Carrinho] pecaId deve ser string UUID!", { pecaId });
+      return res.status(400).json({ error: "pecaId deve ser string UUID" });
     }
     // Permitir ADMIN, GERENCIADOR ou o próprio FUNCIONARIO
     if (
