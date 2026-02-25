@@ -365,35 +365,9 @@ export const registrarMovimentacao = async (req, res) => {
 // Listar movimentações com filtros
 export const listarMovimentacoes = async (req, res) => {
   try {
-    const {
-      maquinaId,
-      lojaId,
-      dataInicio,
-      dataFim,
-      usuarioId,
-      limite = 50,
-    } = req.query;
-
+    const { lojaId, limite = 100 } = req.query;
     const where = {};
-
-    if (maquinaId) {
-      where.maquinaId = maquinaId;
-    }
-
-    if (usuarioId) {
-      where.usuarioId = usuarioId;
-    }
-
-    if (dataInicio || dataFim) {
-      where.dataColeta = {};
-      if (dataInicio) {
-        where.dataColeta[Op.gte] = new Date(dataInicio);
-      }
-      if (dataFim) {
-        where.dataColeta[Op.lte] = new Date(dataFim);
-      }
-    }
-
+    if (lojaId) where.lojaId = lojaId;
     const include = [
       {
         model: Maquina,
@@ -416,6 +390,10 @@ export const listarMovimentacoes = async (req, res) => {
             attributes: ["id", "nome"],
           },
         ],
+      },
+      {
+        association: "pecasUsadas",
+        include: [{ model: Peca }],
       },
     ];
 
@@ -463,6 +441,10 @@ export const obterMovimentacao = async (req, res) => {
               as: "produto",
             },
           ],
+        },
+        {
+          association: "pecasUsadas",
+          include: [{ model: Peca }],
         },
       ],
     });

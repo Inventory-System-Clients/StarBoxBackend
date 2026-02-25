@@ -34,13 +34,14 @@ export const listarCarrinho = async (req, res) => {
     }
     const itens = await CarrinhoPeca.findAll({
       where: { usuarioId },
+      include: [{ model: Peca }],
     });
     console.log("[Carrinho] Itens encontrados:", itens);
-    // Retorna pecaId, quantidade e nomePeca
+    // Retorna pecaId, quantidade e nome da peça
     const carrinho = itens.map((item) => ({
       pecaId: item.pecaId,
       quantidade: item.quantidade,
-      nome: item.nomePeca,
+      nome: item.nomePeca || (item.Peca ? item.Peca.nome : null),
     }));
     res.json(carrinho);
   } catch (error) {
