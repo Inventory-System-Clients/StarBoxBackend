@@ -195,15 +195,7 @@ export const registrarMovimentacao = async (req, res) => {
               nome: pecaExiste.nome,
               usuarioId: req.usuario.id,
             });
-            // Remove do carrinho do usuário
-            if (typeof req.usuario.id !== 'undefined') {
-              try {
-                const { removerPecaDoCarrinho } = await import("./carrinhoPecaController.js");
-                await removerPecaDoCarrinho(req.usuario.id, p.produtoId);
-              } catch (err) {
-                console.error("Erro ao remover peça do carrinho:", err);
-              }
-            }
+            // Remove do carrinho do usuário (remover múltiplas desativado)
           }
         }
       }
