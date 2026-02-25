@@ -7,6 +7,7 @@ import {
   EstoqueLoja,
   Loja,
   CarrinhoPeca,
+  Peca
 } from "../models/index.js";
 import { Op } from "sequelize";
 import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
