@@ -1,0 +1,23 @@
+{
+  "development": {
+    "username": "postgres",
+    "password": "sua_senha_aqui",
+    "database": "starbox",
+    "host": "localhost",
+    "dialect": "postgres"
+  },
+  "test": {
+    "username": "postgres",
+    "password": "sua_senha_aqui",
+    "database": "starbox_test",
+    "host": "localhost",
+    "dialect": "postgres"
+  },
+  "production": {
+    "username": "postgres",
+    "password": "sua_senha_aqui",
+    "database": "starbox_prod",
+    "host": "localhost",
+    "dialect": "postgres"
+  }
+}

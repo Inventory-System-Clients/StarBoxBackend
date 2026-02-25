@@ -9,6 +9,7 @@ import {
   CarrinhoPeca,
 } from "../models/index.js";
 import { Op } from "sequelize";
+import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 // US08, US09, US10 - Registrar movimentação completa
@@ -154,6 +155,11 @@ export const registrarMovimentacao = async (req, res) => {
       tipoOcorrencia: tipoOcorrencia || "Normal",
       retiradaEstoque: retiradaEstoque || false,
     });
+
+    // Registrar peças usadas, se houver
+    if (req.body.pecasUsadas && Array.isArray(req.body.pecasUsadas) && req.body.pecasUsadas.length > 0) {
+      await registrarMovimentacaoPecas(movimentacao.id, req.body.pecasUsadas);
+    }
 
     console.log("✅ [registrarMovimentacao] Movimentação criada:", {
       id: movimentacao.id,
