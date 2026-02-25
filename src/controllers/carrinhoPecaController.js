@@ -34,14 +34,13 @@ export const listarCarrinho = async (req, res) => {
     }
     const itens = await CarrinhoPeca.findAll({
       where: { usuarioId },
-      include: [{ model: Peca }],
     });
     console.log("[Carrinho] Itens encontrados:", itens);
-    // Retorna apenas pecaId, quantidade e nome
+    // Retorna pecaId, quantidade e nomePeca
     const carrinho = itens.map((item) => ({
       pecaId: item.pecaId,
       quantidade: item.quantidade,
-      nome: item.Peca ? item.Peca.nome : null,
+      nome: item.nomePeca,
     }));
     res.json(carrinho);
   } catch (error) {
@@ -93,16 +92,25 @@ export const adicionarAoCarrinho = async (req, res) => {
           .json({ error: "Só pode manipular carrinho de FUNCIONARIO" });
       }
     }
+    // Buscar nome da peça
+    const peca = await Peca.findByPk(pecaId);
+    if (!peca) {
+      return res.status(404).json({ error: "Peça não encontrada" });
+    }
     let item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId } });
     if (item) {
       item.quantidade += quantidade;
       await item.save();
       console.log("[Carrinho] Atualizou quantidade:", item);
     } else {
-      console.log("[Carrinho] Criando novo item no carrinho:", { usuarioId, pecaId, quantidade });
-      item = await CarrinhoPeca.create({ usuarioId, pecaId, quantidade });
+      console.log("[Carrinho] Criando novo item no carrinho:", { usuarioId, pecaId, quantidade, nomePeca: peca.nome });
+      item = await CarrinhoPeca.create({ usuarioId, pecaId, quantidade, nomePeca: peca.nome });
       console.log("[Carrinho] Criou novo item:", item);
     }
+    // Descontar do estoque da peça
+    peca.quantidade -= quantidade;
+    if (peca.quantidade < 0) peca.quantidade = 0;
+    await peca.save();
     res.status(201).json(item);
   } catch (error) {
     console.error("[Carrinho] Erro ao adicionar ao carrinho:", error);

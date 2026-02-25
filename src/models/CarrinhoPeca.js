@@ -26,6 +26,11 @@ const CarrinhoPeca = sequelize.define(
       allowNull: false,
       defaultValue: 1,
     },
+    nomePeca: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      defaultValue: "",
+    },
   },
   {
     tableName: "carrinho_pecas",
