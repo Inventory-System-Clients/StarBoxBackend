@@ -12,6 +12,7 @@ const MovimentacaoPeca = sequelize.define(
     movimentacaoId: {
       type: DataTypes.UUID,
       allowNull: false,
+      field: 'movimentacaoid',
     },
     pecaId: {
       type: DataTypes.UUID,
