@@ -3,6 +3,7 @@ import {
   listarCarrinho,
   adicionarAoCarrinho,
   removerDoCarrinho,
+  devolverPecaDoCarrinho,
 } from "../controllers/carrinhoPecaController.js";
 import { autenticar } from "../middlewares/auth.js";
 
@@ -14,5 +15,8 @@ router.get("/:id/carrinho", autenticar, listarCarrinho);
 router.post("/:id/carrinho", autenticar, adicionarAoCarrinho);
 // Remover peça do carrinho
 router.delete("/:id/carrinho/:pecaId", autenticar, removerDoCarrinho);
+
+// Devolver peça do carrinho (remove do carrinho e devolve ao estoque)
+router.patch("/:id/carrinho/:pecaId/devolver", autenticar, devolverPecaDoCarrinho);
 
 export default router;

@@ -124,7 +124,8 @@ export const adicionarAoCarrinho = async (req, res) => {
   }
 };
 
-// Remover peça do carrinho
+
+// Remover peça do carrinho (mantém lógica antiga)
 export const removerDoCarrinho = async (req, res) => {
   try {
     const usuarioId = req.params.id;
@@ -171,5 +172,65 @@ export const removerDoCarrinho = async (req, res) => {
   } catch (error) {
     console.error("[Carrinho] Erro ao remover do carrinho:", error);
     res.status(500).json({ error: "Erro ao remover do carrinho" });
+  }
+};
+
+// Devolver peça do carrinho (remove do carrinho e devolve ao estoque)
+export const devolverPecaDoCarrinho = async (req, res) => {
+  try {
+    const usuarioId = req.params.id;
+    const pecaId = req.params.pecaId;
+    console.log("[Carrinho] Devolver peça do carrinho usuarioId:", usuarioId, "pecaId:", pecaId);
+
+    // Permitir ADMIN, GERENCIADOR ou o próprio FUNCIONARIO
+    if (
+      req.usuario.role !== "ADMIN" &&
+      req.usuario.role !== "GERENCIADOR" &&
+      req.usuario.id !== usuarioId
+    ) {
+      console.log(
+        "[Carrinho] Acesso negado para devolver peça do carrinho",
+        req.usuario.role,
+        req.usuario.id,
+      );
+      return res.status(403).json({ error: "Acesso negado" });
+    }
+    // GERENCIADOR só pode manipular carrinho de FUNCIONARIO
+    if (req.usuario.role === "GERENCIADOR" && req.usuario.id !== usuarioId) {
+      const usuarioAlvo = await Usuario.findByPk(usuarioId);
+      if (!usuarioAlvo || usuarioAlvo.role !== "FUNCIONARIO") {
+        console.log(
+          "[Carrinho] GERENCIADOR só pode manipular carrinho de FUNCIONARIO",
+        );
+        return res
+          .status(403)
+          .json({ error: "Só pode manipular carrinho de FUNCIONARIO" });
+      }
+    }
+
+    // Buscar item do carrinho
+    const item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId } });
+    if (!item) {
+      console.log("[Carrinho] Item não encontrado para devolver:", pecaId);
+      return res.status(404).json({ error: "Item não encontrado" });
+    }
+
+    // Buscar peça
+    const peca = await Peca.findByPk(pecaId);
+    if (!peca) {
+      return res.status(404).json({ error: "Peça não encontrada" });
+    }
+
+    // Atualizar estoque
+    peca.quantidade += item.quantidade;
+    await peca.save();
+
+    // Remover item do carrinho
+    await item.destroy();
+    console.log("[Carrinho] Peça devolvida ao estoque e removida do carrinho:", { usuarioId, pecaId, quantidade: item.quantidade });
+    res.json({ success: true, devolvida: { pecaId, quantidade: item.quantidade } });
+  } catch (error) {
+    console.error("[Carrinho] Erro ao devolver peça do carrinho:", error);
+    res.status(500).json({ error: "Erro ao devolver peça do carrinho" });
   }
 };
