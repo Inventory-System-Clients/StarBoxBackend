@@ -1,4 +1,4 @@
-import { Roteiro, Loja, Movimentacao } from "../models/index.js";
+import { Roteiro, Loja } from "../models/index.js";
 // --- RELATÓRIO DE ROTEIRO ---
 export const relatorioRoteiro = async (req, res) => {
   try {
