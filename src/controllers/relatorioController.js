@@ -1,3 +1,88 @@
+import { Roteiro, Loja, Movimentacao } from "../models/index.js";
+// --- RELATÓRIO DE ROTEIRO ---
+export const relatorioRoteiro = async (req, res) => {
+  try {
+    const { roteiroId, dataInicio, dataFim } = req.query;
+    if (!roteiroId || !dataInicio || !dataFim) {
+      return res.status(400).json({ error: "roteiroId, dataInicio e dataFim são obrigatórios" });
+    }
+
+    // Buscar roteiro e lojas
+    const roteiro = await Roteiro.findByPk(roteiroId, {
+      include: [{ model: Loja, as: "lojas", attributes: ["id", "nome"] }],
+    });
+    if (!roteiro) {
+      return res.status(404).json({ error: "Roteiro não encontrado" });
+    }
+    const lojas = roteiro.lojas || [];
+    const inicio = new Date(`${dataInicio}T00:00:00`);
+    const fim = new Date(`${dataFim}T23:59:59`);
+
+    // Gerar lista de dias do período
+    const diasPeriodo = [];
+    let d = new Date(inicio);
+    while (d <= fim) {
+      diasPeriodo.push(d.toISOString().slice(0, 10));
+      d.setDate(d.getDate() + 1);
+    }
+
+    // Totais do roteiro
+    let totaisRoteiro = { fichas: 0, sairam: 0, abastecidas: 0, movimentacoes: 0 };
+    const lojasResp = [];
+
+    for (const loja of lojas) {
+      // Buscar movimentações da loja no período
+      const movimentacoes = await Movimentacao.findAll({
+        where: {
+          dataColeta: { [Op.between]: [inicio, fim] },
+        },
+        include: [
+          {
+            association: "maquina",
+            where: { lojaId: loja.id },
+            attributes: [],
+          },
+        ],
+        raw: true,
+      });
+
+      // Somar totais
+      const totais = { fichas: 0, sairam: 0, abastecidas: 0, movimentacoes: movimentacoes.length };
+      const diasComMov = new Set();
+      for (const mov of movimentacoes) {
+        totais.fichas += mov.fichas || 0;
+        totais.sairam += mov.sairam || 0;
+        totais.abastecidas += mov.abastecidas || 0;
+        if (mov.dataColeta) {
+          diasComMov.add(new Date(mov.dataColeta).toISOString().slice(0, 10));
+        }
+      }
+      totaisRoteiro.fichas += totais.fichas;
+      totaisRoteiro.sairam += totais.sairam;
+      totaisRoteiro.abastecidas += totais.abastecidas;
+      totaisRoteiro.movimentacoes += totais.movimentacoes;
+
+      // Dias sem movimentação
+      const diasSemMovimentacao = diasPeriodo.filter((dia) => !diasComMov.has(dia));
+
+      lojasResp.push({
+        loja: { id: loja.id, nome: loja.nome },
+        totais,
+        diasSemMovimentacao,
+      });
+    }
+
+    res.json({
+      roteiro: { id: roteiro.id, nome: roteiro.nome },
+      periodo: { inicio: dataInicio, fim: dataFim },
+      totaisRoteiro,
+      lojas: lojasResp,
+    });
+  } catch (error) {
+    console.error("[RelatorioRoteiro] Erro:", error);
+    res.status(500).json({ error: "Erro ao gerar relatório do roteiro" });
+  }
+};
 // src/controllers/relatorioController.js
 import { Sequelize, Op, fn, col } from "sequelize";
 import {

@@ -1,3 +1,11 @@
+import { relatorioRoteiro } from "../controllers/relatorioController.js";
+// Relatório de roteiro
+router.get(
+  "/roteiro",
+  autenticar,
+  autorizar("ADMIN"),
+  relatorioRoteiro
+);
 import express from "express";
 import {
   balançoSemanal,

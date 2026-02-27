@@ -161,13 +161,23 @@ export const removerDoCarrinho = async (req, res) => {
           .json({ error: "Só pode manipular carrinho de FUNCIONARIO" });
       }
     }
+    // Buscar item do carrinho
     const item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId } });
     if (!item) {
       console.log("[Carrinho] Item não encontrado para remover:", pecaId);
       return res.status(404).json({ error: "Item não encontrado" });
     }
+    // Buscar peça
+    const peca = await Peca.findByPk(pecaId);
+    if (!peca) {
+      return res.status(404).json({ error: "Peça não encontrada" });
+    }
+    // Devolver quantidade ao estoque
+    peca.quantidade += item.quantidade;
+    await peca.save();
+    // Remover item do carrinho
     await item.destroy();
-    console.log("[Carrinho] Item removido:", item);
+    console.log("[Carrinho] Item removido e estoque devolvido:", { usuarioId, pecaId, quantidade: item.quantidade });
     res.json({ success: true });
   } catch (error) {
     console.error("[Carrinho] Erro ao remover do carrinho:", error);
