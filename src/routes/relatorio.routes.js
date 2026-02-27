@@ -1,3 +1,11 @@
+import { roteiroDiasSemMovimentacao } from "../controllers/relatorioController.js";
+// Dias sem movimentação por loja no roteiro
+router.get(
+  "/roteiro-dias-sem-movimentacao",
+  autenticar,
+  autorizar("ADMIN"),
+  roteiroDiasSemMovimentacao
+);
 import express from "express";
 import {
   balançoSemanal,

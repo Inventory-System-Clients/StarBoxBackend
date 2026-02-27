@@ -1,3 +1,58 @@
+// --- DIAS SEM MOVIMENTAÇÃO POR LOJA NO ROTEIRO ---
+export const roteiroDiasSemMovimentacao = async (req, res) => {
+  try {
+    const { roteiroId, dataInicio, dataFim } = req.query;
+    if (!roteiroId || !dataInicio || !dataFim) {
+      return res.status(400).json({ error: "roteiroId, dataInicio e dataFim são obrigatórios" });
+    }
+    const roteiro = await Roteiro.findByPk(roteiroId, {
+      include: [{ model: Loja, as: "lojas", attributes: ["id", "nome"] }],
+    });
+    if (!roteiro) {
+      return res.status(404).json({ error: "Roteiro não encontrado" });
+    }
+    const lojas = roteiro.lojas || [];
+    const inicio = new Date(`${dataInicio}T00:00:00`);
+    const fim = new Date(`${dataFim}T23:59:59`);
+    // Gerar lista de dias do período
+    const diasPeriodo = [];
+    let d = new Date(inicio);
+    while (d <= fim) {
+      diasPeriodo.push(d.toISOString().slice(0, 10));
+      d.setDate(d.getDate() + 1);
+    }
+    const lojasResp = [];
+    for (const loja of lojas) {
+      // Buscar movimentações da loja no período
+      const movimentacoes = await Movimentacao.findAll({
+        where: {
+          dataColeta: { [Op.between]: [inicio, fim] },
+        },
+        include: [
+          {
+            association: "maquina",
+            where: { lojaId: loja.id },
+            attributes: [],
+          },
+        ],
+        raw: true,
+      });
+      // Mapear dias com movimentação
+      const diasComMov = new Set();
+      for (const mov of movimentacoes) {
+        if (mov.dataColeta) {
+          diasComMov.add(new Date(mov.dataColeta).toISOString().slice(0, 10));
+        }
+      }
+      const diasSemMovimentacao = diasPeriodo.filter((dia) => !diasComMov.has(dia));
+      lojasResp.push({ id: loja.id, nome: loja.nome, diasSemMovimentacao });
+    }
+    res.json({ lojas: lojasResp });
+  } catch (error) {
+    console.error("[roteiroDiasSemMovimentacao] Erro:", error);
+    res.status(500).json({ error: "Erro ao buscar dias sem movimentação" });
+  }
+};
 import { Roteiro, Loja } from "../models/index.js";
 // --- RELATÓRIO DE ROTEIRO ---
 export const relatorioRoteiro = async (req, res) => {
