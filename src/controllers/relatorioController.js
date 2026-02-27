@@ -26,12 +26,14 @@ export const relatorioRoteiro = async (req, res) => {
       d.setDate(d.getDate() + 1);
     }
 
-    // Totais do roteiro
+    // Novos agregadores globais
     let totaisRoteiro = { fichas: 0, sairam: 0, abastecidas: 0, movimentacoes: 0 };
+    const produtosSairamMap = {};
+    const produtosEntraramMap = {};
     const lojasResp = [];
 
     for (const loja of lojas) {
-      // Buscar movimentações da loja no período
+      // Buscar movimentações da loja no período, incluindo detalhes de produtos e máquina
       const movimentacoes = await Movimentacao.findAll({
         where: {
           dataColeta: { [Op.between]: [inicio, fim] },
@@ -40,13 +42,61 @@ export const relatorioRoteiro = async (req, res) => {
           {
             association: "maquina",
             where: { lojaId: loja.id },
-            attributes: [],
+            attributes: ["id", "codigo", "nome", "valorFicha"],
+          },
+          {
+            association: "detalhesProdutos",
+            include: [{ association: "produto", attributes: ["id", "nome", "codigo", "emoji"] }],
           },
         ],
-        raw: true,
       });
 
-      // Somar totais
+      // Mapear máquinas da loja
+      const maquinasMap = {};
+      for (const mov of movimentacoes) {
+        const maq = mov.maquina;
+        if (!maq) continue;
+        if (!maquinasMap[maq.id]) {
+          maquinasMap[maq.id] = {
+            maquina: {
+              id: maq.id,
+              codigo: maq.codigo,
+              nome: maq.nome,
+              valorFicha: maq.valorFicha,
+            },
+            totais: { fichas: 0, produtosSairam: 0, produtosEntraram: 0, movimentacoes: 0, dinheiro: 0, cartaoPix: 0 },
+            produtosSairam: {},
+            produtosEntraram: {},
+          };
+        }
+        const m = maquinasMap[maq.id];
+        m.totais.fichas += mov.fichas || 0;
+        m.totais.produtosSairam += mov.sairam || 0;
+        m.totais.produtosEntraram += mov.abastecidas || 0;
+        m.totais.movimentacoes++;
+
+        // Produtos por máquina e agregação global
+        for (const dp of mov.detalhesProdutos || []) {
+          const prod = dp.produto;
+          if (!prod) continue;
+          // Saíram
+          if (dp.quantidadeSaiu > 0) {
+            if (!m.produtosSairam[prod.id]) m.produtosSairam[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            m.produtosSairam[prod.id].quantidade += dp.quantidadeSaiu;
+            if (!produtosSairamMap[prod.id]) produtosSairamMap[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            produtosSairamMap[prod.id].quantidade += dp.quantidadeSaiu;
+          }
+          // Entraram
+          if (dp.quantidadeAbastecida > 0) {
+            if (!m.produtosEntraram[prod.id]) m.produtosEntraram[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            m.produtosEntraram[prod.id].quantidade += dp.quantidadeAbastecida;
+            if (!produtosEntraramMap[prod.id]) produtosEntraramMap[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            produtosEntraramMap[prod.id].quantidade += dp.quantidadeAbastecida;
+          }
+        }
+      }
+
+      // Somar totais da loja
       const totais = { fichas: 0, sairam: 0, abastecidas: 0, movimentacoes: movimentacoes.length };
       const diasComMov = new Set();
       for (const mov of movimentacoes) {
@@ -65,17 +115,32 @@ export const relatorioRoteiro = async (req, res) => {
       // Dias sem movimentação
       const diasSemMovimentacao = diasPeriodo.filter((dia) => !diasComMov.has(dia));
 
+      // Formatar máquinas para resposta
+      const maquinas = Object.values(maquinasMap).map((m) => ({
+        maquina: m.maquina,
+        totais: m.totais,
+        produtosSairam: Object.values(m.produtosSairam),
+        produtosEntraram: Object.values(m.produtosEntraram),
+      }));
+
       lojasResp.push({
         loja: { id: loja.id, nome: loja.nome },
         totais,
         diasSemMovimentacao,
+        maquinas,
       });
     }
+
+    // Consolidar arrays globais
+    const produtosSairam = Object.values(produtosSairamMap).sort((a, b) => b.quantidade - a.quantidade);
+    const produtosEntraram = Object.values(produtosEntraramMap).sort((a, b) => b.quantidade - a.quantidade);
 
     res.json({
       roteiro: { id: roteiro.id, nome: roteiro.nome },
       periodo: { inicio: dataInicio, fim: dataFim },
       totaisRoteiro,
+      produtosSairam,
+      produtosEntraram,
       lojas: lojasResp,
     });
   } catch (error) {
