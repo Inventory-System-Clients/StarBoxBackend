@@ -53,6 +53,8 @@ export const relatorioRoteiro = async (req, res) => {
 
       // Mapear máquinas da loja
       const maquinasMap = {};
+      const produtosSairamLoja = {};
+      const produtosEntraramLoja = {};
       for (const mov of movimentacoes) {
         const maq = mov.maquina;
         if (!maq) continue;
@@ -75,7 +77,7 @@ export const relatorioRoteiro = async (req, res) => {
         m.totais.produtosEntraram += mov.abastecidas || 0;
         m.totais.movimentacoes++;
 
-        // Produtos por máquina e agregação global
+        // Produtos por máquina, loja e agregação global
         for (const dp of mov.detalhesProdutos || []) {
           const prod = dp.produto;
           if (!prod) continue;
@@ -83,6 +85,8 @@ export const relatorioRoteiro = async (req, res) => {
           if (dp.quantidadeSaiu > 0) {
             if (!m.produtosSairam[prod.id]) m.produtosSairam[prod.id] = { ...prod.dataValues, quantidade: 0 };
             m.produtosSairam[prod.id].quantidade += dp.quantidadeSaiu;
+            if (!produtosSairamLoja[prod.id]) produtosSairamLoja[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            produtosSairamLoja[prod.id].quantidade += dp.quantidadeSaiu;
             if (!produtosSairamMap[prod.id]) produtosSairamMap[prod.id] = { ...prod.dataValues, quantidade: 0 };
             produtosSairamMap[prod.id].quantidade += dp.quantidadeSaiu;
           }
@@ -90,6 +94,8 @@ export const relatorioRoteiro = async (req, res) => {
           if (dp.quantidadeAbastecida > 0) {
             if (!m.produtosEntraram[prod.id]) m.produtosEntraram[prod.id] = { ...prod.dataValues, quantidade: 0 };
             m.produtosEntraram[prod.id].quantidade += dp.quantidadeAbastecida;
+            if (!produtosEntraramLoja[prod.id]) produtosEntraramLoja[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            produtosEntraramLoja[prod.id].quantidade += dp.quantidadeAbastecida;
             if (!produtosEntraramMap[prod.id]) produtosEntraramMap[prod.id] = { ...prod.dataValues, quantidade: 0 };
             produtosEntraramMap[prod.id].quantidade += dp.quantidadeAbastecida;
           }
@@ -123,11 +129,36 @@ export const relatorioRoteiro = async (req, res) => {
         produtosEntraram: Object.values(m.produtosEntraram),
       }));
 
+      // Buscar todas as máquinas da loja (mesmo sem movimentação)
+      const todasMaquinas = await loja.getMaquinas({ attributes: ["id", "nome", "codigo"] });
+
+      // Mapear movimentações por dia e máquina
+      const movPorDiaMaquina = {};
+      for (const mov of movimentacoes) {
+        if (!mov.maquina || !mov.dataColeta) continue;
+        const dia = new Date(mov.dataColeta).toISOString().slice(0, 10);
+        movPorDiaMaquina[dia] = movPorDiaMaquina[dia] || new Set();
+        movPorDiaMaquina[dia].add(mov.maquina.id);
+      }
+
+      // Para cada dia, listar máquinas sem movimentação
+      const maquinasNaoFeitas = diasPeriodo.map((dia) => {
+        const maquinasFeitas = movPorDiaMaquina[dia] || new Set();
+        const maquinasSemMov = todasMaquinas.filter((m) => !maquinasFeitas.has(m.id));
+        return {
+          data: dia,
+          maquinas: maquinasSemMov.map((m) => ({ id: m.id, nome: m.nome, codigo: m.codigo })),
+        };
+      });
+
       lojasResp.push({
         loja: { id: loja.id, nome: loja.nome },
         totais,
         diasSemMovimentacao,
         maquinas,
+        produtosSairam: Object.values(produtosSairamLoja),
+        produtosEntraram: Object.values(produtosEntraramLoja),
+        maquinasNaoFeitas,
       });
     }
 
