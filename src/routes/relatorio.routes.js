@@ -1,11 +1,4 @@
-import { roteiroDiasSemMovimentacao } from "../controllers/relatorioController.js";
-// Dias sem movimentação por loja no roteiro
-router.get(
-  "/roteiro-dias-sem-movimentacao",
-  autenticar,
-  autorizar("ADMIN"),
-  roteiroDiasSemMovimentacao
-);
+
 import express from "express";
 import {
   balançoSemanal,
@@ -16,11 +9,20 @@ import {
   ignorarAlertaMovimentacao,
   dashboardRelatorio,
   relatorioRoteiro,
+  roteiroDiasSemMovimentacao,
 } from "../controllers/relatorioController.js";
 import { alertasAbastecimentoIncompleto } from "../controllers/movimentacaoController.js";
 import { autenticar, autorizar } from "../middlewares/auth.js";
 
 const router = express.Router();
+
+// Dias sem movimentação por loja no roteiro
+router.get(
+  "/roteiro-dias-sem-movimentacao",
+  autenticar,
+  autorizar("ADMIN"),
+  roteiroDiasSemMovimentacao
+);
 
 
 // Relatório de roteiro
