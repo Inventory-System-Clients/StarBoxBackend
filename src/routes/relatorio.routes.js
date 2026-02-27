@@ -14,6 +14,7 @@ import { autenticar, autorizar } from "../middlewares/auth.js";
 
 const router = express.Router();
 
+
 // Relatório de roteiro
 router.get(
   "/roteiro",
@@ -21,19 +22,6 @@ router.get(
   autorizar("ADMIN"),
   relatorioRoteiro
 );
-import {
-  balançoSemanal,
-  alertasEstoque,
-  performanceMaquinas,
-  relatorioImpressao,
-  buscarAlertasDeInconsistencia,
-  ignorarAlertaMovimentacao,
-  dashboardRelatorio,
-} from "../controllers/relatorioController.js";
-import { alertasAbastecimentoIncompleto } from "../controllers/movimentacaoController.js";
-import { autenticar, autorizar } from "../middlewares/auth.js";
-
-const router = express.Router();
 
 // Todas as rotas de relatórios são restritas a ADMIN
 router.get(
