@@ -1,4 +1,19 @@
-import { relatorioRoteiro } from "../controllers/relatorioController.js";
+import express from "express";
+import {
+  balançoSemanal,
+  alertasEstoque,
+  performanceMaquinas,
+  relatorioImpressao,
+  buscarAlertasDeInconsistencia,
+  ignorarAlertaMovimentacao,
+  dashboardRelatorio,
+  relatorioRoteiro,
+} from "../controllers/relatorioController.js";
+import { alertasAbastecimentoIncompleto } from "../controllers/movimentacaoController.js";
+import { autenticar, autorizar } from "../middlewares/auth.js";
+
+const router = express.Router();
+
 // Relatório de roteiro
 router.get(
   "/roteiro",
@@ -6,7 +21,6 @@ router.get(
   autorizar("ADMIN"),
   relatorioRoteiro
 );
-import express from "express";
 import {
   balançoSemanal,
   alertasEstoque,
