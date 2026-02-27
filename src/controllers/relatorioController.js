@@ -89,7 +89,6 @@ import {
   Movimentacao,
   MovimentacaoProduto,
   Maquina,
-  Loja,
   Produto,
   AlertaIgnorado,
   RegistroDinheiro,
