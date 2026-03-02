@@ -35,6 +35,7 @@ import Veiculo from "./Veiculo.js";
 import RegistroDinheiro from "./RegistroDinheiro.js";
 import Roteiro from "./Roteiro.js";
 import SecurityControl from "./SecurityControl.js";
+import Manutencao from "./Manutencao.js";
 Roteiro.associate({ Usuario, Loja });
 // Movimentação de Veículo -> Veículo e Usuário
 MovimentacaoVeiculo.belongsTo(Veiculo, {
@@ -166,6 +167,31 @@ Produto.hasMany(EstoqueLoja, {
 });
 EstoqueLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 EstoqueLoja.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+
+// Manutenção
+Manutencao.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+Loja.hasMany(Manutencao, { foreignKey: "lojaId", as: "manutencoes" });
+
+Manutencao.belongsTo(Maquina, { foreignKey: "maquinaId", as: "maquina" });
+Maquina.hasMany(Manutencao, { foreignKey: "maquinaId", as: "manutencoes" });
+
+Manutencao.belongsTo(Usuario, {
+  foreignKey: "funcionarioId",
+  as: "funcionario",
+});
+Usuario.hasMany(Manutencao, {
+  foreignKey: "funcionarioId",
+  as: "manutencoesAtribuidas",
+});
+
+Manutencao.belongsTo(Usuario, { foreignKey: "criadoPorId", as: "criadoPor" });
+Usuario.hasMany(Manutencao, {
+  foreignKey: "criadoPorId",
+  as: "manutencoesCriadas",
+});
+
+Manutencao.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
+Roteiro.hasMany(Manutencao, { foreignKey: "roteiroId", as: "manutencoes" });
 export {
   CarrinhoPeca,
   Usuario,
@@ -188,4 +214,5 @@ export {
   Peca,
   MovimentacaoPeca,
   SecurityControl,
+  Manutencao,
 };

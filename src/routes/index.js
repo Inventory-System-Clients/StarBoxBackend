@@ -20,6 +20,7 @@ import pecasRoutes from "./pecas.routes.js";
 import carrinhoPecaRoutes from "./carrinhoPeca.routes.js";
 import roteiroStatusRoutes from "./roteiroStatus.routes.js";
 import securityRoutes from "./security.routes.js";
+import manutencaoRoutes from "./manutencao.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -29,6 +30,7 @@ router.use("/lojas", lojaRoutes);
 router.use("/maquinas", maquinaRoutes);
 router.use("/produtos", produtoRoutes);
 router.use("/movimentacoes", movimentacaoRoutes);
+router.use("/manutencoes", manutencaoRoutes);
 router.use("/relatorios", relatorioRoutes);
 router.use("/totais", totaisRoutes);
 
