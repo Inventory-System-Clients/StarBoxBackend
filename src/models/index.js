@@ -1,7 +1,10 @@
 import MovimentacaoPeca from "./MovimentacaoPeca.js";
 // MovimentacaoPeca -> Movimentacao
 MovimentacaoPeca.belongsTo(Movimentacao, { foreignKey: "movimentacaoId" });
-Movimentacao.hasMany(MovimentacaoPeca, { foreignKey: "movimentacaoId", as: "pecasUsadas" });
+Movimentacao.hasMany(MovimentacaoPeca, {
+  foreignKey: "movimentacaoId",
+  as: "pecasUsadas",
+});
 // MovimentacaoPeca -> Peca
 MovimentacaoPeca.belongsTo(Peca, { foreignKey: "pecaId" });
 Peca.hasMany(MovimentacaoPeca, { foreignKey: "pecaId" });
@@ -31,6 +34,7 @@ import AlertaIgnorado from "./AlertaIgnorado.js";
 import Veiculo from "./Veiculo.js";
 import RegistroDinheiro from "./RegistroDinheiro.js";
 import Roteiro from "./Roteiro.js";
+import SecurityControl from "./SecurityControl.js";
 Roteiro.associate({ Usuario, Loja });
 // Movimentação de Veículo -> Veículo e Usuário
 MovimentacaoVeiculo.belongsTo(Veiculo, {
@@ -183,4 +187,5 @@ export {
   ContasFinanceiro,
   Peca,
   MovimentacaoPeca,
+  SecurityControl,
 };

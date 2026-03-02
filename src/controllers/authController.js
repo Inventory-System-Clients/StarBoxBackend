@@ -1,9 +1,17 @@
 import jwt from "jsonwebtoken";
 import { Usuario, LogAtividade } from "../models/index.js";
+import { getSecurityState } from "../services/securityService.js";
 
 // US01 - Login
 export const login = async (req, res) => {
   try {
+    const securityState = await getSecurityState();
+    if (securityState.isLocked) {
+      return res
+        .status(423)
+        .json({ error: "Sistema temporariamente bloqueado" });
+    }
+
     const { email, senha } = req.body;
 
     if (!email || !senha) {
@@ -27,9 +35,14 @@ export const login = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: usuario.id, email: usuario.email, role: usuario.role },
+      {
+        id: usuario.id,
+        email: usuario.email,
+        role: usuario.role,
+        authVersion: securityState.authVersion,
+      },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
     );
 
     // Registrar log de login
@@ -61,6 +74,13 @@ export const login = async (req, res) => {
 // US01 - Registro de novo usuário
 export const registrar = async (req, res) => {
   try {
+    const securityState = await getSecurityState();
+    if (securityState.isLocked) {
+      return res
+        .status(423)
+        .json({ error: "Sistema temporariamente bloqueado" });
+    }
+
     const { nome, email, senha, telefone, role } = req.body;
 
     if (!nome || !email || !senha) {
@@ -87,9 +107,14 @@ export const registrar = async (req, res) => {
     });
 
     const token = jwt.sign(
-      { id: usuario.id, email: usuario.email, role: usuario.role },
+      {
+        id: usuario.id,
+        email: usuario.email,
+        role: usuario.role,
+        authVersion: securityState.authVersion,
+      },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" },
     );
 
     res.status(201).json({

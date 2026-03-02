@@ -1,6 +1,14 @@
 import FinanceiroUser from "../../models/FinanceiroUser.js";
+import { getSecurityState } from "../../services/securityService.js";
 
-export function register(req, res) {
+export async function register(req, res) {
+  const securityState = await getSecurityState();
+  if (securityState.isLocked) {
+    return res
+      .status(423)
+      .json({ detail: "Sistema temporariamente bloqueado" });
+  }
+
   const { name, email, password, role } = req.body;
   if (!name || !email || !password || !role) {
     return res.status(400).json({ detail: "Registration failed" });
@@ -27,7 +35,14 @@ export function register(req, res) {
     .catch((err) => res.status(500).json({ detail: err.message }));
 }
 
-export function login(req, res) {
+export async function login(req, res) {
+  const securityState = await getSecurityState();
+  if (securityState.isLocked) {
+    return res
+      .status(423)
+      .json({ detail: "Sistema temporariamente bloqueado" });
+  }
+
   const { email, password } = req.body;
   FinanceiroUser.findOne({ where: { email, password } })
     .then((user) => {

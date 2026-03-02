@@ -1,10 +1,18 @@
 import jwt from "jsonwebtoken";
 import { Usuario } from "../models/index.js";
 import LogAtividade from "../models/LogAtividade.js";
+import { getSecurityState } from "../services/securityService.js";
 
 // US01 - Middleware de Autenticação
 export const autenticar = async (req, res, next) => {
   try {
+    const securityState = await getSecurityState();
+    if (securityState.isLocked) {
+      return res
+        .status(423)
+        .json({ error: "Sistema bloqueado temporariamente" });
+    }
+
     const token = req.headers.authorization?.replace("Bearer ", "");
 
     if (!token) {
@@ -12,6 +20,13 @@ export const autenticar = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.authVersion !== securityState.authVersion) {
+      return res
+        .status(401)
+        .json({ error: "Sessão expirada. Faça login novamente." });
+    }
+
     const usuario = await Usuario.findByPk(decoded.id);
 
     if (!usuario || !usuario.ativo) {

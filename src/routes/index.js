@@ -19,9 +19,11 @@ import financeiroRoutes from "./financeiro/index.js";
 import pecasRoutes from "./pecas.routes.js";
 import carrinhoPecaRoutes from "./carrinhoPeca.routes.js";
 import roteiroStatusRoutes from "./roteiroStatus.routes.js";
+import securityRoutes from "./security.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
+router.use("/security", securityRoutes);
 router.use("/usuarios", usuarioRoutes);
 router.use("/lojas", lojaRoutes);
 router.use("/maquinas", maquinaRoutes);
