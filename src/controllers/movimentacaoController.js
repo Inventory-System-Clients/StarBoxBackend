@@ -857,7 +857,8 @@ export const relatorioLucroTotalDia = async (req, res) => {
     const whereMaquina = { lojaId };
 
     // 1) Buscar movimentações do dia com dados da máquina
-    const movimentacoes = await Movimentacao.findAll({
+    // NÃO usar raw:true para garantir nomes corretos de atributos com field: mapping
+    const movimentacoesRaw = await Movimentacao.findAll({
       where: whereMovimentacao,
       include: [
         {
@@ -867,9 +868,19 @@ export const relatorioLucroTotalDia = async (req, res) => {
           attributes: ["id", "nome", "valorFicha", "comissaoLojaPercentual"],
         },
       ],
-      raw: true,
-      nest: true,
     });
+    const movimentacoes = movimentacoesRaw.map(m => m.toJSON());
+
+    console.log(`[RELATORIO LUCRO] ${movimentacoes.length} movimentações encontradas para loja ${lojaId} em ${dataISO}`);
+    if (movimentacoes.length > 0) {
+      console.log("[RELATORIO LUCRO] Exemplo mov[0]:", {
+        fichas: movimentacoes[0].fichas,
+        quantidade_notas_entrada: movimentacoes[0].quantidade_notas_entrada,
+        valor_entrada_maquininha_pix: movimentacoes[0].valor_entrada_maquininha_pix,
+        maquina_valorFicha: movimentacoes[0].maquina?.valorFicha,
+        maquina_comissao: movimentacoes[0].maquina?.comissaoLojaPercentual,
+      });
+    }
 
     // 2) Calcular receita bruta por movimentação
     let totalFichasValor = 0;
@@ -898,8 +909,12 @@ export const relatorioLucroTotalDia = async (req, res) => {
 
     const receitaBruta = totalFichasValor + totalDinheiro + totalPix;
 
+    console.log("[RELATORIO LUCRO] Totais calculados:", {
+      receitaBruta, totalFichasValor, totalDinheiro, totalPix, comissaoTotal
+    });
+
     // 3) Custo dos produtos que saíram
-    const itensVendidos = await MovimentacaoProduto.findAll({
+    const itensVendidosRaw = await MovimentacaoProduto.findAll({
       attributes: ["quantidadeSaiu"],
       include: [
         { model: Produto, as: "produto", attributes: ["custoUnitario"] },
@@ -917,9 +932,8 @@ export const relatorioLucroTotalDia = async (req, res) => {
           ],
         },
       ],
-      raw: true,
-      nest: true,
     });
+    const itensVendidos = itensVendidosRaw.map(i => i.toJSON());
 
     const custoProdutos = itensVendidos.reduce((acc, item) => {
       const qtd = parseInt(item.quantidadeSaiu) || 0;
@@ -1002,7 +1016,8 @@ export const relatorioComissaoTotalDia = async (req, res) => {
     };
     const whereMaquina = { lojaId };
 
-    const movimentacoes = await Movimentacao.findAll({
+    // NÃO usar raw:true para garantir nomes corretos (comissaoLojaPercentual vs comissao_loja_percentual)
+    const movimentacoesRaw = await Movimentacao.findAll({
       where: whereMovimentacao,
       include: [
         {
@@ -1012,9 +1027,20 @@ export const relatorioComissaoTotalDia = async (req, res) => {
           attributes: ["id", "nome", "valorFicha", "comissaoLojaPercentual"],
         },
       ],
-      raw: true,
-      nest: true,
     });
+    const movimentacoes = movimentacoesRaw.map(m => m.toJSON());
+
+    console.log(`[RELATORIO COMISSAO] ${movimentacoes.length} movimentações encontradas para loja ${lojaId} em ${dataISO}`);
+    if (movimentacoes.length > 0) {
+      console.log("[RELATORIO COMISSAO] Exemplo mov[0]:", {
+        fichas: movimentacoes[0].fichas,
+        quantidade_notas_entrada: movimentacoes[0].quantidade_notas_entrada,
+        valor_entrada_maquininha_pix: movimentacoes[0].valor_entrada_maquininha_pix,
+        maquina_valorFicha: movimentacoes[0].maquina?.valorFicha,
+        maquina_comissao: movimentacoes[0].maquina?.comissaoLojaPercentual,
+        maquina_nome: movimentacoes[0].maquina?.nome,
+      });
+    }
 
     let comissaoTotal = 0;
     const comissaoPorMaquina = {};
@@ -1030,6 +1056,8 @@ export const relatorioComissaoTotalDia = async (req, res) => {
       const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
       const comissao = (receitaMaquina * percentual) / 100;
       comissaoTotal += comissao;
+
+      console.log(`[RELATORIO COMISSAO] Máquina ${m.maquina?.nome}: fichas=${fichas} x R$${valorFicha} = R$${fichasValor}, dinheiro=R$${dinheiro}, pix=R$${pix}, receita=R$${receitaMaquina}, comissao=${percentual}% = R$${comissao.toFixed(2)}`);
 
       const maqId = m.maquina?.id;
       if (maqId) {
@@ -1052,6 +1080,8 @@ export const relatorioComissaoTotalDia = async (req, res) => {
       receitaTotal: parseFloat(d.receitaTotal.toFixed(2)),
       comissaoTotal: parseFloat(d.comissaoTotal.toFixed(2)),
     }));
+
+    console.log(`[RELATORIO COMISSAO] Total comissão: R$${comissaoTotal.toFixed(2)}, Máquinas: ${detalhesPorMaquina.length}`);
 
     res.json({
       lojaId,
