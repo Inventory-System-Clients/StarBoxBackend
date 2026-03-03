@@ -838,6 +838,9 @@ export const relatorioMovimentacoesDia = async (req, res) => {
 export const relatorioLucroTotalDia = async (req, res) => {
   try {
     const { data, lojaId } = req.query;
+    if (!lojaId) {
+      return res.status(400).json({ error: "Parâmetro lojaId é obrigatório" });
+    }
     const targetDate = data ? new Date(data) : new Date();
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
@@ -849,8 +852,7 @@ export const relatorioLucroTotalDia = async (req, res) => {
       retiradaEstoque: false,
     };
 
-    const whereMaquina = {};
-    if (lojaId) whereMaquina.lojaId = lojaId;
+    const whereMaquina = { lojaId };
 
     // Faturamento total do dia
     const movimentacoes = await Movimentacao.findAll({
@@ -859,7 +861,7 @@ export const relatorioLucroTotalDia = async (req, res) => {
         {
           model: Maquina,
           as: "maquina",
-          where: Object.keys(whereMaquina).length ? whereMaquina : undefined,
+          where: whereMaquina,
           attributes: ["id", "nome", "comissaoLojaPercentual"],
         },
       ],
@@ -885,7 +887,7 @@ export const relatorioLucroTotalDia = async (req, res) => {
             {
               model: Maquina,
               as: "maquina",
-              where: Object.keys(whereMaquina).length ? whereMaquina : undefined,
+              where: whereMaquina,
               attributes: [],
             },
           ],
@@ -908,14 +910,12 @@ export const relatorioLucroTotalDia = async (req, res) => {
       return acc + (valor * percentual) / 100;
     }, 0);
 
-    const lucro = faturamento - custoTotal - comissaoTotal;
+    const lucroTotal = faturamento - custoTotal - comissaoTotal;
 
     res.json({
+      lojaId,
       data: targetDate.toISOString().split("T")[0],
-      faturamento,
-      custoTotal,
-      comissaoTotal,
-      lucro,
+      lucroTotal,
     });
   } catch (error) {
     console.error("Erro no relatório de lucro do dia:", error);
@@ -927,6 +927,9 @@ export const relatorioLucroTotalDia = async (req, res) => {
 export const relatorioComissaoTotalDia = async (req, res) => {
   try {
     const { data, lojaId } = req.query;
+    if (!lojaId) {
+      return res.status(400).json({ error: "Parâmetro lojaId é obrigatório" });
+    }
     const targetDate = data ? new Date(data) : new Date();
     const startOfDay = new Date(targetDate);
     startOfDay.setHours(0, 0, 0, 0);
@@ -938,8 +941,7 @@ export const relatorioComissaoTotalDia = async (req, res) => {
       retiradaEstoque: false,
     };
 
-    const whereMaquina = {};
-    if (lojaId) whereMaquina.lojaId = lojaId;
+    const whereMaquina = { lojaId };
 
     const movimentacoes = await Movimentacao.findAll({
       where: whereMovimentacao,
@@ -947,9 +949,8 @@ export const relatorioComissaoTotalDia = async (req, res) => {
         {
           model: Maquina,
           as: "maquina",
-          where: Object.keys(whereMaquina).length ? whereMaquina : undefined,
+          where: whereMaquina,
           attributes: ["id", "nome", "comissaoLojaPercentual"],
-          include: [{ model: Loja, as: "loja", attributes: ["id", "nome"] }],
         },
       ],
       raw: true,
@@ -957,7 +958,8 @@ export const relatorioComissaoTotalDia = async (req, res) => {
     });
 
     let comissaoTotal = 0;
-    const detalhes = [];
+    // Agrupar comissão por máquina
+    const comissaoPorMaquina = {};
 
     for (const m of movimentacoes) {
       const valor = parseFloat(m.valorFaturado || 0);
@@ -965,21 +967,29 @@ export const relatorioComissaoTotalDia = async (req, res) => {
       const comissao = (valor * percentual) / 100;
       comissaoTotal += comissao;
 
-      if (comissao > 0) {
-        detalhes.push({
-          maquina: m.maquina?.nome,
-          loja: m.maquina?.loja?.nome,
-          valorFaturado: valor,
-          percentualComissao: percentual,
-          comissao,
-        });
+      const maqId = m.maquina?.id;
+      if (maqId) {
+        if (!comissaoPorMaquina[maqId]) {
+          comissaoPorMaquina[maqId] = {
+            maquinaId: maqId,
+            maquinaNome: m.maquina?.nome || "Desconhecida",
+            comissaoTotal: 0,
+          };
+        }
+        comissaoPorMaquina[maqId].comissaoTotal += comissao;
       }
     }
 
+    const detalhesPorMaquina = Object.values(comissaoPorMaquina).map((d) => ({
+      ...d,
+      comissaoTotal: parseFloat(d.comissaoTotal.toFixed(2)),
+    }));
+
     res.json({
+      lojaId,
       data: targetDate.toISOString().split("T")[0],
-      comissaoTotal,
-      detalhes,
+      comissaoTotal: parseFloat(comissaoTotal.toFixed(2)),
+      detalhesPorMaquina,
     });
   } catch (error) {
     console.error("Erro no relatório de comissão do dia:", error);

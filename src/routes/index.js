@@ -31,6 +31,7 @@ router.use("/lojas", lojaRoutes);
 router.use("/maquinas", maquinaRoutes);
 router.use("/produtos", produtoRoutes);
 router.use("/movimentacoes", movimentacaoRoutes);
+router.use("/movimentacao", movimentacaoRoutes); // alias singular para frontend
 router.use("/manutencoes", manutencaoRoutes);
 router.use("/relatorios", relatorioRoutes);
 router.use("/totais", totaisRoutes);
