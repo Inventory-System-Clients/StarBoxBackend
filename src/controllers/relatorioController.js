@@ -900,7 +900,7 @@ export const relatorioImpressao = async (req, res) => {
             {
               model: Produto,
               as: "produto",
-              attributes: ["id", "nome", "codigo", "emoji"],
+              attributes: ["id", "nome", "codigo", "emoji", "preco", "custoUnitario"],
             },
           ],
         },
@@ -1049,6 +1049,8 @@ export const relatorioImpressao = async (req, res) => {
           codigo: p.produto.codigo,
           emoji: p.produto.emoji,
           quantidade: p.quantidade,
+          valorUnitario: parseFloat(p.produto.custoUnitario || 0),
+          preco: parseFloat(p.produto.preco || 0),
         }))
         .sort((a, b) => b.quantidade - a.quantidade),
       produtosEntraram: Object.values(m.produtosEntraram)
@@ -1058,6 +1060,8 @@ export const relatorioImpressao = async (req, res) => {
           codigo: p.produto.codigo,
           emoji: p.produto.emoji,
           quantidade: p.quantidade,
+          valorUnitario: parseFloat(p.produto.custoUnitario || 0),
+          preco: parseFloat(p.produto.preco || 0),
         }))
         .sort((a, b) => b.quantidade - a.quantidade),
     }));
@@ -1116,6 +1120,8 @@ export const relatorioImpressao = async (req, res) => {
         codigo: p.produto.codigo,
         emoji: p.produto.emoji,
         quantidade: p.quantidade,
+        valorUnitario: parseFloat(p.produto.custoUnitario || 0),
+        preco: parseFloat(p.produto.preco || 0),
       })),
       produtosEntraram: produtosEntraram.map((p) => ({
         id: p.produto.id,
@@ -1123,6 +1129,8 @@ export const relatorioImpressao = async (req, res) => {
         codigo: p.produto.codigo,
         emoji: p.produto.emoji,
         quantidade: p.quantidade,
+        valorUnitario: parseFloat(p.produto.custoUnitario || 0),
+        preco: parseFloat(p.produto.preco || 0),
       })),
       maquinas: maquinasDetalhadas,
       graficoSaidaPorMaquina,
