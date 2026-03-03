@@ -917,7 +917,7 @@ export const relatorioLucroTotalDia = async (req, res) => {
     const itensVendidosRaw = await MovimentacaoProduto.findAll({
       attributes: ["quantidadeSaiu"],
       include: [
-        { model: Produto, as: "produto", attributes: ["custoUnitario"] },
+        { model: Produto, as: "produto", attributes: ["preco", "custoUnitario"] },
         {
           model: Movimentacao,
           attributes: [],
@@ -937,7 +937,8 @@ export const relatorioLucroTotalDia = async (req, res) => {
 
     const custoProdutos = itensVendidos.reduce((acc, item) => {
       const qtd = parseInt(item.quantidadeSaiu) || 0;
-      const custo = parseFloat(item.produto?.custoUnitario || 0);
+      // Usar preco (preço de venda) como principal, custoUnitario como fallback
+      const custo = parseFloat(item.produto?.preco || item.produto?.custoUnitario || 0);
       return acc + qtd * custo;
     }, 0);
 

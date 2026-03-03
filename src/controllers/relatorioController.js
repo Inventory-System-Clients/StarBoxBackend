@@ -1049,8 +1049,9 @@ export const relatorioImpressao = async (req, res) => {
           codigo: p.produto.codigo,
           emoji: p.produto.emoji,
           quantidade: p.quantidade,
-          valorUnitario: parseFloat(p.produto.custoUnitario || 0),
+          valorUnitario: parseFloat(p.produto.preco || p.produto.custoUnitario || 0),
           preco: parseFloat(p.produto.preco || 0),
+          custoUnitario: parseFloat(p.produto.custoUnitario || 0),
         }))
         .sort((a, b) => b.quantidade - a.quantidade),
       produtosEntraram: Object.values(m.produtosEntraram)
@@ -1060,8 +1061,9 @@ export const relatorioImpressao = async (req, res) => {
           codigo: p.produto.codigo,
           emoji: p.produto.emoji,
           quantidade: p.quantidade,
-          valorUnitario: parseFloat(p.produto.custoUnitario || 0),
+          valorUnitario: parseFloat(p.produto.preco || p.produto.custoUnitario || 0),
           preco: parseFloat(p.produto.preco || 0),
+          custoUnitario: parseFloat(p.produto.custoUnitario || 0),
         }))
         .sort((a, b) => b.quantidade - a.quantidade),
     }));
@@ -1120,8 +1122,9 @@ export const relatorioImpressao = async (req, res) => {
         codigo: p.produto.codigo,
         emoji: p.produto.emoji,
         quantidade: p.quantidade,
-        valorUnitario: parseFloat(p.produto.custoUnitario || 0),
+        valorUnitario: parseFloat(p.produto.preco || p.produto.custoUnitario || 0),
         preco: parseFloat(p.produto.preco || 0),
+        custoUnitario: parseFloat(p.produto.custoUnitario || 0),
       })),
       produtosEntraram: produtosEntraram.map((p) => ({
         id: p.produto.id,
@@ -1129,8 +1132,9 @@ export const relatorioImpressao = async (req, res) => {
         codigo: p.produto.codigo,
         emoji: p.produto.emoji,
         quantidade: p.quantidade,
-        valorUnitario: parseFloat(p.produto.custoUnitario || 0),
+        valorUnitario: parseFloat(p.produto.preco || p.produto.custoUnitario || 0),
         preco: parseFloat(p.produto.preco || 0),
+        custoUnitario: parseFloat(p.produto.custoUnitario || 0),
       })),
       maquinas: maquinasDetalhadas,
       graficoSaidaPorMaquina,
