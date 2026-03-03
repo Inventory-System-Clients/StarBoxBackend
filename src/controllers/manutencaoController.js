@@ -23,8 +23,52 @@ const includePadrao = [
   { model: Loja, as: "loja", attributes: ["id", "nome"] },
   { model: Maquina, as: "maquina", attributes: ["id", "nome", "lojaId"] },
   { model: Usuario, as: "funcionario", attributes: ["id", "nome", "email"] },
+  { model: Usuario, as: "concluidoPor", attributes: ["id", "nome", "email"] },
   { model: Roteiro, as: "roteiro", attributes: ["id", "nome"] },
 ];
+
+const isStatusConcluido = (status) => ["feito", "concluida"].includes(status);
+
+const usuarioEhResponsavelRoteiroDaLoja = async (usuarioId, manutencao) => {
+  if (!usuarioId || !manutencao?.lojaId) return false;
+
+  if (manutencao.roteiroId) {
+    const roteiro = await Roteiro.findByPk(manutencao.roteiroId, {
+      include: [
+        {
+          model: Loja,
+          as: "lojas",
+          attributes: ["id"],
+          through: { attributes: [] },
+        },
+      ],
+    });
+
+    if (!roteiro || roteiro.funcionarioId !== usuarioId) {
+      return false;
+    }
+
+    const lojaNoRoteiro = roteiro.lojas?.some(
+      (loja) => loja.id === manutencao.lojaId,
+    );
+    return Boolean(lojaNoRoteiro);
+  }
+
+  const roteiroComLoja = await Roteiro.findOne({
+    where: { funcionarioId: usuarioId },
+    include: [
+      {
+        model: Loja,
+        as: "lojas",
+        where: { id: manutencao.lojaId },
+        attributes: ["id"],
+        through: { attributes: [] },
+      },
+    ],
+  });
+
+  return Boolean(roteiroComLoja);
+};
 
 export const listarManutencoes = async (req, res) => {
   try {
@@ -157,13 +201,35 @@ export const atualizarManutencao = async (req, res) => {
         });
       }
 
-      if (!isAdmin && !["feito", "concluida"].includes(statusNormalizado)) {
+      if (!isAdmin && !isStatusConcluido(statusNormalizado)) {
         return res.status(403).json({
           error: "Funcionário só pode marcar manutenção como feito/concluida",
         });
       }
 
+      if (!isAdmin && isStatusConcluido(statusNormalizado)) {
+        const autorizadoNoRoteiro = await usuarioEhResponsavelRoteiroDaLoja(
+          req.usuario.id,
+          manutencao,
+        );
+
+        if (!autorizadoNoRoteiro) {
+          return res.status(403).json({
+            error:
+              "Somente o funcionário responsável pelo roteiro desta loja pode concluir a manutenção",
+          });
+        }
+      }
+
       dadosAtualizacao.status = statusNormalizado;
+
+      if (isStatusConcluido(statusNormalizado)) {
+        dadosAtualizacao.concluidoPorId = req.usuario.id;
+        dadosAtualizacao.concluidoEm = new Date();
+      } else {
+        dadosAtualizacao.concluidoPorId = null;
+        dadosAtualizacao.concluidoEm = null;
+      }
     }
 
     await manutencao.update(dadosAtualizacao);

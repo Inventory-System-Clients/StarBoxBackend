@@ -58,6 +58,18 @@ const Manutencao = sequelize.define(
         key: "id",
       },
     },
+    concluidoPorId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "usuarios",
+        key: "id",
+      },
+    },
+    concluidoEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     tableName: "manutencoes",

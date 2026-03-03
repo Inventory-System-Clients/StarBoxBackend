@@ -7,7 +7,8 @@ import {
   EstoqueLoja,
   Loja,
   CarrinhoPeca,
-  Peca
+  Peca,
+  Manutencao,
 } from "../models/index.js";
 import { Op } from "sequelize";
 import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
@@ -63,6 +64,24 @@ export const registrarMovimentacao = async (req, res) => {
     if (!maquinaId || totalPre === undefined || abastecidas === undefined) {
       return res.status(400).json({
         error: "maquinaId, totalPre e abastecidas são obrigatórios",
+      });
+    }
+
+    const manutencaoPendente = await Manutencao.findOne({
+      where: {
+        maquinaId,
+        status: {
+          [Op.in]: ["pendente", "em_andamento"],
+        },
+      },
+      order: [["createdAt", "DESC"]],
+    });
+
+    if (manutencaoPendente) {
+      return res.status(409).json({
+        error:
+          "Esta máquina possui manutenção pendente. Conclua a manutenção antes de lançar movimentação.",
+        manutencaoId: manutencaoPendente.id,
       });
     }
 
@@ -158,7 +177,11 @@ export const registrarMovimentacao = async (req, res) => {
     });
 
     // Registrar peças usadas, se houver
-    if (req.body.pecasUsadas && Array.isArray(req.body.pecasUsadas) && req.body.pecasUsadas.length > 0) {
+    if (
+      req.body.pecasUsadas &&
+      Array.isArray(req.body.pecasUsadas) &&
+      req.body.pecasUsadas.length > 0
+    ) {
       await registrarMovimentacaoPecas(movimentacao.id, req.body.pecasUsadas);
     }
 
@@ -203,7 +226,10 @@ export const registrarMovimentacao = async (req, res) => {
         await MovimentacaoProduto.bulkCreate(detalhesProdutos);
         // Atualiza estoque da loja para produtos
         for (const produto of detalhesProdutos) {
-          if (produto.quantidadeAbastecida && produto.quantidadeAbastecida > 0) {
+          if (
+            produto.quantidadeAbastecida &&
+            produto.quantidadeAbastecida > 0
+          ) {
             const estoqueLoja = await EstoqueLoja.findOne({
               where: {
                 lojaId: maquina.lojaId,
@@ -211,14 +237,20 @@ export const registrarMovimentacao = async (req, res) => {
               },
             });
             if (estoqueLoja) {
-              const novaQuantidade = Math.max(0, estoqueLoja.quantidade - produto.quantidadeAbastecida);
+              const novaQuantidade = Math.max(
+                0,
+                estoqueLoja.quantidade - produto.quantidadeAbastecida,
+              );
               await estoqueLoja.update({ quantidade: novaQuantidade });
             }
           }
         }
       }
       if (pecasParaMovimentacao.length > 0) {
-        await registrarMovimentacaoPecas(movimentacao.id, pecasParaMovimentacao);
+        await registrarMovimentacaoPecas(
+          movimentacao.id,
+          pecasParaMovimentacao,
+        );
       }
     }
 
@@ -312,14 +344,24 @@ export const registrarMovimentacao = async (req, res) => {
         concluida: true,
       },
     });
-    console.log("[LOG] Status existente MovimentacaoStatusDiario:", statusExistente);
+    console.log(
+      "[LOG] Status existente MovimentacaoStatusDiario:",
+      statusExistente,
+    );
     if (statusExistente) {
       if (statusExistente.dataValues) {
-        console.log("[MovStatusDiario] Já existe status para esta máquina/roteiro/data:", statusExistente.dataValues);
+        console.log(
+          "[MovStatusDiario] Já existe status para esta máquina/roteiro/data:",
+          statusExistente.dataValues,
+        );
       } else {
-        console.log("[LOG] Movimentação já registrada para esta máquina hoje. Bloqueando duplicidade.");
+        console.log(
+          "[LOG] Movimentação já registrada para esta máquina hoje. Bloqueando duplicidade.",
+        );
       }
-      res.status(400).json({ error: "Movimentação já registrada para esta máquina hoje." });
+      res
+        .status(400)
+        .json({ error: "Movimentação já registrada para esta máquina hoje." });
       return;
     }
     // Após registrar movimentação, marcar como concluída
@@ -329,7 +371,10 @@ export const registrarMovimentacao = async (req, res) => {
       data: dataHoje,
       concluida: true,
     });
-    console.log("[LOG] Resultado do upsert MovimentacaoStatusDiario:", upsertResult);
+    console.log(
+      "[LOG] Resultado do upsert MovimentacaoStatusDiario:",
+      upsertResult,
+    );
     // Logar movimentacaoCompleta antes de retornar
     console.log("[LOG] Movimentação registrada com sucesso:", {
       movimentacaoId: movimentacao.id,

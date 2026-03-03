@@ -190,6 +190,15 @@ Usuario.hasMany(Manutencao, {
   as: "manutencoesCriadas",
 });
 
+Manutencao.belongsTo(Usuario, {
+  foreignKey: "concluidoPorId",
+  as: "concluidoPor",
+});
+Usuario.hasMany(Manutencao, {
+  foreignKey: "concluidoPorId",
+  as: "manutencoesConcluidas",
+});
+
 Manutencao.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
 Roteiro.hasMany(Manutencao, { foreignKey: "roteiroId", as: "manutencoes" });
 export {
