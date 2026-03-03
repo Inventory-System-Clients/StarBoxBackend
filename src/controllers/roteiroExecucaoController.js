@@ -1,6 +1,10 @@
-
 import { Op } from "sequelize";
-import { Roteiro, Loja, Maquina } from "../models/index.js";
+import {
+  Roteiro,
+  Loja,
+  Maquina,
+  RoteiroFinalizacaoDiaria,
+} from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 async function getRoteiroExecucaoComStatus(req, res) {
@@ -15,13 +19,21 @@ async function getRoteiroExecucaoComStatus(req, res) {
             {
               model: Maquina,
               as: "maquinas",
-              attributes: ["id", "nome", "codigo", "tipo", "capacidadePadrao", "lojaId"],
+              attributes: [
+                "id",
+                "nome",
+                "codigo",
+                "tipo",
+                "capacidadePadrao",
+                "lojaId",
+              ],
             },
           ],
         },
       ],
     });
-    if (!roteiro) return res.status(404).json({ error: "Roteiro não encontrado" });
+    if (!roteiro)
+      return res.status(404).json({ error: "Roteiro não encontrado" });
 
     // Buscar status diário das máquinas para o roteiro e data de hoje
     const dataHoje = new Date().toISOString().slice(0, 10);
@@ -32,14 +44,23 @@ async function getRoteiroExecucaoComStatus(req, res) {
         concluida: true,
       },
     });
-    const maquinasFinalizadas = new Set(statusMaquinas.map((s) => s.maquina_id));
+    const finalizacaoManual = await RoteiroFinalizacaoDiaria.findOne({
+      where: {
+        roteiroId: roteiro.id,
+        data: dataHoje,
+        finalizado: true,
+      },
+    });
+    const maquinasFinalizadas = new Set(
+      statusMaquinas.map((s) => s.maquina_id),
+    );
 
     let roteiroFinalizado = true;
     const lojas = roteiro.lojas.map((loja) => {
       let lojaFinalizada = true;
       // Movimentações consideradas para esta loja
-      const movimentacoesLoja = statusMaquinas.filter(s => {
-        return loja.maquinas.some(m => m.id === s.maquina_id);
+      const movimentacoesLoja = statusMaquinas.filter((s) => {
+        return loja.maquinas.some((m) => m.id === s.maquina_id);
       });
       const maquinas = loja.maquinas.map((maquina) => {
         const finalizada = maquinasFinalizadas.has(maquina.id);
@@ -56,25 +77,26 @@ async function getRoteiroExecucaoComStatus(req, res) {
         nome: loja.nome,
         status: lojaFinalizada ? "finalizado" : "pendente",
         maquinas,
-        movimentacoesConsideradas: movimentacoesLoja.map(s => ({
+        movimentacoesConsideradas: movimentacoesLoja.map((s) => ({
           maquina_id: s.maquina_id,
           roteiro_id: s.roteiro_id,
           data: s.data,
-          concluida: s.concluida
-        }))
+          concluida: s.concluida,
+        })),
       };
     });
     res.json({
       id: roteiro.id,
       nome: roteiro.nome,
-      status: roteiroFinalizado ? "finalizado" : "pendente",
+      status:
+        finalizacaoManual || roteiroFinalizado ? "finalizado" : "pendente",
       lojas,
-      movimentacoesHoje: statusMaquinas.map(s => ({
+      movimentacoesHoje: statusMaquinas.map((s) => ({
         maquina_id: s.maquina_id,
         roteiro_id: s.roteiro_id,
         data: s.data,
-        concluida: s.concluida
-      }))
+        concluida: s.concluida,
+      })),
     });
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar execução do roteiro" });
@@ -94,7 +116,14 @@ async function getTodosRoteirosComStatus(req, res) {
             {
               model: Maquina,
               as: "maquinas",
-              attributes: ["id", "nome", "codigo", "tipo", "capacidadePadrao", "lojaId"],
+              attributes: [
+                "id",
+                "nome",
+                "codigo",
+                "tipo",
+                "capacidadePadrao",
+                "lojaId",
+              ],
             },
           ],
         },
@@ -108,15 +137,28 @@ async function getTodosRoteirosComStatus(req, res) {
         concluida: true,
       },
     });
+    const finalizacoesManuais = await RoteiroFinalizacaoDiaria.findAll({
+      where: {
+        data: dataHoje,
+        finalizado: true,
+      },
+    });
+    const finalizacoesPorRoteiro = new Set(
+      finalizacoesManuais.map((item) => item.roteiroId),
+    );
     // Agrupar por roteiro
     const roteirosComStatus = roteiros.map((roteiro) => {
-      const statusMaquinasRoteiro = statusMaquinas.filter(s => s.roteiro_id === roteiro.id);
-      const maquinasFinalizadas = new Set(statusMaquinasRoteiro.map((s) => s.maquina_id));
+      const statusMaquinasRoteiro = statusMaquinas.filter(
+        (s) => s.roteiro_id === roteiro.id,
+      );
+      const maquinasFinalizadas = new Set(
+        statusMaquinasRoteiro.map((s) => s.maquina_id),
+      );
       let roteiroFinalizado = true;
       const lojas = roteiro.lojas.map((loja) => {
         let lojaFinalizada = true;
-        const movimentacoesLoja = statusMaquinasRoteiro.filter(s => {
-          return loja.maquinas.some(m => m.id === s.maquina_id);
+        const movimentacoesLoja = statusMaquinasRoteiro.filter((s) => {
+          return loja.maquinas.some((m) => m.id === s.maquina_id);
         });
         const maquinas = loja.maquinas.map((maquina) => {
           const finalizada = maquinasFinalizadas.has(maquina.id);
@@ -133,25 +175,28 @@ async function getTodosRoteirosComStatus(req, res) {
           nome: loja.nome,
           status: lojaFinalizada ? "finalizado" : "pendente",
           maquinas,
-          movimentacoesConsideradas: movimentacoesLoja.map(s => ({
+          movimentacoesConsideradas: movimentacoesLoja.map((s) => ({
             maquina_id: s.maquina_id,
             roteiro_id: s.roteiro_id,
             data: s.data,
-            concluida: s.concluida
-          }))
+            concluida: s.concluida,
+          })),
         };
       });
       return {
         id: roteiro.id,
         nome: roteiro.nome,
-        status: roteiroFinalizado ? "finalizado" : "pendente",
+        status:
+          finalizacoesPorRoteiro.has(roteiro.id) || roteiroFinalizado
+            ? "finalizado"
+            : "pendente",
         lojas,
-        movimentacoesHoje: statusMaquinasRoteiro.map(s => ({
+        movimentacoesHoje: statusMaquinasRoteiro.map((s) => ({
           maquina_id: s.maquina_id,
           roteiro_id: s.roteiro_id,
           data: s.data,
-          concluida: s.concluida
-        }))
+          concluida: s.concluida,
+        })),
       };
     });
     res.json(roteirosComStatus);

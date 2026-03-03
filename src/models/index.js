@@ -36,6 +36,8 @@ import RegistroDinheiro from "./RegistroDinheiro.js";
 import Roteiro from "./Roteiro.js";
 import SecurityControl from "./SecurityControl.js";
 import Manutencao from "./Manutencao.js";
+import WhatsAppAlerta from "./WhatsAppAlerta.js";
+import RoteiroFinalizacaoDiaria from "./RoteiroFinalizacaoDiaria.js";
 Roteiro.associate({ Usuario, Loja });
 // Movimentação de Veículo -> Veículo e Usuário
 MovimentacaoVeiculo.belongsTo(Veiculo, {
@@ -201,6 +203,24 @@ Usuario.hasMany(Manutencao, {
 
 Manutencao.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
 Roteiro.hasMany(Manutencao, { foreignKey: "roteiroId", as: "manutencoes" });
+
+RoteiroFinalizacaoDiaria.belongsTo(Roteiro, {
+  foreignKey: "roteiroId",
+  as: "roteiro",
+});
+Roteiro.hasMany(RoteiroFinalizacaoDiaria, {
+  foreignKey: "roteiroId",
+  as: "finalizacoesDiarias",
+});
+
+RoteiroFinalizacaoDiaria.belongsTo(Usuario, {
+  foreignKey: "finalizadoPorId",
+  as: "finalizadoPor",
+});
+Usuario.hasMany(RoteiroFinalizacaoDiaria, {
+  foreignKey: "finalizadoPorId",
+  as: "roteirosFinalizados",
+});
 export {
   CarrinhoPeca,
   Usuario,
@@ -224,4 +244,6 @@ export {
   MovimentacaoPeca,
   SecurityControl,
   Manutencao,
+  WhatsAppAlerta,
+  RoteiroFinalizacaoDiaria,
 };

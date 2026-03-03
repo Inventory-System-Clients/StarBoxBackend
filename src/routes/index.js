@@ -21,6 +21,7 @@ import carrinhoPecaRoutes from "./carrinhoPeca.routes.js";
 import roteiroStatusRoutes from "./roteiroStatus.routes.js";
 import securityRoutes from "./security.routes.js";
 import manutencaoRoutes from "./manutencao.routes.js";
+import whatsappAlertaRoutes from "./whatsappAlerta.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -48,6 +49,7 @@ router.use("/movimentacao-veiculos", movimentacaoVeiculoRoutes);
 router.use("/roteiros", roteirosRoutes);
 router.use("/status-diario", statusDiarioRoutes);
 router.use("/roteiro-status", roteiroStatusRoutes);
+router.use("/whatsapp-alertas", whatsappAlertaRoutes);
 
 // Nova rota para a aba de financeiro
 router.use("/financeiro", financeiroRoutes);

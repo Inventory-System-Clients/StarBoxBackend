@@ -1,5 +1,7 @@
 import express from "express";
 import { Roteiro, Loja, Usuario, Maquina } from "../models/index.js";
+import { autenticar } from "../middlewares/auth.js";
+import { finalizarRoteiro } from "../controllers/roteiroController.js";
 
 const router = express.Router();
 
@@ -44,6 +46,8 @@ router.post("/:id/iniciar", async (req, res) => {
   }
 });
 
+router.post("/:id/finalizar", autenticar, finalizarRoteiro);
+
 // Mover loja entre roteiros
 router.post("/mover-loja", async (req, res) => {
   try {
@@ -77,7 +81,7 @@ router.get("/com-status", getTodosRoteirosComStatus);
 
 // Página de execução de roteiro: retorna lojas e máquinas do roteiro
 import { getRoteiroExecucaoComStatus } from "../controllers/roteiroExecucaoController.js";
-  
+
 router.get("/:id/executar", getRoteiroExecucaoComStatus);
 
 export default router;
