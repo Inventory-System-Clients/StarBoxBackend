@@ -16,21 +16,11 @@ import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
-  // Validação aprimorada de campos obrigatórios
+  // Validação: apenas campos realmente obrigatórios em todos os formulários
   const requiredFields = [
     "maquinaId",
-    "roteiroId",
     "totalPre",
     "abastecidas",
-    "fichas",
-    "contadorIn",
-    "contadorOut",
-    "quantidade_notas_entrada",
-    "valor_entrada_maquininha_pix",
-    "retiradaEstoque",
-    "retiradaProduto",
-    "observacoes",
-    "produtos",
   ];
   const missing = requiredFields.filter((f) => req.body[f] === undefined);
   if (missing.length > 0) {
@@ -45,6 +35,10 @@ export const registrarMovimentacao = async (req, res) => {
       totalPre,
       sairam,
       abastecidas,
+      fichas,
+      contadorIn,
+      contadorOut,
+      contadorMaquina,
       contadorInManual,
       contadorOutManual,
       contadorInDigital,
@@ -52,10 +46,11 @@ export const registrarMovimentacao = async (req, res) => {
       observacoes,
       tipoOcorrencia,
       retiradaEstoque,
-      produtos, // Array de { produtoId, quantidadeSaiu, quantidadeAbastecida }
-      roteiroId, // deve ser enviado pelo frontend
-      // fichas removido
-      quantidade_notas_entrada, // <-- adicionado para corrigir erro
+      retiradaProduto,
+      produtos = [], // Array de { produtoId, quantidadeSaiu, quantidadeAbastecida }
+      roteiroId, // pode não vir do Movimentacoes.jsx
+      quantidade_notas_entrada,
+      valor_entrada_maquininha_pix,
     } = req.body;
 
     // (Removido alerta/bloqueio de pular loja: agora permite movimentação em qualquer loja do roteiro)
@@ -159,7 +154,7 @@ export const registrarMovimentacao = async (req, res) => {
       totalPosCalculado: totalPre - saidaRecalculada + abastecidas,
     });
 
-    // Criar movimentação
+    // Criar movimentação — persistir TODOS os campos enviados pelo frontend
     const movimentacao = await Movimentacao.create({
       maquinaId,
       usuarioId: req.usuario.id,
@@ -167,10 +162,12 @@ export const registrarMovimentacao = async (req, res) => {
       totalPre,
       sairam: saidaRecalculada,
       abastecidas,
-      contadorInManual,
-      contadorOutManual,
-      contadorInDigital,
-      contadorOutDigital,
+      fichas: fichas || 0,
+      contadorIn: contadorIn ?? contadorInDigital ?? null,
+      contadorOut: contadorOut ?? contadorOutDigital ?? null,
+      contadorMaquina: contadorMaquina ?? null,
+      quantidade_notas_entrada: quantidade_notas_entrada ?? null,
+      valor_entrada_maquininha_pix: valor_entrada_maquininha_pix ?? null,
       observacoes,
       tipoOcorrencia: tipoOcorrencia || "Normal",
       retiradaEstoque: retiradaEstoque || false,

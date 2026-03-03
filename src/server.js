@@ -149,6 +149,25 @@ const startServer = async () => {
     await sequelize.sync();
     console.log("✅ Database sincronizado!");
 
+    // --- Migrations inline: ajustes de colunas existentes ---
+    try {
+      // Alterar quantidade_notas_entrada de INTEGER para DECIMAL(10,2) se necessário
+      const [colInfo] = await sequelize.query(`
+        SELECT data_type FROM information_schema.columns
+        WHERE table_name = 'movimentacoes' AND column_name = 'quantidade_notas_entrada'
+      `);
+      if (colInfo.length > 0 && colInfo[0].data_type === 'integer') {
+        await sequelize.query(`
+          ALTER TABLE movimentacoes
+          ALTER COLUMN quantidade_notas_entrada TYPE DECIMAL(10,2)
+          USING quantidade_notas_entrada::DECIMAL(10,2)
+        `);
+        console.log("✅ Migration: quantidade_notas_entrada alterada para DECIMAL(10,2)");
+      }
+    } catch (migErr) {
+      console.warn("⚠️ Migration inline (quantidade_notas_entrada):", migErr.message);
+    }
+
     // Criar admin padrão se não existir
     const { Usuario } = await import("./models/index.js");
     const adminEmail = process.env.ADMIN_EMAIL || "admin@agarramais.com";

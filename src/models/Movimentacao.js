@@ -99,9 +99,9 @@ const Movimentacao = sequelize.define(
 
     // Notas e Pagamento Digital
     quantidade_notas_entrada: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
-      comment: "Quantidade de notas inseridas na máquina",
+      comment: "Quantidade/valor de notas inseridas na máquina",
     },
     valor_entrada_maquininha_pix: {
       type: DataTypes.DECIMAL(10, 2),
