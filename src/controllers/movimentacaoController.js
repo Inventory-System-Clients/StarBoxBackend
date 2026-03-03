@@ -780,3 +780,209 @@ export const problemaMaquina = async (req, res) => {
     res.status(500).json({ error: "Erro ao buscar problema da máquina" });
   }
 };
+
+// Relatório de movimentações do dia
+export const relatorioMovimentacoesDia = async (req, res) => {
+  try {
+    const { data, lojaId } = req.query;
+    const targetDate = data ? new Date(data) : new Date();
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const whereMovimentacao = {
+      dataColeta: { [Op.between]: [startOfDay, endOfDay] },
+      retiradaEstoque: false,
+    };
+
+    const whereMaquina = {};
+    if (lojaId) whereMaquina.lojaId = lojaId;
+
+    const movimentacoes = await Movimentacao.findAll({
+      where: whereMovimentacao,
+      include: [
+        {
+          model: Maquina,
+          as: "maquina",
+          where: Object.keys(whereMaquina).length ? whereMaquina : undefined,
+          include: [{ model: Loja, as: "loja", attributes: ["id", "nome"] }],
+        },
+        { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
+      ],
+      order: [["dataColeta", "DESC"]],
+    });
+
+    const totalFaturado = movimentacoes.reduce(
+      (acc, m) => acc + parseFloat(m.valorFaturado || 0),
+      0
+    );
+    const totalFichas = movimentacoes.reduce((acc, m) => acc + (m.fichas || 0), 0);
+    const totalSairam = movimentacoes.reduce((acc, m) => acc + (m.sairam || 0), 0);
+
+    res.json({
+      data: targetDate.toISOString().split("T")[0],
+      totalMovimentacoes: movimentacoes.length,
+      totalFaturado,
+      totalFichas,
+      totalSairam,
+      movimentacoes,
+    });
+  } catch (error) {
+    console.error("Erro no relatório de movimentações do dia:", error);
+    res.status(500).json({ error: "Erro ao gerar relatório de movimentações do dia" });
+  }
+};
+
+// Relatório de lucro total do dia
+export const relatorioLucroTotalDia = async (req, res) => {
+  try {
+    const { data, lojaId } = req.query;
+    const targetDate = data ? new Date(data) : new Date();
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const whereMovimentacao = {
+      dataColeta: { [Op.between]: [startOfDay, endOfDay] },
+      retiradaEstoque: false,
+    };
+
+    const whereMaquina = {};
+    if (lojaId) whereMaquina.lojaId = lojaId;
+
+    // Faturamento total do dia
+    const movimentacoes = await Movimentacao.findAll({
+      where: whereMovimentacao,
+      include: [
+        {
+          model: Maquina,
+          as: "maquina",
+          where: Object.keys(whereMaquina).length ? whereMaquina : undefined,
+          attributes: ["id", "nome", "comissaoLojaPercentual"],
+        },
+      ],
+      raw: true,
+      nest: true,
+    });
+
+    const faturamento = movimentacoes.reduce(
+      (acc, m) => acc + parseFloat(m.valorFaturado || 0),
+      0
+    );
+
+    // Custo dos produtos vendidos
+    const itensVendidos = await MovimentacaoProduto.findAll({
+      attributes: ["quantidadeSaiu"],
+      include: [
+        { model: Produto, as: "produto", attributes: ["custoUnitario"] },
+        {
+          model: Movimentacao,
+          attributes: [],
+          where: whereMovimentacao,
+          include: [
+            {
+              model: Maquina,
+              as: "maquina",
+              where: Object.keys(whereMaquina).length ? whereMaquina : undefined,
+              attributes: [],
+            },
+          ],
+        },
+      ],
+      raw: true,
+      nest: true,
+    });
+
+    const custoTotal = itensVendidos.reduce((acc, item) => {
+      const qtd = item.quantidadeSaiu || 0;
+      const custo = parseFloat(item.produto?.custoUnitario || 0);
+      return acc + qtd * custo;
+    }, 0);
+
+    // Comissão total do dia
+    const comissaoTotal = movimentacoes.reduce((acc, m) => {
+      const valor = parseFloat(m.valorFaturado || 0);
+      const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
+      return acc + (valor * percentual) / 100;
+    }, 0);
+
+    const lucro = faturamento - custoTotal - comissaoTotal;
+
+    res.json({
+      data: targetDate.toISOString().split("T")[0],
+      faturamento,
+      custoTotal,
+      comissaoTotal,
+      lucro,
+    });
+  } catch (error) {
+    console.error("Erro no relatório de lucro do dia:", error);
+    res.status(500).json({ error: "Erro ao gerar relatório de lucro do dia" });
+  }
+};
+
+// Relatório de comissão total do dia
+export const relatorioComissaoTotalDia = async (req, res) => {
+  try {
+    const { data, lojaId } = req.query;
+    const targetDate = data ? new Date(data) : new Date();
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const whereMovimentacao = {
+      dataColeta: { [Op.between]: [startOfDay, endOfDay] },
+      retiradaEstoque: false,
+    };
+
+    const whereMaquina = {};
+    if (lojaId) whereMaquina.lojaId = lojaId;
+
+    const movimentacoes = await Movimentacao.findAll({
+      where: whereMovimentacao,
+      include: [
+        {
+          model: Maquina,
+          as: "maquina",
+          where: Object.keys(whereMaquina).length ? whereMaquina : undefined,
+          attributes: ["id", "nome", "comissaoLojaPercentual"],
+          include: [{ model: Loja, as: "loja", attributes: ["id", "nome"] }],
+        },
+      ],
+      raw: true,
+      nest: true,
+    });
+
+    let comissaoTotal = 0;
+    const detalhes = [];
+
+    for (const m of movimentacoes) {
+      const valor = parseFloat(m.valorFaturado || 0);
+      const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
+      const comissao = (valor * percentual) / 100;
+      comissaoTotal += comissao;
+
+      if (comissao > 0) {
+        detalhes.push({
+          maquina: m.maquina?.nome,
+          loja: m.maquina?.loja?.nome,
+          valorFaturado: valor,
+          percentualComissao: percentual,
+          comissao,
+        });
+      }
+    }
+
+    res.json({
+      data: targetDate.toISOString().split("T")[0],
+      comissaoTotal,
+      detalhes,
+    });
+  } catch (error) {
+    console.error("Erro no relatório de comissão do dia:", error);
+    res.status(500).json({ error: "Erro ao gerar relatório de comissão do dia" });
+  }
+};

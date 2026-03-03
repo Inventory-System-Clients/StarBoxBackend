@@ -18,6 +18,12 @@ import {
 const router = express.Router();
 
 router.get("/", autenticar, listarMovimentacoes);
+
+// Relatório routes MUST come before /:id to avoid being caught by the param route
+router.get("/relatorio/movimentacoes-dia", autenticar, relatorioMovimentacoesDia);
+router.get("/relatorio/lucro-dia", autenticar, relatorioLucroTotalDia);
+router.get("/relatorio/comissao-dia", autenticar, relatorioComissaoTotalDia);
+
 router.get("/:id", autenticar, obterMovimentacao);
 router.post(
   "/",
@@ -38,8 +44,5 @@ router.delete(
   registrarLog("DELETAR_MOVIMENTACAO", "Movimentacao"),
   deletarMovimentacao
 );
-router.get("/relatorio/movimentacoes-dia", autenticar, relatorioMovimentacoesDia);
-router.get("/relatorio/lucro-dia", autenticar, relatorioLucroTotalDia);
-router.get("/relatorio/comissao-dia", autenticar, relatorioComissaoTotalDia);
 
 export default router;
