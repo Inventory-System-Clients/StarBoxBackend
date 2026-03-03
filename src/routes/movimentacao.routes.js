@@ -35,5 +35,8 @@ router.delete(
   registrarLog("DELETAR_MOVIMENTACAO", "Movimentacao"),
   deletarMovimentacao
 );
+router.get("/relatorio/movimentacoes-dia", autenticar, relatorioMovimentacoesDia);
+router.get("/relatorio/lucro-dia", autenticar, relatorioLucroTotalDia);
+router.get("/relatorio/comissao-dia", autenticar, relatorioComissaoTotalDia);
 
 export default router;
