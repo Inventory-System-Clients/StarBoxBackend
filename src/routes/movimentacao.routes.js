@@ -5,6 +5,9 @@ import {
   obterMovimentacao,
   atualizarMovimentacao,
   deletarMovimentacao,
+  relatorioMovimentacoesDia,
+  relatorioLucroTotalDia,
+  relatorioComissaoTotalDia,
 } from "../controllers/movimentacaoController.js";
 import {
   autenticar,
