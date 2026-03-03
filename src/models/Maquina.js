@@ -44,6 +44,17 @@ const Maquina = sequelize.define(
       defaultValue: 5.0,
       comment: "Valor em R$ de cada ficha",
     },
+    comissaoLojaPercentual: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: false,
+      defaultValue: 0,
+      field: "comissao_loja_percentual",
+      comment: "Percentual de comissão da loja (0-100%)",
+      validate: {
+        min: 0,
+        max: 100,
+      },
+    },
     fichasNecessarias: {
       type: DataTypes.INTEGER,
       allowNull: true,
@@ -111,7 +122,7 @@ const Maquina = sequelize.define(
   {
     tableName: "maquinas",
     timestamps: true,
-  }
+  },
 );
 
 export default Maquina;

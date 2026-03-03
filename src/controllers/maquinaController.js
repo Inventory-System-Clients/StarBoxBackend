@@ -4,11 +4,9 @@ export const calcularQuantidadeAtual = async (req, res) => {
   try {
     const { maquinaId, contadorIn, contadorOut } = req.query;
     if (!maquinaId || contadorIn === undefined || contadorOut === undefined) {
-      return res
-        .status(400)
-        .json({
-          error: "maquinaId, contadorIn e contadorOut são obrigatórios",
-        });
+      return res.status(400).json({
+        error: "maquinaId, contadorIn e contadorOut são obrigatórios",
+      });
     }
     const maquina = await Maquina.findByPk(maquinaId);
     if (!maquina) {
@@ -100,6 +98,7 @@ export const criarMaquina = async (req, res) => {
       lojaId,
       capacidadePadrao,
       valorFicha,
+      comissaoLojaPercentual,
       fichasNecessarias,
       forcaForte,
       forcaFraca,
@@ -115,6 +114,17 @@ export const criarMaquina = async (req, res) => {
         .json({ error: "Código e ID da loja são obrigatórios" });
     }
 
+    if (
+      comissaoLojaPercentual !== undefined &&
+      comissaoLojaPercentual !== null &&
+      (Number(comissaoLojaPercentual) < 0 ||
+        Number(comissaoLojaPercentual) > 100)
+    ) {
+      return res.status(400).json({
+        error: "Comissão da loja deve estar entre 0 e 100",
+      });
+    }
+
     // Verificar se código já existe
     const maquinaExistente = await Maquina.findOne({ where: { codigo } });
     if (maquinaExistente) {
@@ -128,6 +138,10 @@ export const criarMaquina = async (req, res) => {
       lojaId,
       capacidadePadrao: capacidadePadrao || 100,
       valorFicha: valorFicha || 5.0,
+      comissaoLojaPercentual:
+        comissaoLojaPercentual !== undefined && comissaoLojaPercentual !== null
+          ? Number(comissaoLojaPercentual)
+          : 0,
       fichasNecessarias: fichasNecessarias || null,
       forcaForte: forcaForte || null,
       forcaFraca: forcaFraca || null,
@@ -161,6 +175,7 @@ export const atualizarMaquina = async (req, res) => {
       lojaId,
       capacidadePadrao,
       valorFicha,
+      comissaoLojaPercentual,
       fichasNecessarias,
       forcaForte,
       forcaFraca,
@@ -179,6 +194,17 @@ export const atualizarMaquina = async (req, res) => {
       }
     }
 
+    if (
+      comissaoLojaPercentual !== undefined &&
+      comissaoLojaPercentual !== null &&
+      (Number(comissaoLojaPercentual) < 0 ||
+        Number(comissaoLojaPercentual) > 100)
+    ) {
+      return res.status(400).json({
+        error: "Comissão da loja deve estar entre 0 e 100",
+      });
+    }
+
     await maquina.update({
       codigo: codigo ?? maquina.codigo,
       nome: nome ?? maquina.nome,
@@ -186,6 +212,8 @@ export const atualizarMaquina = async (req, res) => {
       lojaId: lojaId ?? maquina.lojaId,
       capacidadePadrao: capacidadePadrao ?? maquina.capacidadePadrao,
       valorFicha: valorFicha ?? maquina.valorFicha,
+      comissaoLojaPercentual:
+        comissaoLojaPercentual ?? maquina.comissaoLojaPercentual,
       fichasNecessarias: fichasNecessarias ?? maquina.fichasNecessarias,
       forcaForte: forcaForte ?? maquina.forcaForte,
       forcaFraca: forcaFraca ?? maquina.forcaFraca,
