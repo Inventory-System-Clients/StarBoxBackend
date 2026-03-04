@@ -17,11 +17,10 @@ const Roteiro = sequelize.define("Roteiro", {
     field: "funcionarioNome",
   },
   diasSemana: {
-    type: DataTypes.JSON,
+    type: DataTypes.JSONB,
     allowNull: true,
     defaultValue: [],
     field: "dias_semana",
-    comment: 'Array de dias: ["SEG","TER","QUA","QUI","SEX","SAB","DOM"]',
   },
 });
 

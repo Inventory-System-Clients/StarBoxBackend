@@ -28,12 +28,15 @@ router.get("/", async (req, res) => {
 router.post("/:id/iniciar", async (req, res) => {
   try {
     const { funcionarioId, funcionarioNome } = req.body;
+    console.log("[INICIAR] body:", { funcionarioId, funcionarioNome });
     const roteiro = await Roteiro.findByPk(req.params.id);
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
-    await roteiro.update({ funcionarioId, funcionarioNome });
+    const result = await roteiro.update({ funcionarioId, funcionarioNome });
+    console.log("[INICIAR] após update:", { funcionarioId: result.funcionarioId, funcionarioNome: result.funcionarioNome });
     res.json({ success: true });
   } catch (error) {
+    console.error("[INICIAR] erro:", error);
     res.status(500).json({ error: "Erro ao iniciar roteiro" });
   }
 });
@@ -65,8 +68,25 @@ router.post("/mover-loja", async (req, res) => {
   }
 });
 
-// Atualizar campos do roteiro (diasSemana, nome) — apenas ADMIN
-router.patch("/:id", autenticar, autorizar("ADMIN"), atualizarDiasSemana);
+// Atualizar campos do roteiro (diasSemana, nome, funcionarioId, funcionarioNome)
+router.patch("/:id", async (req, res) => {
+  try {
+    const roteiro = await Roteiro.findByPk(req.params.id);
+    if (!roteiro) return res.status(404).json({ error: "Roteiro não encontrado" });
+
+    const camposPermitidos = ["diasSemana", "nome", "funcionarioId", "funcionarioNome"];
+    const update = {};
+    camposPermitidos.forEach((c) => {
+      if (req.body[c] !== undefined) update[c] = req.body[c];
+    });
+
+    await roteiro.update(update);
+    res.json(roteiro);
+  } catch (error) {
+    console.error("Erro ao atualizar roteiro:", error);
+    res.status(500).json({ error: "Erro ao atualizar roteiro" });
+  }
+});
 
 // Roteiros do dia corrente: GET /roteiros/do-dia?dia=SEG
 router.get("/do-dia", autenticar, async (req, res) => {
