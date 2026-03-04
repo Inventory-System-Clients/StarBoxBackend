@@ -9,10 +9,12 @@ const Roteiro = sequelize.define("Roteiro", {
   funcionarioId: {
     type: DataTypes.UUID,
     allowNull: true,
+    field: "funcionarioId",
   },
   funcionarioNome: {
     type: DataTypes.STRING,
     allowNull: true,
+    field: "funcionarioNome",
   },
   diasSemana: {
     type: DataTypes.JSON,
