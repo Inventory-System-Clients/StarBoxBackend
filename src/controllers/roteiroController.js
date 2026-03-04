@@ -8,14 +8,60 @@ import {
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
 
+const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
+
 export const criarRoteiro = async (req, res) => {
   try {
-    const { nome } = req.body;
+    const { nome, diasSemana } = req.body;
     if (!nome) return res.status(400).json({ error: "Nome é obrigatório" });
-    const roteiro = await Roteiro.create({ nome });
+    if (diasSemana !== undefined) {
+      if (!Array.isArray(diasSemana))
+        return res.status(400).json({ error: "diasSemana deve ser um array" });
+      const invalidos = diasSemana.filter((d) => !DIAS_VALIDOS.includes(d));
+      if (invalidos.length > 0)
+        return res.status(400).json({
+          error: `Dias inválidos: ${invalidos.join(", ")}. Use: ${DIAS_VALIDOS.join(", ")}`,
+        });
+    }
+    const roteiro = await Roteiro.create({ nome, diasSemana: diasSemana ?? [] });
     res.status(201).json(roteiro);
   } catch (error) {
     res.status(500).json({ error: "Erro ao criar roteiro" });
+  }
+};
+
+export const atualizarDiasSemana = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { diasSemana, ...outrosCampos } = req.body;
+
+    const roteiro = await Roteiro.findByPk(id);
+    if (!roteiro)
+      return res.status(404).json({ error: "Roteiro não encontrado" });
+
+    const updateData = {};
+
+    if (diasSemana !== undefined) {
+      if (!Array.isArray(diasSemana))
+        return res.status(400).json({ error: "diasSemana deve ser um array" });
+      const invalidos = diasSemana.filter((d) => !DIAS_VALIDOS.includes(d));
+      if (invalidos.length > 0)
+        return res.status(400).json({
+          error: `Dias inválidos: ${invalidos.join(", ")}. Use: ${DIAS_VALIDOS.join(", ")}`,
+        });
+      updateData.diasSemana = diasSemana;
+    }
+
+    if (outrosCampos.nome !== undefined) updateData.nome = outrosCampos.nome;
+
+    if (Object.keys(updateData).length === 0)
+      return res.status(400).json({ error: "Nenhum campo válido para atualizar" });
+
+    await roteiro.update(updateData);
+    res.json(roteiro);
+  } catch (error) {
+    console.error("Erro ao atualizar roteiro:", error);
+    res.status(500).json({ error: "Erro ao atualizar roteiro" });
   }
 };
 

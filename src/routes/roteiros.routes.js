@@ -1,21 +1,13 @@
 import express from "express";
 import { Roteiro, Loja, Usuario, Maquina } from "../models/index.js";
-import { autenticar } from "../middlewares/auth.js";
-import { finalizarRoteiro } from "../controllers/roteiroController.js";
+import { autenticar, autorizar } from "../middlewares/auth.js";
+import { finalizarRoteiro, criarRoteiro, atualizarDiasSemana } from "../controllers/roteiroController.js";
+import { Op, literal } from "sequelize";
 
 const router = express.Router();
 
-// Criar novo roteiro
-router.post("/", async (req, res) => {
-  try {
-    const { nome } = req.body;
-    if (!nome) return res.status(400).json({ error: "Nome é obrigatório" });
-    const roteiro = await Roteiro.create({ nome });
-    res.status(201).json(roteiro);
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao criar roteiro" });
-  }
-});
+// Criar novo roteiro (aceita diasSemana opcionalmente)
+router.post("/", autenticar, autorizar("ADMIN"), criarRoteiro);
 
 // Listar roteiros
 router.get("/", async (req, res) => {
@@ -73,10 +65,35 @@ router.post("/mover-loja", async (req, res) => {
   }
 });
 
-// Endpoint para buscar todos os roteiros com status
+// Atualizar campos do roteiro (diasSemana, nome) — apenas ADMIN
+router.patch("/:id", autenticar, autorizar("ADMIN"), atualizarDiasSemana);
 
+// Roteiros do dia corrente: GET /roteiros/do-dia?dia=SEG
+router.get("/do-dia", autenticar, async (req, res) => {
+  try {
+    const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
+    const { dia } = req.query;
+    if (!dia || !DIAS_VALIDOS.includes(dia.toUpperCase()))
+      return res.status(400).json({
+        error: `Parâmetro 'dia' obrigatório. Use um de: ${DIAS_VALIDOS.join(", ")}`,
+      });
+    const diaUpper = dia.toUpperCase();
+    const roteiros = await Roteiro.findAll({
+      where: literal(`"Roteiros"."dias_semana"::jsonb @> '"${diaUpper}"'`),
+      include: [
+        { model: Usuario, as: "funcionario", attributes: ["id", "nome"] },
+        { model: Loja, as: "lojas", attributes: ["id", "nome"] },
+      ],
+    });
+    res.json(roteiros);
+  } catch (error) {
+    console.error("Erro ao filtrar roteiros por dia:", error);
+    res.status(500).json({ error: "Erro ao filtrar roteiros por dia" });
+  }
+});
+
+// Endpoint para buscar todos os roteiros com status
 import { getTodosRoteirosComStatus } from "../controllers/roteiroExecucaoController.js";
-// Corrige o endpoint para buscar todos os roteiros com status
 router.get("/com-status", getTodosRoteirosComStatus);
 
 // Página de execução de roteiro: retorna lojas e máquinas do roteiro

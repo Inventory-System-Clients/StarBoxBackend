@@ -14,6 +14,13 @@ const Roteiro = sequelize.define("Roteiro", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  diasSemana: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: [],
+    field: "dias_semana",
+    comment: 'Array de dias: ["SEG","TER","QUA","QUI","SEX","SAB","DOM"]',
+  },
 });
 
 Roteiro.associate = (models) => {
