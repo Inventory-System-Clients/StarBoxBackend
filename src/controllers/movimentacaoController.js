@@ -145,7 +145,7 @@ export const registrarMovimentacao = async (req, res) => {
       return res.status(404).json({ error: "Máquina não encontrada" });
     }
 
-    // valorFaturado removido (não é mais calculado nem usado)
+    // valorFaturado = fichas * valorFicha + dinheiro(notas) + pix/cartão
 
     console.log("📝 [registrarMovimentacao] Criando movimentação:", {
       maquinaId,
@@ -156,6 +156,12 @@ export const registrarMovimentacao = async (req, res) => {
     });
 
     // Criar movimentação — persistir TODOS os campos enviados pelo frontend
+    const fichasQtd = fichas || 0;
+    const valorFaturado =
+      fichasQtd * parseFloat(maquina.valorFicha || 0) +
+      parseFloat(quantidade_notas_entrada || 0) +
+      parseFloat(valor_entrada_maquininha_pix || 0);
+
     const movimentacao = await Movimentacao.create({
       maquinaId,
       usuarioId: req.usuario.id,
@@ -163,7 +169,8 @@ export const registrarMovimentacao = async (req, res) => {
       totalPre,
       sairam: saidaRecalculada,
       abastecidas,
-      fichas: fichas || 0,
+      fichas: fichasQtd,
+      valorFaturado: parseFloat(valorFaturado.toFixed(2)),
       contadorIn: contadorIn ?? contadorInDigital ?? null,
       contadorOut: contadorOut ?? contadorOutDigital ?? null,
       contadorMaquina: contadorMaquina ?? null,
@@ -805,16 +812,19 @@ export const relatorioMovimentacoesDia = async (req, res) => {
           as: "maquina",
           where: Object.keys(whereMaquina).length ? whereMaquina : undefined,
           include: [{ model: Loja, as: "loja", attributes: ["id", "nome"] }],
+          attributes: { include: ["valorFicha"] },
         },
         { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
       ],
       order: [["dataColeta", "DESC"]],
     });
 
-    const totalFaturado = movimentacoes.reduce(
-      (acc, m) => acc + parseFloat(m.valorFaturado || 0),
-      0
-    );
+    const totalFaturado = movimentacoes.reduce((acc, m) => {
+      const fqtd = parseInt(m.fichas) || 0;
+      const vf = parseFloat(m.maquina?.valorFicha || 0);
+      const fat = fqtd * vf + parseFloat(m.quantidade_notas_entrada || 0) + parseFloat(m.valor_entrada_maquininha_pix || 0);
+      return acc + fat;
+    }, 0);
     const totalFichas = movimentacoes.reduce((acc, m) => acc + (m.fichas || 0), 0);
     const totalSairam = movimentacoes.reduce((acc, m) => acc + (m.sairam || 0), 0);
 
@@ -917,7 +927,7 @@ export const relatorioLucroTotalDia = async (req, res) => {
     const itensVendidosRaw = await MovimentacaoProduto.findAll({
       attributes: ["quantidadeSaiu"],
       include: [
-        { model: Produto, as: "produto", attributes: ["preco", "custoUnitario"] },
+        { model: Produto, as: "produto", attributes: ["custoUnitario"] },
         {
           model: Movimentacao,
           attributes: [],
@@ -937,8 +947,7 @@ export const relatorioLucroTotalDia = async (req, res) => {
 
     const custoProdutos = itensVendidos.reduce((acc, item) => {
       const qtd = parseInt(item.quantidadeSaiu) || 0;
-      // Usar preco (preço de venda) como principal, custoUnitario como fallback
-      const custo = parseFloat(item.produto?.preco || item.produto?.custoUnitario || 0);
+      const custo = parseFloat(item.produto?.custoUnitario || 0);
       return acc + qtd * custo;
     }, 0);
 

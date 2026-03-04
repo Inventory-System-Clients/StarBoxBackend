@@ -235,7 +235,7 @@ export const relatorioRoteiro = async (req, res) => {
   }
 };
 // src/controllers/relatorioController.js
-import { Sequelize, Op, fn, col } from "sequelize";
+import { Sequelize, Op, fn, col, literal } from "sequelize";
 import {
   Movimentacao,
   MovimentacaoProduto,
@@ -264,33 +264,35 @@ export const dashboardRelatorio = async (req, res) => {
     const whereMaquina = {};
     if (lojaId) whereMaquina.lojaId = lojaId;
 
-    // --- QUERY 1: TOTAIS GERAIS ---
-    const totaisRaw = await Movimentacao.findAll({
-      attributes: [
-        [fn("SUM", col("fichas")), "totalFichas"],
-        [fn("SUM", col("sairam")), "totalSairam"],
-        [fn("SUM", col("valorFaturado")), "faturamentoTotal"],
-        [fn("SUM", col("quantidade_notas_entrada")), "dinheiro"],
-        [fn("SUM", col("valor_entrada_maquininha_pix")), "pix"],
-      ],
+    // --- QUERY 1: TOTAIS GERAIS (in-memory para compatibilidade com valorFaturado nulo) ---
+    const allMovs = await Movimentacao.findAll({
+      where: whereMovimentacao,
       include: [
         {
           model: Maquina,
           as: "maquina",
           where: whereMaquina,
-          attributes: [],
+          attributes: ["id", "nome", "valorFicha", "capacidadePadrao", "comissaoLojaPercentual"],
         },
       ],
-      where: whereMovimentacao,
-      raw: true,
     });
 
-    const totaisDados = totaisRaw[0] || {};
-    const faturamento = parseFloat(totaisDados.faturamentoTotal || 0);
-    const saidas = parseInt(totaisDados.totalSairam || 0);
-    const fichas = parseInt(totaisDados.totalFichas || 0);
-    const dinheiro = parseFloat(totaisDados.dinheiro || 0);
-    const pix = parseFloat(totaisDados.pix || 0);
+    let totalFichasQtd = 0, totalFichasValor = 0, totalDinheiro = 0, totalPix = 0, totalSairam = 0;
+    for (const m of allMovs) {
+      const fqtd = parseInt(m.fichas) || 0;
+      const vf = parseFloat(m.maquina?.valorFicha || 0);
+      totalFichasQtd += fqtd;
+      totalFichasValor += fqtd * vf;
+      totalDinheiro += parseFloat(m.quantidade_notas_entrada || 0);
+      totalPix += parseFloat(m.valor_entrada_maquininha_pix || 0);
+      totalSairam += parseInt(m.sairam) || 0;
+    }
+
+    const faturamento = parseFloat((totalFichasValor + totalDinheiro + totalPix).toFixed(2));
+    const saidas = totalSairam;
+    const fichas = totalFichasQtd;
+    const dinheiro = parseFloat(totalDinheiro.toFixed(2));
+    const pix = parseFloat(totalPix.toFixed(2));
 
     // --- QUERY 2: CUSTO TOTAL ---
     const itensVendidos = await MovimentacaoProduto.findAll({
@@ -327,60 +329,45 @@ export const dashboardRelatorio = async (req, res) => {
 
     const lucro = faturamento - custoTotal;
 
-    // --- QUERY 3: GRÁFICO FINANCEIRO ---
-    const timelineRaw = await Movimentacao.findAll({
-      attributes: [
-        [fn("DATE", col("dataColeta")), "data"],
-        [fn("SUM", col("valorFaturado")), "faturamento"],
-      ],
-      include: [
-        {
-          model: Maquina,
-          as: "maquina",
-          where: whereMaquina,
-          attributes: [],
-        },
-      ],
-      where: whereMovimentacao,
-      group: [fn("DATE", col("dataColeta"))],
-      order: [[fn("DATE", col("dataColeta")), "ASC"]],
-      raw: true,
-    });
+    // --- QUERY 3: GRÁFICO FINANCEIRO (in-memory a partir de allMovs) ---
+    const timelineMap = {};
+    for (const m of allMovs) {
+      if (!m.dataColeta) continue;
+      const dia = new Date(m.dataColeta).toISOString().slice(0, 10);
+      if (!timelineMap[dia]) timelineMap[dia] = 0;
+      const fqtd = parseInt(m.fichas) || 0;
+      const vf = parseFloat(m.maquina?.valorFicha || 0);
+      timelineMap[dia] += fqtd * vf + parseFloat(m.quantidade_notas_entrada || 0) + parseFloat(m.valor_entrada_maquininha_pix || 0);
+    }
+    const timelineRaw = Object.entries(timelineMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([data, fat]) => ({ data, faturamento: parseFloat(fat.toFixed(2)) }));
 
-    // --- QUERY 4: PERFORMANCE POR MÁQUINA ---
-    const performanceRaw = await Movimentacao.findAll({
-      attributes: [
-        [col("maquina.nome"), "nome"],
-        [fn("SUM", col("valorFaturado")), "faturamento"],
-      ],
-      include: [
-        {
-          model: Maquina,
-          as: "maquina",
-          where: whereMaquina,
-          attributes: ["id", "nome", "capacidadePadrao"],
-        },
-      ],
-      where: whereMovimentacao,
-      group: ["maquina.id", "maquina.nome", "maquina.capacidadePadrao"],
-      raw: true,
-      nest: true,
-    });
+    // --- QUERY 4: PERFORMANCE POR MÁQUINA (in-memory a partir de allMovs) ---
+    const perfMap = {};
+    for (const m of allMovs) {
+      const maq = m.maquina;
+      if (!maq) continue;
+      if (!perfMap[maq.id]) {
+        perfMap[maq.id] = { id: maq.id, nome: maq.nome, capacidadePadrao: maq.capacidadePadrao, faturamento: 0 };
+      }
+      const fqtd = parseInt(m.fichas) || 0;
+      const vf = parseFloat(maq.valorFicha || 0);
+      perfMap[maq.id].faturamento += fqtd * vf + parseFloat(m.quantidade_notas_entrada || 0) + parseFloat(m.valor_entrada_maquininha_pix || 0);
+    }
 
     const performanceMaquinas = await Promise.all(
-      performanceRaw.map(async (p) => {
+      Object.values(perfMap).map(async (p) => {
         const ultimaMov = await Movimentacao.findOne({
-          where: { maquinaId: p.maquina.id },
+          where: { maquinaId: p.id },
           order: [["dataColeta", "DESC"]],
           attributes: ["totalPos"],
         });
-
         const estoqueAtual = ultimaMov ? ultimaMov.totalPos : 0;
-        const capacidade = p.maquina.capacidadePadrao || 100;
-
+        const capacidade = p.capacidadePadrao || 100;
         return {
-          nome: p.maquina.nome,
-          faturamento: parseFloat(p.faturamento || 0),
+          nome: p.nome,
+          faturamento: parseFloat(p.faturamento.toFixed(2)),
           ocupacao: ((estoqueAtual / capacidade) * 100).toFixed(1),
         };
       }),
@@ -431,7 +418,7 @@ export const dashboardRelatorio = async (req, res) => {
       },
       graficoFinanceiro: timelineRaw.map((t) => ({
         data: t.data,
-        faturamento: parseFloat(t.faturamento || 0),
+        faturamento: t.faturamento,
         custo: 0,
       })),
       performanceMaquinas,
@@ -570,7 +557,7 @@ export const balançoSemanal = async (req, res) => {
     const includeMaquina = {
       model: Maquina,
       as: "maquina",
-      attributes: ["id", "codigo", "lojaId"],
+      attributes: ["id", "codigo", "lojaId", "valorFicha"],
       include: [
         {
           model: Loja,
@@ -604,8 +591,11 @@ export const balançoSemanal = async (req, res) => {
 
     const totais = movimentacoes.reduce(
       (acc, mov) => {
-        acc.totalFichas += mov.fichas || 0;
-        acc.totalFaturamento += parseFloat(mov.valorFaturado || 0);
+        const fqtd = mov.fichas || 0;
+        const vf = parseFloat(mov.maquina?.valorFicha || 0);
+        const fat = fqtd * vf + parseFloat(mov.quantidade_notas_entrada || 0) + parseFloat(mov.valor_entrada_maquininha_pix || 0);
+        acc.totalFichas += fqtd;
+        acc.totalFaturamento += fat;
         acc.totalSairam += mov.sairam || 0;
         acc.totalAbastecidas += mov.abastecidas || 0;
         return acc;
@@ -662,8 +652,10 @@ export const balançoSemanal = async (req, res) => {
           abastecidas: 0,
         };
       }
-      lojasMap[lojaNome].fichas += mov.fichas || 0;
-      lojasMap[lojaNome].faturamento += parseFloat(mov.valorFaturado || 0);
+      const fqtdL = mov.fichas || 0;
+      const vfL = parseFloat(mov.maquina?.valorFicha || 0);
+      lojasMap[lojaNome].fichas += fqtdL;
+      lojasMap[lojaNome].faturamento += fqtdL * vfL + parseFloat(mov.quantidade_notas_entrada || 0) + parseFloat(mov.valor_entrada_maquininha_pix || 0);
       lojasMap[lojaNome].sairam += mov.sairam || 0;
       lojasMap[lojaNome].abastecidas += mov.abastecidas || 0;
     });
@@ -784,22 +776,14 @@ export const performanceMaquinas = async (req, res) => {
       whereMaquina.lojaId = lojaId;
     }
 
-    const performance = await Movimentacao.findAll({
-      attributes: [
-        "maquinaId",
-        [fn("COUNT", col("id")), "totalMovimentacoes"],
-        [fn("SUM", col("fichas")), "totalFichas"],
-        [fn("SUM", col("valorFaturado")), "totalFaturamento"],
-        [fn("SUM", col("sairam")), "totalSairam"],
-        [fn("AVG", col("mediaFichasPremio")), "mediaFichasPremioGeral"],
-      ],
+    const movimPerf = await Movimentacao.findAll({
       where: whereMovimentacao,
       include: [
         {
           model: Maquina,
           as: "maquina",
           where: whereMaquina,
-          attributes: ["id", "codigo", "nome", "tipo"],
+          attributes: ["id", "codigo", "nome", "tipo", "valorFicha"],
           include: [
             {
               model: Loja,
@@ -809,28 +793,53 @@ export const performanceMaquinas = async (req, res) => {
           ],
         },
       ],
-      group: ["maquinaId", "maquina.id", "maquina->loja.id"],
-      order: [[fn("SUM", col("valorFaturado")), "DESC"]],
     });
 
-    const resultado = performance.map((p) => ({
-      maquina: {
-        id: p.maquina.id,
-        codigo: p.maquina.codigo,
-        nome: p.maquina.nome,
-        tipo: p.maquina.tipo,
-        loja: p.maquina.loja?.nome,
-      },
-      metricas: {
-        totalMovimentacoes: parseInt(p.getDataValue("totalMovimentacoes")),
-        totalFichas: parseInt(p.getDataValue("totalFichas") || 0),
-        totalFaturamento: parseFloat(p.getDataValue("totalFaturamento") || 0),
-        totalSairam: parseInt(p.getDataValue("totalSairam") || 0),
-        mediaFichasPremio: parseFloat(
-          p.getDataValue("mediaFichasPremioGeral") || 0,
-        ).toFixed(2),
-      },
-    }));
+    // Agrupar em memória por máquina
+    const perfMaqMap = {};
+    for (const m of movimPerf) {
+      const maq = m.maquina;
+      if (!maq) continue;
+      if (!perfMaqMap[maq.id]) {
+        perfMaqMap[maq.id] = {
+          maquina: maq,
+          totalMovimentacoes: 0,
+          totalFichas: 0,
+          totalFaturamento: 0,
+          totalSairam: 0,
+          fichasPremioSum: 0,
+        };
+      }
+      const e = perfMaqMap[maq.id];
+      const fqtd = parseInt(m.fichas) || 0;
+      const vf = parseFloat(maq.valorFicha || 0);
+      e.totalMovimentacoes++;
+      e.totalFichas += fqtd;
+      e.totalFaturamento += fqtd * vf + parseFloat(m.quantidade_notas_entrada || 0) + parseFloat(m.valor_entrada_maquininha_pix || 0);
+      e.totalSairam += parseInt(m.sairam) || 0;
+      if (m.sairam > 0) e.fichasPremioSum += fqtd / m.sairam;
+    }
+
+    const resultado = Object.values(perfMaqMap)
+      .sort((a, b) => b.totalFaturamento - a.totalFaturamento)
+      .map((p) => ({
+        maquina: {
+          id: p.maquina.id,
+          codigo: p.maquina.codigo,
+          nome: p.maquina.nome,
+          tipo: p.maquina.tipo,
+          loja: p.maquina.loja?.nome,
+        },
+        metricas: {
+          totalMovimentacoes: p.totalMovimentacoes,
+          totalFichas: p.totalFichas,
+          totalFaturamento: parseFloat(p.totalFaturamento.toFixed(2)),
+          totalSairam: p.totalSairam,
+          mediaFichasPremio: p.totalMovimentacoes > 0
+            ? parseFloat((p.fichasPremioSum / p.totalMovimentacoes).toFixed(2))
+            : 0,
+        },
+      }));
 
     res.json({
       periodo: {
