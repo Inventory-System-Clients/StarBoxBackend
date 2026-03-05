@@ -22,6 +22,7 @@ import roteiroStatusRoutes from "./roteiroStatus.routes.js";
 import securityRoutes from "./security.routes.js";
 import manutencaoRoutes from "./manutencao.routes.js";
 import whatsappAlertaRoutes from "./whatsappAlerta.routes.js";
+import dashboardRoutes from "./dashboard.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -54,5 +55,8 @@ router.use("/whatsapp-alertas", whatsappAlertaRoutes);
 
 // Nova rota para a aba de financeiro
 router.use("/financeiro", financeiroRoutes);
+
+// Nova rota para o dashboard
+router.use("/dashboard", dashboardRoutes);
 
 export default router;
