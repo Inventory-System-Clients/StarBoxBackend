@@ -186,6 +186,8 @@ async function getTodosRoteirosComStatus(req, res) {
       return {
         id: roteiro.id,
         nome: roteiro.nome,
+        funcionarioId: roteiro.funcionarioId,
+        funcionarioNome: roteiro.funcionarioNome,
         diasSemana: roteiro.diasSemana ?? [],
         status:
           finalizacoesPorRoteiro.has(roteiro.id) || roteiroFinalizado
