@@ -271,13 +271,12 @@ export const dashboardRelatorio = async (req, res) => {
         for (let i = 1; i <= dias; i++) {
           const inicio = new Date(ano, mes, i, 0, 0, 0, 0);
           const fim = new Date(ano, mes, i, 23, 59, 59, 999);
-          const where = {
-            dataColeta: { [Op.between]: [inicio, fim] },
-          };
-          if (lojaId) where["$maquina.lojaId$"] = lojaId;
+          const whereMov = { dataColeta: { [Op.between]: [inicio, fim] } };
+          if (lojaId) whereMov["$maquina.lojaId$"] = lojaId;
           try {
+            // Movimentações do dia
             const movimentacoes = await Movimentacao.findAll({
-              where,
+              where: whereMov,
               include: [{ model: Maquina, as: "maquina", attributes: ["valorFicha", "lojaId", "comissaoLojaPercentual"] }],
             });
             let receitaBruta = 0;
@@ -292,7 +291,30 @@ export const dashboardRelatorio = async (req, res) => {
               const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
               comissaoTotal += (receitaMaquina * percentual) / 100;
             }
-            total += receitaBruta - comissaoTotal;
+            // Custo dos produtos saídos no dia
+            const itensVendidos = await MovimentacaoProduto.findAll({
+              attributes: ["quantidadeSaiu"],
+              include: [
+                { model: Produto, as: "produto", attributes: ["custoUnitario"] },
+                {
+                  model: Movimentacao,
+                  attributes: [],
+                  where: whereMov,
+                  include: [
+                    { model: Maquina, as: "maquina", where: lojaId ? { lojaId } : undefined, attributes: [] },
+                  ],
+                },
+              ],
+              raw: true,
+              nest: true,
+            });
+            const custoProdutos = itensVendidos.reduce((acc, item) => {
+              const qtd = item.quantidadeSaiu || 0;
+              const custo = parseFloat(item.produto?.custoUnitario || 0);
+              return acc + qtd * custo;
+            }, 0);
+            // Lucro líquido do dia
+            total += receitaBruta - custoProdutos - comissaoTotal;
           } catch (errDia) {
             // Loga erro mas não interrompe o cálculo
             console.error(`[comparacaoLucro] Erro no dia ${i}/${mes+1}/${ano}:`, errDia);
@@ -1235,13 +1257,12 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
       for (let i = 1; i <= dias; i++) {
         const inicio = new Date(ano, mes, i, 0, 0, 0, 0);
         const fim = new Date(ano, mes, i, 23, 59, 59, 999);
-        const where = {
-          dataColeta: { [Op.between]: [inicio, fim] },
-        };
-        if (lojaId) where["$maquina.lojaId$"] = lojaId;
+        const whereMov = { dataColeta: { [Op.between]: [inicio, fim] } };
+        if (lojaId) whereMov["$maquina.lojaId$"] = lojaId;
         try {
+          // Movimentações do dia
           const movimentacoes = await Movimentacao.findAll({
-            where,
+            where: whereMov,
             include: [{ model: Maquina, as: "maquina", attributes: ["valorFicha", "lojaId", "comissaoLojaPercentual"] }],
           });
           let receitaBruta = 0;
@@ -1256,7 +1277,30 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
             const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
             comissaoTotal += (receitaMaquina * percentual) / 100;
           }
-          total += receitaBruta - comissaoTotal;
+          // Custo dos produtos saídos no dia
+          const itensVendidos = await MovimentacaoProduto.findAll({
+            attributes: ["quantidadeSaiu"],
+            include: [
+              { model: Produto, as: "produto", attributes: ["custoUnitario"] },
+              {
+                model: Movimentacao,
+                attributes: [],
+                where: whereMov,
+                include: [
+                  { model: Maquina, as: "maquina", where: lojaId ? { lojaId } : undefined, attributes: [] },
+                ],
+              },
+            ],
+            raw: true,
+            nest: true,
+          });
+          const custoProdutos = itensVendidos.reduce((acc, item) => {
+            const qtd = item.quantidadeSaiu || 0;
+            const custo = parseFloat(item.produto?.custoUnitario || 0);
+            return acc + qtd * custo;
+          }, 0);
+          // Lucro líquido do dia
+          total += receitaBruta - custoProdutos - comissaoTotal;
         } catch (errDia) {
           // Loga erro mas não interrompe o cálculo
           console.error(`[comparacaoLucro] Erro no dia ${i}/${mes+1}/${ano}:`, errDia);
