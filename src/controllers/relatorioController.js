@@ -1182,27 +1182,31 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
         dataColeta: { [Op.between]: [inicio, fim] },
       };
       if (lojaId) where["$maquina.lojaId$"] = lojaId;
-      const movimentacoes = await Movimentacao.findAll({
-        where,
-        include: [{ model: Maquina, as: "maquina", attributes: ["valorFicha", "lojaId", "comissaoLojaPercentual"] }],
-      });
-      let receitaBruta = 0;
-      let comissaoTotal = 0;
-      for (const m of movimentacoes) {
-        const fichas = parseInt(m.fichas) || 0;
-        const valorFicha = parseFloat(m.maquina?.valorFicha || 0);
-        const dinheiro = parseFloat(m.quantidade_notas_entrada || 0);
-        const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
-        const receitaMaquina = fichas * valorFicha + dinheiro + pix;
-        receitaBruta += receitaMaquina;
-        const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
-        comissaoTotal += (receitaMaquina * percentual) / 100;
+      try {
+        const movimentacoes = await Movimentacao.findAll({
+          where,
+          include: [{ model: Maquina, as: "maquina", attributes: ["valorFicha", "lojaId", "comissaoLojaPercentual"] }],
+        });
+        let receitaBruta = 0;
+        let comissaoTotal = 0;
+        for (const m of movimentacoes) {
+          const fichas = parseInt(m.fichas) || 0;
+          const valorFicha = parseFloat(m.maquina?.valorFicha || 0);
+          const dinheiro = parseFloat(m.quantidade_notas_entrada || 0);
+          const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
+          const receitaMaquina = fichas * valorFicha + dinheiro + pix;
+          receitaBruta += receitaMaquina;
+          const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
+          comissaoTotal += (receitaMaquina * percentual) / 100;
+        }
+        total += receitaBruta - comissaoTotal;
+      } catch (errDia) {
+        console.error(`[comparacaoLucro] Erro no dia ${i}/${mes+1}/${ano}:`, errDia);
       }
-      total += receitaBruta - comissaoTotal;
     }
     return total;
   }
-  const lucroAtual = await somaLucro(ano, mesAtual, diaAtual);
-  const lucroAnterior = await somaLucro(anoAnterior, mesAnterior, diaAtual);
+  var lucroAtual = await somaLucro(ano, mesAtual, diaAtual);
+  var lucroAnterior = await somaLucro(anoAnterior, mesAnterior, diaAtual);
   return { lucroAtual, lucroAnterior };
 };
