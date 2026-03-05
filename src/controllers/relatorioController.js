@@ -1204,6 +1204,7 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
           }
           total += receitaBruta - comissaoTotal;
         } catch (errDia) {
+          // Loga erro mas não interrompe o cálculo
           console.error(`[comparacaoLucro] Erro no dia ${i}/${mes+1}/${ano}:`, errDia);
         }
       }
@@ -1211,6 +1212,9 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
     }
     lucroAtual = await somaLucro(ano, mesAtual, diaAtual);
     lucroAnterior = await somaLucro(anoAnterior, mesAnterior, diaAtual);
+    // Garante que sempre retorna número
+    if (isNaN(lucroAtual)) lucroAtual = 0;
+    if (isNaN(lucroAnterior)) lucroAnterior = 0;
   } catch (errComp) {
     console.error('[comparacaoLucro] Erro geral:', errComp);
     lucroAtual = 0;
