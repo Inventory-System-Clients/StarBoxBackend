@@ -4,6 +4,7 @@ import {
   limparDadosAntigos,
   verificarDadosParaLimpeza,
 } from "../utils/dataRetention.js";
+import { listarTodosCarrinhos } from "../controllers/carrinhoPecaController.js";
 
 const router = express.Router();
 
@@ -37,6 +38,14 @@ router.post(
       res.status(500).json({ error: "Erro ao executar limpeza de dados" });
     }
   }
+);
+
+// Listar todos os carrinhos de funcionários (visão consolidada)
+router.get(
+  "/carrinhos-funcionarios",
+  autenticar,
+  autorizar("ADMIN"),
+  listarTodosCarrinhos
 );
 
 export default router;
