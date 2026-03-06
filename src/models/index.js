@@ -1,3 +1,8 @@
+// CarrinhoPeca relacionamentos
+CarrinhoPeca.belongsTo(Peca, { foreignKey: "pecaId" });
+CarrinhoPeca.belongsTo(Usuario, { foreignKey: "usuarioId" });
+Peca.hasMany(CarrinhoPeca, { foreignKey: "pecaId" });
+Usuario.hasMany(CarrinhoPeca, { foreignKey: "usuarioId" });
 import MovimentacaoPeca from "./MovimentacaoPeca.js";
 // MovimentacaoPeca -> Movimentacao
 MovimentacaoPeca.belongsTo(Movimentacao, { foreignKey: "movimentacaoId" });

@@ -38,7 +38,9 @@ router.use("/manutencoes", manutencaoRoutes);
 router.use("/relatorios", relatorioRoutes);
 router.use("/totais", totaisRoutes);
 
-router.use("/pecas", pecasRoutes);
+	// ✅ IMPORTANTE: carrinhoPecaRoutes ANTES de usuarioRoutes
+	router.use("/usuarios", carrinhoPecaRoutes); 
+	router.use("/usuarios", usuarioRoutes);
 router.use("/usuarios", carrinhoPecaRoutes); // /usuarios/:id/carrinho
 router.use("/admin", adminRoutes);
 router.use("/estoque-lojas", estoqueLojaRoutes);

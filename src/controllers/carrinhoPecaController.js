@@ -30,49 +30,25 @@ export const listarCarrinho = async (req, res) => {
       console.log(
         "[Carrinho] Acesso negado para listar carrinho: role não permitida",
         req.usuario.role,
-        req.usuario.id,
-        'usuario alvo:', usuarioId
-      );
-      return res.status(403).json({ error: "Acesso negado: role não permitida" });
-    }
-    // Se FUNCIONARIO, pode acessar carrinho de qualquer FUNCIONARIO
-    if (req.usuario.role === "FUNCIONARIO") {
-      const usuarioAlvo = await Usuario.findByPk(usuarioId);
-      console.log('[Carrinho] FUNCIONARIO acessando carrinho de', usuarioId, '| usuario alvo:', usuarioAlvo ? usuarioAlvo.role : 'não encontrado');
-      if (!usuarioAlvo || usuarioAlvo.role !== "FUNCIONARIO") {
-        console.log('[Carrinho] FUNCIONARIO só pode acessar carrinho de FUNCIONARIO. usuario alvo:', usuarioAlvo ? usuarioAlvo.role : 'não encontrado');
-        return res.status(403).json({ error: "Só pode acessar carrinho de FUNCIONARIO" });
-      }
-      // Permissão concedida para FUNCIONARIO acessar carrinho de outro FUNCIONARIO
-    }
-    const itens = await CarrinhoPeca.findAll({
-      where: { usuarioId },
-      include: [{ model: Peca }],
-    });
-    console.log("[Carrinho] Itens encontrados:", itens);
-    // Retorna pecaId, quantidade e nome da peça
-    const carrinho = itens.map((item) => ({
-      pecaId: item.pecaId,
-      quantidade: item.quantidade,
-      nome: item.nomePeca || (item.Peca ? item.Peca.nome : null),
-    }));
-    res.json(carrinho);
-  } catch (error) {
-    console.error("[Carrinho] Erro ao listar carrinho:", error);
-    res.status(500).json({ error: "Erro ao listar carrinho" });
-  }
-};
-
-// Adicionar peça ao carrinho
-export const adicionarAoCarrinho = async (req, res) => {
-  try {
-    const usuarioId = req.params.id;
-    const { pecaId, quantidade } = req.body;
-    console.log("[Carrinho] Dados recebidos para adicionar ao carrinho:", {
-      usuarioId,
-      body: req.body,
-    });
-    // Validação de tipo para pecaId
+        try {
+          const usuarioId = String(req.params.id);
+          // Permitir apenas ADMIN, GERENCIADOR ou o próprio usuário
+          if (
+            req.usuario.role !== "ADMIN" &&
+            req.usuario.role !== "GERENCIADOR" &&
+            String(req.usuario.id) !== usuarioId
+          ) {
+            return res.status(403).json({ error: "Acesso negado" });
+          }
+          const itens = await CarrinhoPeca.findAll({
+            where: { usuarioId },
+            include: [{ model: Peca }],
+          });
+          res.json(itens);
+        } catch (error) {
+          console.error("[listarCarrinho] Erro:", error);
+          res.status(500).json({ error: "Erro ao listar carrinho" });
+        }
     if (!pecaId || !quantidade) {
       console.error("[Carrinho] pecaId ou quantidade ausente!", { pecaId, quantidade });
       return res.status(400).json({ error: "pecaId ou quantidade ausente" });
@@ -142,25 +118,39 @@ export const adicionarAoCarrinho = async (req, res) => {
         item.quantidade += quantidade;
         await item.save({ transaction });
         console.log("[Carrinho] Atualizou quantidade:", item);
-      } else {
-        console.log("[Carrinho] Criando novo item no carrinho:", { 
-          usuarioId, 
-          pecaId, 
-          quantidade, 
-          nomePeca: peca.nome 
-        });
-        item = await CarrinhoPeca.create({ 
-          usuarioId, 
-          pecaId, 
-          quantidade, 
-          nomePeca: peca.nome 
-        }, { transaction });
-        console.log("[Carrinho] Criou novo item:", item);
+      try {
+        const usuarioId = String(req.params.id);
+        const { pecaId, quantidade } = req.body;
+        // Permitir ADMIN, GERENCIADOR ou o próprio FUNCIONARIO
+        if (
+          req.usuario.role !== "ADMIN" &&
+          req.usuario.role !== "GERENCIADOR" &&
+          String(req.usuario.id) !== usuarioId
+        ) {
+          return res.status(403).json({ error: "Acesso negado" });
+        }
+        // GERENCIADOR só pode manipular carrinho de FUNCIONARIO
+        if (
+          req.usuario.role === "GERENCIADOR" &&
+          String(req.usuario.id) !== usuarioId
+        ) {
+          const usuarioAlvo = await Usuario.findByPk(usuarioId);
+          if (!usuarioAlvo || usuarioAlvo.role !== "FUNCIONARIO") {
+            return res.status(403).json({ error: "Só pode manipular carrinho de FUNCIONARIO" });
+          }
+        }
+        let item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId } });
+        if (item) {
+          item.quantidade += quantidade;
+          await item.save();
+        } else {
+          item = await CarrinhoPeca.create({ usuarioId, pecaId, quantidade });
+        }
+        res.status(201).json(item);
+      } catch (error) {
+        console.error("[adicionarAoCarrinho] Erro:", error);
+        res.status(500).json({ error: "Erro ao adicionar ao carrinho" });
       }
-      
-      // Descontar do estoque da peça (já validamos que há estoque suficiente)
-      peca.quantidade -= quantidade;
-      await peca.save({ transaction });
       
       // Commit da transação
       await transaction.commit();
@@ -383,25 +373,35 @@ export const listarTodosCarrinhos = async (req, res) => {
           ]
         }
       ],
-      order: [
-        ['nome', 'ASC'],
-        [{ model: CarrinhoPeca, as: 'carrinhoPecas' }, 'createdAt', 'DESC']
-      ]
-    });
-    
-    // Formatar resposta
-    const resultado = usuarios.map(usuario => {
-      const carrinho = usuario.carrinhoPecas || [];
-      return {
-        usuarioId: usuario.id,
-        usuarioNome: usuario.nome,
-        usuarioEmail: usuario.email,
-        usuarioRole: usuario.role,
-        totalItens: carrinho.reduce((sum, item) => sum + item.quantidade, 0),
-        carrinho: carrinho.map(item => ({
-          id: item.id,
-          pecaId: item.pecaId,
-          quantidade: item.quantidade,
+      try {
+        const usuarioId = String(req.params.id);
+        const pecaId = req.params.pecaId;
+        // Permitir ADMIN, GERENCIADOR ou o próprio FUNCIONARIO
+        if (
+          req.usuario.role !== "ADMIN" &&
+          req.usuario.role !== "GERENCIADOR" &&
+          String(req.usuario.id) !== usuarioId
+        ) {
+          return res.status(403).json({ error: "Acesso negado" });
+        }
+        // GERENCIADOR só pode manipular carrinho de FUNCIONARIO
+        if (
+          req.usuario.role === "GERENCIADOR" &&
+          String(req.usuario.id) !== usuarioId
+        ) {
+          const usuarioAlvo = await Usuario.findByPk(usuarioId);
+          if (!usuarioAlvo || usuarioAlvo.role !== "FUNCIONARIO") {
+            return res.status(403).json({ error: "Só pode manipular carrinho de FUNCIONARIO" });
+          }
+        }
+        const item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId } });
+        if (!item) return res.status(404).json({ error: "Item não encontrado" });
+        await item.destroy();
+        res.json({ success: true });
+      } catch (error) {
+        console.error("[removerDoCarrinho] Erro:", error);
+        res.status(500).json({ error: "Erro ao remover do carrinho" });
+      }
           nomePeca: item.nomePeca,
           createdAt: item.createdAt,
           Peca: item.Peca ? {
