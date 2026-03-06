@@ -4,6 +4,8 @@ import {
   Maquina,
   Usuario,
   Roteiro,
+  Peca,
+  CarrinhoPeca,
 } from "../models/index.js";
 
 const STATUS_PERMITIDOS = [
@@ -24,6 +26,8 @@ const includePadrao = [
   { model: Maquina, as: "maquina", attributes: ["id", "nome", "lojaId"] },
   { model: Usuario, as: "funcionario", attributes: ["id", "nome", "email"] },
   { model: Usuario, as: "concluidoPor", attributes: ["id", "nome", "email"] },
+  { model: Usuario, as: "verificadoPor", attributes: ["id", "nome", "email"] },
+  { model: Peca, as: "pecaUsada", attributes: ["id", "nome", "codigo"] },
   { model: Roteiro, as: "roteiro", attributes: ["id", "nome"] },
 ];
 
@@ -77,6 +81,11 @@ export const listarManutencoes = async (req, res) => {
 
     if (status) {
       where.status = status;
+    }
+
+    // Filtro por lojaId
+    if (req.query.lojaId) {
+      where.lojaId = req.query.lojaId;
     }
 
     if (req.usuario.role !== "ADMIN") {
@@ -259,5 +268,162 @@ export const deletarManutencao = async (req, res) => {
   } catch (error) {
     console.error("Erro ao excluir manutenção:", error);
     return res.status(500).json({ error: "Erro ao excluir manutenção" });
+  }
+};
+
+/**
+ * Concluir manutenção (marcar como "feito")
+ * Permite com ou sem uso de peça
+ */
+export const concluirManutencao = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { concluidoPorId, pecaId, explicacao_sem_peca } = req.body;
+
+    // Buscar manutenção
+    const manutencao = await Manutencao.findByPk(id);
+    if (!manutencao) {
+      return res.status(404).json({ error: "Manutenção não encontrada" });
+    }
+
+    // Validações
+    if (!concluidoPorId) {
+      return res.status(400).json({ error: "concluidoPorId é obrigatório" });
+    }
+
+    // Se não usar peça, explicação é obrigatória
+    if (!pecaId && !explicacao_sem_peca) {
+      return res.status(400).json({
+        error: "Explicação obrigatória quando não usar peças"
+      });
+    }
+
+    // Se usar peça, explicação deve ser null
+    if (pecaId && explicacao_sem_peca) {
+      return res.status(400).json({
+        error: "Não é possível ter explicação e peça ao mesmo tempo"
+      });
+    }
+
+    // Validar tamanho da explicação
+    if (explicacao_sem_peca && explicacao_sem_peca.length > 100) {
+      return res.status(400).json({
+        error: "Explicação deve ter no máximo 100 caracteres"
+      });
+    }
+
+    let pecaUsadaId = null;
+
+    // Se informou pecaId, verificar se está no carrinho e remover
+    if (pecaId) {
+      const itemCarrinho = await CarrinhoPeca.findOne({
+        where: {
+          usuarioId: concluidoPorId,
+          pecaId: pecaId
+        }
+      });
+
+      if (!itemCarrinho) {
+        return res.status(404).json({
+          error: "Peça não encontrada no carrinho do funcionário"
+        });
+      }
+
+      // Verificar se a peça existe
+      const peca = await Peca.findByPk(pecaId);
+      if (!peca) {
+        return res.status(404).json({ error: "Peça não encontrada" });
+      }
+
+      // Remover do carrinho (usa função do carrinhoPecaController)
+      await itemCarrinho.destroy();
+      
+      console.log(`[Manutenção] Peça ${pecaId} removida do carrinho do usuário ${concluidoPorId}`);
+      
+      pecaUsadaId = pecaId;
+    }
+
+    // Atualizar manutenção
+    await manutencao.update({
+      status: "feito",
+      concluidoPorId: concluidoPorId,
+      concluidoEm: new Date(),
+      pecaUsadaId: pecaUsadaId,
+      explicacao_sem_peca: explicacao_sem_peca || null
+    });
+
+    // Buscar manutenção atualizada com includes
+    const manutencaoCompleta = await Manutencao.findByPk(id, {
+      include: includePadrao
+    });
+
+    console.log(`[Manutenção] Manutenção ${id} concluída por usuário ${concluidoPorId}`);
+
+    return res.json({
+      message: "Manutenção concluída com sucesso",
+      manutencao: manutencaoCompleta
+    });
+
+  } catch (error) {
+    console.error("Erro ao concluir manutenção:", error);
+    return res.status(500).json({ error: "Erro ao concluir manutenção" });
+  }
+};
+
+/**
+ * Registrar que manutenção não foi feita (permanece pendente)
+ * Requer explicação obrigatória
+ */
+export const naoFazerManutencao = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { verificadoPorId, explicacao_nao_fazer } = req.body;
+
+    // Buscar manutenção
+    const manutencao = await Manutencao.findByPk(id);
+    if (!manutencao) {
+      return res.status(404).json({ error: "Manutenção não encontrada" });
+    }
+
+    // Validações
+    if (!verificadoPorId) {
+      return res.status(400).json({ error: "verificadoPorId é obrigatório" });
+    }
+
+    if (!explicacao_nao_fazer) {
+      return res.status(400).json({
+        error: "Explicação obrigatória para não fazer manutenção"
+      });
+    }
+
+    // Validar tamanho da explicação
+    if (explicacao_nao_fazer.length > 100) {
+      return res.status(400).json({
+        error: "Explicação deve ter no máximo 100 caracteres"
+      });
+    }
+
+    // Atualizar manutenção (status permanece pendente)
+    await manutencao.update({
+      verificadoPorId: verificadoPorId,
+      verificadoEm: new Date(),
+      explicacao_nao_fazer: explicacao_nao_fazer
+    });
+
+    // Buscar manutenção atualizada com includes
+    const manutencaoCompleta = await Manutencao.findByPk(id, {
+      include: includePadrao
+    });
+
+    console.log(`[Manutenção] Manutenção ${id} não foi feita. Verificada por usuário ${verificadoPorId}`);
+
+    return res.json({
+      message: "Explicação registrada com sucesso",
+      manutencao: manutencaoCompleta
+    });
+
+  } catch (error) {
+    console.error("Erro ao registrar não fazer manutenção:", error);
+    return res.status(500).json({ error: "Erro ao registrar explicação" });
   }
 };

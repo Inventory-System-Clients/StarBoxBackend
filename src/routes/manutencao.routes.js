@@ -4,6 +4,8 @@ import {
   criarManutencao,
   atualizarManutencao,
   deletarManutencao,
+  concluirManutencao,
+  naoFazerManutencao,
 } from "../controllers/manutencaoController.js";
 import { autenticar, autorizar, registrarLog } from "../middlewares/auth.js";
 
@@ -22,6 +24,16 @@ router.put(
   "/:id",
   registrarLog("EDITAR_MANUTENCAO", "Manutencao"),
   atualizarManutencao,
+);
+router.put(
+  "/:id/concluir",
+  registrarLog("CONCLUIR_MANUTENCAO", "Manutencao"),
+  concluirManutencao,
+);
+router.put(
+  "/:id/nao-fazer",
+  registrarLog("NAO_FAZER_MANUTENCAO", "Manutencao"),
+  naoFazerManutencao,
 );
 router.delete(
   "/:id",

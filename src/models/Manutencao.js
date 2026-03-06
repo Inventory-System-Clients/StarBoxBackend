@@ -70,6 +70,34 @@ const Manutencao = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    explicacao_nao_fazer: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    explicacao_sem_peca: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+    verificadoPorId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "usuarios",
+        key: "id",
+      },
+    },
+    verificadoEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    pecaUsadaId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      references: {
+        model: "pecas",
+        key: "id",
+      },
+    },
   },
   {
     tableName: "manutencoes",
