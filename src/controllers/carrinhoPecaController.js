@@ -35,7 +35,7 @@ export const listarCarrinho = async (req, res) => {
       );
       return res.status(403).json({ error: "Acesso negado: role não permitida" });
     }
-    // Se FUNCIONARIO, só pode acessar carrinho de FUNCIONARIO
+    // Se FUNCIONARIO, pode acessar carrinho de qualquer FUNCIONARIO
     if (req.usuario.role === "FUNCIONARIO") {
       const usuarioAlvo = await Usuario.findByPk(usuarioId);
       console.log('[Carrinho] FUNCIONARIO acessando carrinho de', usuarioId, '| usuario alvo:', usuarioAlvo ? usuarioAlvo.role : 'não encontrado');
@@ -43,6 +43,7 @@ export const listarCarrinho = async (req, res) => {
         console.log('[Carrinho] FUNCIONARIO só pode acessar carrinho de FUNCIONARIO. usuario alvo:', usuarioAlvo ? usuarioAlvo.role : 'não encontrado');
         return res.status(403).json({ error: "Só pode acessar carrinho de FUNCIONARIO" });
       }
+      // Permissão concedida para FUNCIONARIO acessar carrinho de outro FUNCIONARIO
     }
     const itens = await CarrinhoPeca.findAll({
       where: { usuarioId },
