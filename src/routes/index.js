@@ -28,20 +28,17 @@ const router = express.Router();
 
 router.use("/auth", authRoutes);
 router.use("/security", securityRoutes);
+router.use("/usuarios", carrinhoPecaRoutes); // /usuarios/:id/carrinho — ANTES de usuarioRoutes
 router.use("/usuarios", usuarioRoutes);
 router.use("/lojas", lojaRoutes);
 router.use("/maquinas", maquinaRoutes);
 router.use("/produtos", produtoRoutes);
+router.use("/pecas", pecasRoutes);
 router.use("/movimentacoes", movimentacaoRoutes);
 router.use("/movimentacao", movimentacaoRoutes); // alias singular para frontend
 router.use("/manutencoes", manutencaoRoutes);
 router.use("/relatorios", relatorioRoutes);
 router.use("/totais", totaisRoutes);
-
-	// ✅ IMPORTANTE: carrinhoPecaRoutes ANTES de usuarioRoutes
-	router.use("/usuarios", carrinhoPecaRoutes); 
-	router.use("/usuarios", usuarioRoutes);
-router.use("/usuarios", carrinhoPecaRoutes); // /usuarios/:id/carrinho
 router.use("/admin", adminRoutes);
 router.use("/estoque-lojas", estoqueLojaRoutes);
 router.use("/movimentacao-estoque-loja", movimentacaoEstoqueLojaRoutes);
