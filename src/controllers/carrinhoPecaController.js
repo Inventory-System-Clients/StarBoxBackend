@@ -24,7 +24,7 @@ export const listarCarrinho = async (req, res) => {
     if (
       req.usuario.role !== "ADMIN" &&
       req.usuario.role !== "GERENCIADOR" &&
-      req.usuario.id !== usuarioId
+      String(req.usuario.id) !== String(usuarioId)
     ) {
       console.log(
         "[Carrinho] Acesso negado para listar carrinho",
@@ -73,7 +73,7 @@ export const adicionarAoCarrinho = async (req, res) => {
     if (
       req.usuario.role !== "ADMIN" &&
       req.usuario.role !== "GERENCIADOR" &&
-      req.usuario.id !== usuarioId
+      String(req.usuario.id) !== String(usuarioId)
     ) {
       console.log(
         "[Carrinho] Acesso negado para adicionar ao carrinho",
@@ -189,7 +189,7 @@ export const removerDoCarrinho = async (req, res) => {
     if (
       req.usuario.role !== "ADMIN" &&
       req.usuario.role !== "GERENCIADOR" &&
-      req.usuario.id !== usuarioId
+      String(req.usuario.id) !== String(usuarioId)
     ) {
       console.log(
         "[Carrinho] Acesso negado para remover do carrinho",
