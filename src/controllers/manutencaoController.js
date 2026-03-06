@@ -27,7 +27,7 @@ const includePadrao = [
   { model: Usuario, as: "funcionario", attributes: ["id", "nome", "email"] },
   { model: Usuario, as: "concluidoPor", attributes: ["id", "nome", "email"] },
   { model: Usuario, as: "verificadoPor", attributes: ["id", "nome", "email"] },
-  { model: Peca, as: "pecaUsada", attributes: ["id", "nome", "codigo"] },
+  { model: Peca, as: "pecaUsada", attributes: ["id", "nome", "categoria"] },
   { model: Roteiro, as: "roteiro", attributes: ["id", "nome"] },
 ];
 
