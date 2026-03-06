@@ -20,11 +20,11 @@ export const listarCarrinho = async (req, res) => {
   try {
     const usuarioId = req.params.id;
     console.log("[Carrinho] Listar carrinho usuarioId:", usuarioId);
-    // Permitir apenas ADMIN, GERENCIADOR ou o próprio usuário
+    // Permitir ADMIN, GERENCIADOR, ou FUNCIONARIO acessar carrinho de FUNCIONARIO
     if (
       req.usuario.role !== "ADMIN" &&
       req.usuario.role !== "GERENCIADOR" &&
-      String(req.usuario.id) !== String(usuarioId)
+      req.usuario.role !== "FUNCIONARIO"
     ) {
       console.log(
         "[Carrinho] Acesso negado para listar carrinho",
@@ -32,6 +32,13 @@ export const listarCarrinho = async (req, res) => {
         req.usuario.id,
       );
       return res.status(403).json({ error: "Acesso negado" });
+    }
+    // Se FUNCIONARIO, só pode acessar carrinho de FUNCIONARIO
+    if (req.usuario.role === "FUNCIONARIO") {
+      const usuarioAlvo = await Usuario.findByPk(usuarioId);
+      if (!usuarioAlvo || usuarioAlvo.role !== "FUNCIONARIO") {
+        return res.status(403).json({ error: "Só pode acessar carrinho de FUNCIONARIO" });
+      }
     }
     const itens = await CarrinhoPeca.findAll({
       where: { usuarioId },
