@@ -270,7 +270,7 @@ export const devolverPecaDoCarrinho = async (req, res) => {
     if (
       req.usuario.role !== "ADMIN" &&
       req.usuario.role !== "GERENCIADOR" &&
-      req.usuario.id !== usuarioId
+      String(req.usuario.id) !== String(usuarioId)
     ) {
       console.log(
         "[Carrinho] Acesso negado para devolver peça do carrinho",
