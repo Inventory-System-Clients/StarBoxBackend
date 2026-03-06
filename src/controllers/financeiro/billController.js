@@ -22,6 +22,8 @@ export function create(req, res) {
     city: req.body.city || "",
     bill_type: req.body.bill_type || "personal",
     observations: req.body.observations || "",
+    payment_method: req.body.payment_method || "boleto",
+    payment_details: req.body.payment_details || "",
   })
     .then((bill) => res.json(bill))
     .catch((err) => {
@@ -43,6 +45,8 @@ export function update(req, res) {
       city: req.body.city,
       bill_type: req.body.bill_type,
       observations: req.body.observations,
+      payment_method: req.body.payment_method,
+      payment_details: req.body.payment_details,
     },
     { where: { id } },
   )

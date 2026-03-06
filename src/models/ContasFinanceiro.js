@@ -1,6 +1,6 @@
 // Modelo Sequelize para contas financeiras
 import { DataTypes } from "sequelize";
-import { sequelize } from '../database/connection.js';
+import { sequelize } from "../database/connection.js";
 
 const ContasFinanceiro = sequelize.define(
   "ContasFinanceiro",
@@ -38,6 +38,15 @@ const ContasFinanceiro = sequelize.define(
     },
     observations: {
       type: DataTypes.TEXT,
+    },
+    payment_method: {
+      type: DataTypes.STRING,
+      defaultValue: "boleto",
+      comment: "Método de pagamento: boleto, pix ou email",
+    },
+    payment_details: {
+      type: DataTypes.STRING(500),
+      comment: "Detalhes de pagamento (número PIX, email ou código boleto)",
     },
   },
   {
