@@ -63,24 +63,6 @@ export const registrarMovimentacao = async (req, res) => {
       });
     }
 
-    const manutencaoPendente = await Manutencao.findOne({
-      where: {
-        maquinaId,
-        status: {
-          [Op.in]: ["pendente", "em_andamento"],
-        },
-      },
-      order: [["createdAt", "DESC"]],
-    });
-
-    if (manutencaoPendente) {
-      return res.status(409).json({
-        error:
-          "Esta máquina possui manutenção pendente. Conclua a manutenção antes de lançar movimentação.",
-        manutencaoId: manutencaoPendente.id,
-      });
-    }
-
     // --- REGRA DE SEGURANÇA: Não permitir total maior que totalPos da última movimentação, exceto para ADMIN ---
     const ultimaMov = await Movimentacao.findOne({
       where: { maquinaId },
