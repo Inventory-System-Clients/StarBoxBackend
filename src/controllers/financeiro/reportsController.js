@@ -1,11 +1,31 @@
 import ContasFinanceiro from "../../models/ContasFinanceiro.js";
 
+/**
+ * Helper function para verificar se conta está paga
+ * Suporta status em inglês (paid) e português (Pago)
+ */
+const isPaid = (status) => {
+  if (!status) return false;
+  const normalizedStatus = status.trim().toLowerCase();
+  return normalizedStatus === "paid" || normalizedStatus === "pago";
+};
+
+/**
+ * Helper function para verificar se conta está pendente
+ * Suporta status em inglês (pending) e português (Em Aberto)
+ */
+const isPending = (status) => {
+  if (!status) return false;
+  const normalizedStatus = status.trim().toLowerCase();
+  return normalizedStatus === "pending" || normalizedStatus === "em aberto";
+};
+
 export function alerts(req, res) {
   ContasFinanceiro.findAll()
     .then((bills) => {
       const now = new Date();
       const alerts = bills
-        .filter((b) => b.status !== "paid")
+        .filter((b) => !isPaid(b.status))
         .map((b) => {
           const due = b.due_date ? new Date(b.due_date) : null;
           let days_until_due = null;
@@ -66,15 +86,33 @@ export function dashboard(req, res) {
   const billsByCategory = [];
   ContasFinanceiro.findAll()
     .then((bills) => {
+      // Log para debug
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      console.log('[Dashboard] Data atual:', today.toISOString().split('T')[0]);
+      console.log('[Dashboard] Total de contas:', bills.length);
+      
+      // Mostrar contas com vencimento próximo
+      const billsWithDueDate = bills.filter(b => b.due_date);
+      console.log('[Dashboard] Contas com vencimento hoje (2026-03-06):', 
+        billsWithDueDate.filter(b => b.due_date === '2026-03-06').map(b => ({
+          id: b.id,
+          name: b.name,
+          status: b.status,
+          value: b.value,
+          due_date: b.due_date
+        }))
+      );
+      
       const totalPaid = bills
-        .filter((b) => b.status === "paid")
+        .filter((b) => isPaid(b.status))
         .reduce((sum, b) => sum + Number(b.value), 0);
       const totalOpen = bills
-        .filter((b) => b.status !== "paid")
+        .filter((b) => !isPaid(b.status))
         .reduce((sum, b) => sum + Number(b.value), 0);
       const billsByCategory = [];
       bills.forEach((b) => {
-        if (b.status === "paid") {
+        if (isPaid(b.status)) {
           let cat = billsByCategory.find((c) => c.category === b.category);
           if (!cat) {
             cat = { category: b.category || "Sem categoria", total: 0 };
@@ -85,7 +123,7 @@ export function dashboard(req, res) {
       });
       const billsByDateMap = {};
       bills.forEach((b) => {
-        if (b.status === "paid") {
+        if (isPaid(b.status)) {
           const date = b.due_date || "Sem data";
           if (!billsByDateMap[date]) billsByDateMap[date] = 0;
           billsByDateMap[date] += 1;
@@ -104,7 +142,7 @@ export function dashboard(req, res) {
       const overdueBills = bills.filter((b) => {
         if (!b.due_date) return false;
         const due = new Date(b.due_date);
-        return b.status !== "paid" && due < now;
+        return !isPaid(b.status) && due < now;
       }).length;
       
       // 🆕 NOVOS CAMPOS: Alertas de vencimento
@@ -137,10 +175,25 @@ export function dashboard(req, res) {
       
       // 1. Contas que vencem HOJE (status pending, data = hoje)
       const billsDueToday = bills.filter((b) => {
-        if (!b.due_date || b.status === "paid") return false;
+        if (!b.due_date || isPaid(b.status)) return false;
         const due = new Date(b.due_date);
         due.setHours(0, 0, 0, 0);
-        return due.getTime() === todayTime;
+        const isToday = due.getTime() === todayTime;
+        
+        // Log para debug
+        if (isToday) {
+          console.log('[Dashboard] Conta vencendo HOJE:', {
+            id: b.id,
+            name: b.name,
+            due_date: b.due_date,
+            status: b.status,
+            value: b.value,
+            isPaid: isPaid(b.status),
+            isPending: isPending(b.status)
+          });
+        }
+        
+        return isToday;
       });
       
       const bills_due_today = billsDueToday.length;
@@ -151,7 +204,7 @@ export function dashboard(req, res) {
       
       // 2. Contas que vencem nos próximos 3 dias (incluindo hoje)
       const billsDue3Days = bills.filter((b) => {
-        if (!b.due_date || b.status === "paid") return false;
+        if (!b.due_date || isPaid(b.status)) return false;
         const due = new Date(b.due_date);
         due.setHours(0, 0, 0, 0);
         const dueTime = due.getTime();
@@ -167,7 +220,7 @@ export function dashboard(req, res) {
       // 3. Contas em dia (pagas OU pendentes com vencimento > 3 dias)
       const billsUpToDate = bills.filter((b) => {
         // Contas pagas estão sempre em dia
-        if (b.status === "paid") return true;
+        if (isPaid(b.status)) return true;
         
         // Contas pendentes: apenas se vencimento > 3 dias
         if (!b.due_date) return false;
@@ -181,6 +234,16 @@ export function dashboard(req, res) {
         (sum, b) => sum + Number(b.value),
         0
       );
+      
+      // Log resumo dos alertas
+      console.log('[Dashboard] Resumo de alertas:', {
+        bills_due_today,
+        amount_due_today,
+        bills_due_3_days,
+        amount_due_3_days,
+        bills_up_to_date,
+        amount_up_to_date
+      });
       
       res.json({
         total_paid: totalPaid,
