@@ -106,6 +106,82 @@ export function dashboard(req, res) {
         const due = new Date(b.due_date);
         return b.status !== "paid" && due < now;
       }).length;
+      
+      // 🆕 NOVOS CAMPOS: Alertas de vencimento
+      
+      // Normalizar data atual (início do dia) para comparações precisas
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const todayTime = today.getTime();
+      const threeDaysFromNow = new Date(today);
+      threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
+      const threeDaysTime = threeDaysFromNow.getTime();
+      
+      /**
+       * LÓGICA DE CÁLCULO DOS ALERTAS:
+       * 
+       * 1. bills_due_today: Contas pendentes que vencem HOJE
+       *    - Exemplo: Hoje=2026-03-06, vencimento=2026-03-06, status=pending ✅
+       * 
+       * 2. bills_due_3_days: Contas pendentes que vencem nos próximos 3 dias (incluindo hoje)
+       *    - Exemplo: Hoje=2026-03-06, vencimento=2026-03-08, status=pending ✅
+       * 
+       * 3. bills_up_to_date: Contas pagas OU pendentes com vencimento > 3 dias
+       *    - Exemplo 1: status=paid (qualquer vencimento) ✅
+       *    - Exemplo 2: Hoje=2026-03-06, vencimento=2026-03-10, status=pending ✅
+       * 
+       * 🔴 NOTA: Contas atrasadas (vencimento < hoje) NÃO aparecem nestes campos,
+       *          continuam sendo contabilizadas apenas em overdue_bills
+       */
+      
+      // 1. Contas que vencem HOJE (status pending, data = hoje)
+      const billsDueToday = bills.filter((b) => {
+        if (!b.due_date || b.status === "paid") return false;
+        const due = new Date(b.due_date);
+        due.setHours(0, 0, 0, 0);
+        return due.getTime() === todayTime;
+      });
+      
+      const bills_due_today = billsDueToday.length;
+      const amount_due_today = billsDueToday.reduce(
+        (sum, b) => sum + Number(b.value),
+        0
+      );
+      
+      // 2. Contas que vencem nos próximos 3 dias (incluindo hoje)
+      const billsDue3Days = bills.filter((b) => {
+        if (!b.due_date || b.status === "paid") return false;
+        const due = new Date(b.due_date);
+        due.setHours(0, 0, 0, 0);
+        const dueTime = due.getTime();
+        return dueTime >= todayTime && dueTime <= threeDaysTime;
+      });
+      
+      const bills_due_3_days = billsDue3Days.length;
+      const amount_due_3_days = billsDue3Days.reduce(
+        (sum, b) => sum + Number(b.value),
+        0
+      );
+      
+      // 3. Contas em dia (pagas OU pendentes com vencimento > 3 dias)
+      const billsUpToDate = bills.filter((b) => {
+        // Contas pagas estão sempre em dia
+        if (b.status === "paid") return true;
+        
+        // Contas pendentes: apenas se vencimento > 3 dias
+        if (!b.due_date) return false;
+        const due = new Date(b.due_date);
+        due.setHours(0, 0, 0, 0);
+        return due.getTime() > threeDaysTime;
+      });
+      
+      const bills_up_to_date = billsUpToDate.length;
+      const amount_up_to_date = billsUpToDate.reduce(
+        (sum, b) => sum + Number(b.value),
+        0
+      );
+      
       res.json({
         total_paid: totalPaid,
         total_open: totalOpen,
@@ -114,6 +190,13 @@ export function dashboard(req, res) {
         bills_by_date: billsByDate,
         upcoming_bills: upcomingBills,
         overdue_bills: overdueBills,
+        // 🆕 Novos campos para alertas de vencimento
+        bills_due_today: bills_due_today,
+        amount_due_today: amount_due_today,
+        bills_due_3_days: bills_due_3_days,
+        amount_due_3_days: amount_due_3_days,
+        bills_up_to_date: bills_up_to_date,
+        amount_up_to_date: amount_up_to_date,
       });
     })
     .catch((err) => res.status(500).json({ error: err.message }));
