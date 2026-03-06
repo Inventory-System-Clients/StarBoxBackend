@@ -10,7 +10,8 @@ CREATE TABLE public.contas_financeiro (
     bill_type VARCHAR(20) NOT NULL,
     observations TEXT,
     payment_method VARCHAR(20) DEFAULT 'boleto',
-    payment_details VARCHAR(500)
+    payment_details VARCHAR(500),
+    boleto_em_maos BOOLEAN DEFAULT false
 );
 -- Índices para busca rápida
 CREATE INDEX idx_contas_financeiro_bill_type ON public.contas_financeiro(bill_type);
@@ -19,3 +20,4 @@ CREATE INDEX idx_contas_financeiro_payment_method ON public.contas_financeiro(pa
 -- Comentários para documentação
 COMMENT ON COLUMN public.contas_financeiro.payment_method IS 'Método de pagamento: boleto, pix ou email';
 COMMENT ON COLUMN public.contas_financeiro.payment_details IS 'Detalhes de pagamento (número PIX, email ou código boleto)';
+COMMENT ON COLUMN public.contas_financeiro.boleto_em_maos IS 'Indica se o boleto foi recebido ou está em mãos';

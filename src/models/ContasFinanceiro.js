@@ -48,6 +48,11 @@ const ContasFinanceiro = sequelize.define(
       type: DataTypes.STRING(500),
       comment: "Detalhes de pagamento (número PIX, email ou código boleto)",
     },
+    boleto_em_maos: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: "Indica se o boleto foi recebido ou está em mãos",
+    },
   },
   {
     tableName: "contas_financeiro",
