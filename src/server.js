@@ -156,16 +156,21 @@ const startServer = async () => {
         SELECT data_type FROM information_schema.columns
         WHERE table_name = 'movimentacoes' AND column_name = 'quantidade_notas_entrada'
       `);
-      if (colInfo.length > 0 && colInfo[0].data_type === 'integer') {
+      if (colInfo.length > 0 && colInfo[0].data_type === "integer") {
         await sequelize.query(`
           ALTER TABLE movimentacoes
           ALTER COLUMN quantidade_notas_entrada TYPE DECIMAL(10,2)
           USING quantidade_notas_entrada::DECIMAL(10,2)
         `);
-        console.log("✅ Migration: quantidade_notas_entrada alterada para DECIMAL(10,2)");
+        console.log(
+          "✅ Migration: quantidade_notas_entrada alterada para DECIMAL(10,2)",
+        );
       }
     } catch (migErr) {
-      console.warn("⚠️ Migration inline (quantidade_notas_entrada):", migErr.message);
+      console.warn(
+        "⚠️ Migration inline (quantidade_notas_entrada):",
+        migErr.message,
+      );
     }
 
     // Criar admin padrão se não existir

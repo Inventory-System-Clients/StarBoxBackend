@@ -1,4 +1,5 @@
 import { Maquina, Loja, Movimentacao } from "../models/index.js";
+import { Op } from "sequelize";
 // Calcula quantidade atual e sugestão de abastecimento
 export const calcularQuantidadeAtual = async (req, res) => {
   try {
@@ -63,7 +64,35 @@ export const listarMaquinas = async (req, res) => {
     res.status(500).json({ error: "Erro ao listar máquinas" });
   }
 };
+export const listarTiposMaquina = async (req, res) => {
+  try {
+    const maquinas = await Maquina.findAll({
+      attributes: ["tipo"],
+      where: {
+        tipo: {
+          [Op.not]: null,
+        },
+      },
+      raw: true,
+    });
 
+    const tiposSet = new Set();
+
+    for (const item of maquinas) {
+      const nome = String(item?.tipo || "").trim();
+      if (nome) tiposSet.add(nome);
+    }
+
+    const tipos = Array.from(tiposSet).sort((a, b) =>
+      a.localeCompare(b, "pt-BR", { sensitivity: "base" }),
+    );
+
+    return res.json({ tipos });
+  } catch (error) {
+    console.error("Erro ao listar tipos de máquina:", error);
+    return res.status(500).json({ error: "Erro ao listar tipos de máquina" });
+  }
+};
 // US05 - Obter máquina por ID
 export const obterMaquina = async (req, res) => {
   try {

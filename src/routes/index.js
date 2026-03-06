@@ -23,6 +23,7 @@ import securityRoutes from "./security.routes.js";
 import manutencaoRoutes from "./manutencao.routes.js";
 import whatsappAlertaRoutes from "./whatsappAlerta.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
+import gastosFixosLojaRoutes from "./gastosFixosLoja.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -58,5 +59,6 @@ router.use("/financeiro", financeiroRoutes);
 
 // Nova rota para o dashboard
 router.use("/dashboard", dashboardRoutes);
+router.use("/gastos-fixos-loja", gastosFixosLojaRoutes);
 
 export default router;

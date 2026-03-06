@@ -41,7 +41,7 @@ const Loja = sequelize.define(
   {
     tableName: "lojas",
     timestamps: true,
-  }
+  },
 );
 
 export default Loja;
