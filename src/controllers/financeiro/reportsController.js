@@ -147,10 +147,7 @@ export function dashboard(req, res) {
       
       // 🆕 NOVOS CAMPOS: Alertas de vencimento
       
-      // Normalizar data atual (início do dia) para comparações precisas
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
+      // Reutilizar variável 'today' já declarada anteriormente
       const todayTime = today.getTime();
       const threeDaysFromNow = new Date(today);
       threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
