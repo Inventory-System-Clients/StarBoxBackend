@@ -1,6 +1,12 @@
 // Ocultar justificativa de quebra de ordem
+import express from "express";
 import { Movimentacao } from "../models/index.js";
-router.patch("/:id/ocultar-justificativa", async (req, res) => {
+// ...existing imports...
+
+const router = express.Router();
+
+// Ocultar justificativa de quebra de ordem
+router.patch(":id/ocultar-justificativa", async (req, res) => {
   try {
     const { id } = req.params;
     const mov = await Movimentacao.findByPk(id);
