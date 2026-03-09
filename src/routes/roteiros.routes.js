@@ -48,51 +48,66 @@ router.post("/:id/finalizar", autenticar, finalizarRoteiro);
 router.post("/mover-loja", async (req, res) => {
   try {
     const { lojaId, roteiroOrigemId, roteiroDestinoId } = req.body;
+    console.log("[MOVER-LOJA] body:", { lojaId, roteiroOrigemId, roteiroDestinoId });
+
     const roteiroDestino = await Roteiro.findByPk(roteiroDestinoId);
+    console.log("[MOVER-LOJA] roteiroDestino:", roteiroDestino?.id ?? "NÃO ENCONTRADO");
     if (!roteiroDestino)
       return res.status(404).json({ error: "Roteiro de destino não encontrado" });
 
     await sequelize.transaction(async (t) => {
       if (roteiroOrigemId) {
         const roteiroOrigem = await Roteiro.findByPk(roteiroOrigemId);
+        console.log("[MOVER-LOJA] roteiroOrigem:", roteiroOrigem?.id ?? "NÃO ENCONTRADO");
         if (!roteiroOrigem)
           throw Object.assign(new Error("Roteiro de origem não encontrado"), { status: 404 });
-        await RoteiroLoja.destroy({ where: { RoteiroId: roteiroOrigemId, LojaId: lojaId }, transaction: t });
-        // Reorganizar ordens do roteiro de origem
+
+        const destroyResult = await RoteiroLoja.destroy({ where: { RoteiroId: roteiroOrigemId, LojaId: lojaId }, transaction: t });
+        console.log("[MOVER-LOJA] registros removidos da origem:", destroyResult);
+
         const lojasOrigem = await RoteiroLoja.findAll({
           where: { RoteiroId: roteiroOrigemId },
           order: [["ordem", "ASC"]],
           transaction: t,
         });
+        console.log("[MOVER-LOJA] lojas restantes na origem:", lojasOrigem.length);
         for (let i = 0; i < lojasOrigem.length; i++) {
           await lojasOrigem[i].update({ ordem: i }, { transaction: t });
         }
       }
-      // Determinar nova ordem (ao final do roteiro destino)
+
       const maxOrdem = await RoteiroLoja.max("ordem", {
         where: { RoteiroId: roteiroDestinoId },
         transaction: t,
       });
       const novaOrdem = maxOrdem != null ? maxOrdem + 1 : 0;
+      console.log("[MOVER-LOJA] novaOrdem no destino:", novaOrdem);
+
       const existente = await RoteiroLoja.findOne({
         where: { RoteiroId: roteiroDestinoId, LojaId: lojaId },
         transaction: t,
       });
+      console.log("[MOVER-LOJA] loja já existe no destino?", !!existente);
+
       if (existente) {
         await existente.update({ ordem: novaOrdem }, { transaction: t });
       } else {
-        await RoteiroLoja.create(
+        const criado = await RoteiroLoja.create(
           { RoteiroId: roteiroDestinoId, LojaId: lojaId, ordem: novaOrdem },
           { transaction: t }
         );
+        console.log("[MOVER-LOJA] registro criado:", criado?.RoteiroId, criado?.LojaId);
       }
     });
 
+    console.log("[MOVER-LOJA] sucesso");
     res.json({ success: true });
   } catch (error) {
     if (error.status === 404) return res.status(404).json({ error: error.message });
-    console.error("Erro ao mover/adicionar loja:", error);
-    res.status(500).json({ error: "Erro ao mover/adicionar loja" });
+    console.error("[MOVER-LOJA] ERRO COMPLETO:", error);
+    console.error("[MOVER-LOJA] message:", error.message);
+    console.error("[MOVER-LOJA] stack:", error.stack);
+    res.status(500).json({ error: "Erro ao mover/adicionar loja", detalhe: error.message });
   }
 });
 
