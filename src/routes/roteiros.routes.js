@@ -74,10 +74,18 @@ router.post("/mover-loja", async (req, res) => {
         transaction: t,
       });
       const novaOrdem = maxOrdem != null ? maxOrdem + 1 : 0;
-      await RoteiroLoja.upsert(
-        { RoteiroId: roteiroDestinoId, LojaId: lojaId, ordem: novaOrdem },
-        { transaction: t }
-      );
+      const existente = await RoteiroLoja.findOne({
+        where: { RoteiroId: roteiroDestinoId, LojaId: lojaId },
+        transaction: t,
+      });
+      if (existente) {
+        await existente.update({ ordem: novaOrdem }, { transaction: t });
+      } else {
+        await RoteiroLoja.create(
+          { RoteiroId: roteiroDestinoId, LojaId: lojaId, ordem: novaOrdem },
+          { transaction: t }
+        );
+      }
     });
 
     res.json({ success: true });
