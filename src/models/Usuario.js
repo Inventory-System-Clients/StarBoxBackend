@@ -27,7 +27,12 @@ const Usuario = sequelize.define(
       allowNull: false,
     },
     role: {
-      type: DataTypes.ENUM("ADMIN", "FUNCIONARIO", "GERENCIADOR"),
+      type: DataTypes.ENUM(
+        "ADMIN",
+        "FUNCIONARIO",
+        "FUNCIONARIO_TODAS_LOJAS",
+        "GERENCIADOR",
+      ),
       allowNull: false,
       defaultValue: "FUNCIONARIO",
     },
@@ -55,7 +60,7 @@ const Usuario = sequelize.define(
         }
       },
     },
-  }
+  },
 );
 
 // Método para verificar senha

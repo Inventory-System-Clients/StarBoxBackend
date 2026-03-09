@@ -35,19 +35,24 @@ router.delete("/:pecaId/carrinho", autenticar, async (req, res) => {
 
 // ========== ROTAS DE CRUD DE PEÇAS ==========
 // Cadastrar nova peça (ADMIN, GERENCIADOR, FUNCIONARIO)
-router.post("/", autenticar, autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO"]), criarPeca);
+router.post(
+  "/",
+  autenticar,
+  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"]),
+  criarPeca,
+);
 // Editar peça (ADMIN, GERENCIADOR, FUNCIONARIO)
 router.put(
   "/:id",
   autenticar,
-  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO"]),
+  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"]),
   atualizarPeca,
 );
 // Excluir peça (ADMIN, GERENCIADOR, FUNCIONARIO)
 router.delete(
   "/:id",
   autenticar,
-  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO"]),
+  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"]),
   excluirPeca,
 );
 

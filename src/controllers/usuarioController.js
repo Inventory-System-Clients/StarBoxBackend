@@ -1,6 +1,15 @@
-
 import { Usuario, UsuarioLoja, Loja } from "../models/index.js";
 import { Op } from "sequelize";
+
+const ROLE_FUNCIONARIO = "FUNCIONARIO";
+const ROLE_FUNCIONARIO_TODAS_LOJAS = "FUNCIONARIO_TODAS_LOJAS";
+const ROLES_VALIDAS = [
+  "ADMIN",
+  ROLE_FUNCIONARIO,
+  ROLE_FUNCIONARIO_TODAS_LOJAS,
+  "GERENCIADOR",
+];
+const ROLES_FUNCIONARIOS = [ROLE_FUNCIONARIO, ROLE_FUNCIONARIO_TODAS_LOJAS];
 
 // Listar todos os usuários (apenas ADMIN)
 export const listarUsuarios = async (req, res) => {
@@ -94,11 +103,12 @@ export const criarUsuario = async (req, res) => {
     }
 
     // Validar role
-    const roleValida = ["ADMIN", "FUNCIONARIO", "GERENCIADOR"].includes(role);
+    const roleValida = ROLES_VALIDAS.includes(role);
     if (!roleValida) {
-      return res
-        .status(400)
-        .json({ error: "Role inválida. Use ADMIN, FUNCIONARIO ou GERENCIADOR" });
+      return res.status(400).json({
+        error:
+          "Role inválida. Use ADMIN, FUNCIONARIO, FUNCIONARIO_TODAS_LOJAS ou GERENCIADOR",
+      });
     }
 
     // Criar usuário
@@ -112,7 +122,7 @@ export const criarUsuario = async (req, res) => {
 
     // Se for funcionário e tiver lojas permitidas, criar permissões
     if (
-      role === "FUNCIONARIO" &&
+      role === ROLE_FUNCIONARIO &&
       lojasPermitidas &&
       lojasPermitidas.length > 0
     ) {
@@ -174,10 +184,11 @@ export const atualizarUsuario = async (req, res) => {
     }
 
     // Validar role se fornecida
-    if (role && !["ADMIN", "FUNCIONARIO", "GERENCIADOR"].includes(role)) {
-      return res
-        .status(400)
-        .json({ error: "Role inválida. Use ADMIN, FUNCIONARIO ou GERENCIADOR" });
+    if (role && !ROLES_VALIDAS.includes(role)) {
+      return res.status(400).json({
+        error:
+          "Role inválida. Use ADMIN, FUNCIONARIO, FUNCIONARIO_TODAS_LOJAS ou GERENCIADOR",
+      });
     }
 
     // Atualizar dados básicos
@@ -196,10 +207,8 @@ export const atualizarUsuario = async (req, res) => {
       await UsuarioLoja.destroy({ where: { usuarioId: usuario.id } });
 
       // Adicionar novas permissões (apenas se for FUNCIONARIO)
-      if (
-        (role || usuario.role) === "FUNCIONARIO" &&
-        lojasPermitidas.length > 0
-      ) {
+      const roleEfetiva = role ?? usuario.role;
+      if (roleEfetiva === ROLE_FUNCIONARIO && lojasPermitidas.length > 0) {
         const permissoes = lojasPermitidas.map((lojaId) => ({
           usuarioId: usuario.id,
           lojaId,
@@ -285,7 +294,10 @@ export const reativarUsuario = async (req, res) => {
 export const listarFuncionarios = async (req, res) => {
   try {
     const funcionarios = await Usuario.findAll({
-      where: { role: "FUNCIONARIO", ativo: true },
+      where: {
+        role: { [Op.in]: ROLES_FUNCIONARIOS },
+        ativo: true,
+      },
       order: [["nome", "ASC"]],
     });
     res.json(funcionarios);

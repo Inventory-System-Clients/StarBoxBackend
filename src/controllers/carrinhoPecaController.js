@@ -1,16 +1,24 @@
 ﻿import { CarrinhoPeca, Usuario, Peca } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 
+const rolesFuncionario = ["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"];
+const ehRoleFuncionario = (role) => rolesFuncionario.includes(role);
+
 // Funcao utilitaria para remover peca do carrinho apos movimentacao
 export const removerPecaDoCarrinho = async (usuarioId, pecaId) => {
   try {
     const item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId } });
     if (item) {
       await item.destroy();
-      console.log(`[Carrinho] Peca ${pecaId} removida do carrinho do usuario ${usuarioId}`);
+      console.log(
+        `[Carrinho] Peca ${pecaId} removida do carrinho do usuario ${usuarioId}`,
+      );
     }
   } catch (error) {
-    console.error("[Carrinho] Erro ao remover peca do carrinho apos movimentacao:", error);
+    console.error(
+      "[Carrinho] Erro ao remover peca do carrinho apos movimentacao:",
+      error,
+    );
   }
 };
 
@@ -45,7 +53,10 @@ export const adicionarAoCarrinho = async (req, res) => {
     const usuarioId = String(req.params.id);
     const { pecaId, quantidade } = req.body;
 
-    console.log("[Carrinho] Dados recebidos para adicionar ao carrinho:", { usuarioId, body: req.body });
+    console.log("[Carrinho] Dados recebidos para adicionar ao carrinho:", {
+      usuarioId,
+      body: req.body,
+    });
 
     if (!pecaId || !quantidade) {
       return res.status(400).json({ error: "pecaId ou quantidade ausente" });
@@ -64,8 +75,10 @@ export const adicionarAoCarrinho = async (req, res) => {
       String(req.usuario.id) !== usuarioId
     ) {
       const usuarioAlvo = await Usuario.findByPk(usuarioId);
-      if (!usuarioAlvo || usuarioAlvo.role !== "FUNCIONARIO") {
-        return res.status(403).json({ error: "So pode manipular carrinho de FUNCIONARIO" });
+      if (!usuarioAlvo || !ehRoleFuncionario(usuarioAlvo.role)) {
+        return res
+          .status(403)
+          .json({ error: "So pode manipular carrinho de FUNCIONARIO" });
       }
     }
 
@@ -86,14 +99,17 @@ export const adicionarAoCarrinho = async (req, res) => {
         });
       }
 
-      let item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId }, transaction });
+      let item = await CarrinhoPeca.findOne({
+        where: { usuarioId, pecaId },
+        transaction,
+      });
       if (item) {
         item.quantidade += quantidade;
         await item.save({ transaction });
       } else {
         item = await CarrinhoPeca.create(
           { usuarioId, pecaId, quantidade, nomePeca: peca.nome },
-          { transaction }
+          { transaction },
         );
       }
 
@@ -101,7 +117,10 @@ export const adicionarAoCarrinho = async (req, res) => {
       await peca.save({ transaction });
       await transaction.commit();
 
-      console.log("[Carrinho] Peca adicionada com sucesso:", { pecaId, novoEstoque: peca.quantidade });
+      console.log("[Carrinho] Peca adicionada com sucesso:", {
+        pecaId,
+        novoEstoque: peca.quantidade,
+      });
       res.status(201).json(item);
     } catch (error) {
       await transaction.rollback();
@@ -132,14 +151,19 @@ export const removerDoCarrinho = async (req, res) => {
       String(req.usuario.id) !== usuarioId
     ) {
       const usuarioAlvo = await Usuario.findByPk(usuarioId);
-      if (!usuarioAlvo || usuarioAlvo.role !== "FUNCIONARIO") {
-        return res.status(403).json({ error: "So pode manipular carrinho de FUNCIONARIO" });
+      if (!usuarioAlvo || !ehRoleFuncionario(usuarioAlvo.role)) {
+        return res
+          .status(403)
+          .json({ error: "So pode manipular carrinho de FUNCIONARIO" });
       }
     }
 
     const transaction = await sequelize.transaction();
     try {
-      const item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId }, transaction });
+      const item = await CarrinhoPeca.findOne({
+        where: { usuarioId, pecaId },
+        transaction,
+      });
       if (!item) {
         await transaction.rollback();
         return res.status(404).json({ error: "Item nao encontrado" });
@@ -156,7 +180,10 @@ export const removerDoCarrinho = async (req, res) => {
       await item.destroy({ transaction });
       await transaction.commit();
 
-      console.log("[Carrinho] Item removido e estoque devolvido:", { usuarioId, pecaId });
+      console.log("[Carrinho] Item removido e estoque devolvido:", {
+        usuarioId,
+        pecaId,
+      });
       res.json({ success: true });
     } catch (error) {
       await transaction.rollback();
@@ -187,14 +214,19 @@ export const devolverPecaDoCarrinho = async (req, res) => {
       String(req.usuario.id) !== usuarioId
     ) {
       const usuarioAlvo = await Usuario.findByPk(usuarioId);
-      if (!usuarioAlvo || usuarioAlvo.role !== "FUNCIONARIO") {
-        return res.status(403).json({ error: "So pode manipular carrinho de FUNCIONARIO" });
+      if (!usuarioAlvo || !ehRoleFuncionario(usuarioAlvo.role)) {
+        return res
+          .status(403)
+          .json({ error: "So pode manipular carrinho de FUNCIONARIO" });
       }
     }
 
     const transaction = await sequelize.transaction();
     try {
-      const item = await CarrinhoPeca.findOne({ where: { usuarioId, pecaId }, transaction });
+      const item = await CarrinhoPeca.findOne({
+        where: { usuarioId, pecaId },
+        transaction,
+      });
       if (!item) {
         await transaction.rollback();
         return res.status(404).json({ error: "Item nao encontrado" });
@@ -211,8 +243,14 @@ export const devolverPecaDoCarrinho = async (req, res) => {
       await item.destroy({ transaction });
       await transaction.commit();
 
-      console.log("[Carrinho] Peca devolvida ao estoque:", { usuarioId, pecaId });
-      res.json({ success: true, devolvida: { pecaId, quantidade: item.quantidade } });
+      console.log("[Carrinho] Peca devolvida ao estoque:", {
+        usuarioId,
+        pecaId,
+      });
+      res.json({
+        success: true,
+        devolvida: { pecaId, quantidade: item.quantidade },
+      });
     } catch (error) {
       await transaction.rollback();
       throw error;
@@ -227,7 +265,9 @@ export const devolverPecaDoCarrinho = async (req, res) => {
 export const listarTodosCarrinhos = async (req, res) => {
   try {
     if (req.usuario.role !== "ADMIN") {
-      return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
+      return res
+        .status(403)
+        .json({ error: "Acesso negado. Apenas administradores." });
     }
 
     const usuarios = await Usuario.findAll({
@@ -238,7 +278,12 @@ export const listarTodosCarrinhos = async (req, res) => {
           model: CarrinhoPeca,
           as: "carrinhoPecas",
           required: false,
-          include: [{ model: Peca, attributes: ["id", "nome", "quantidade", "categoria"] }],
+          include: [
+            {
+              model: Peca,
+              attributes: ["id", "nome", "quantidade", "categoria"],
+            },
+          ],
         },
       ],
     });
@@ -257,7 +302,9 @@ export const listarTodosCarrinhos = async (req, res) => {
       })),
     }));
 
-    console.log(`[Carrinho] Retornando ${resultado.length} usuarios com seus carrinhos`);
+    console.log(
+      `[Carrinho] Retornando ${resultado.length} usuarios com seus carrinhos`,
+    );
     res.json(resultado);
   } catch (error) {
     console.error("[listarTodosCarrinhos] Erro:", error);

@@ -151,6 +151,18 @@ const startServer = async () => {
 
     // --- Migrations inline: ajustes de colunas existentes ---
     try {
+      await sequelize.query(`
+        ALTER TYPE "enum_usuarios_role"
+        ADD VALUE IF NOT EXISTS 'FUNCIONARIO_TODAS_LOJAS'
+      `);
+      console.log(
+        "✅ Migration: role FUNCIONARIO_TODAS_LOJAS adicionado ao enum de usuarios",
+      );
+    } catch (migErr) {
+      console.warn("⚠️ Migration inline (enum_usuarios_role):", migErr.message);
+    }
+
+    try {
       // Alterar quantidade_notas_entrada de INTEGER para DECIMAL(10,2) se necessário
       const [colInfo] = await sequelize.query(`
         SELECT data_type FROM information_schema.columns
