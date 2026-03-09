@@ -22,7 +22,7 @@ const RoteiroLoja = sequelize.define(
   },
   {
     tableName: "RoteiroLojas",
-    timestamps: false,
+    timestamps: true,
   }
 );
 
