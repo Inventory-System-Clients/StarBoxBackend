@@ -57,10 +57,10 @@ router.post("/mover-loja", async (req, res) => {
         const roteiroOrigem = await Roteiro.findByPk(roteiroOrigemId);
         if (!roteiroOrigem)
           throw Object.assign(new Error("Roteiro de origem não encontrado"), { status: 404 });
-        await RoteiroLoja.destroy({ where: { roteiroId: roteiroOrigemId, lojaId }, transaction: t });
+        await RoteiroLoja.destroy({ where: { RoteiroId: roteiroOrigemId, LojaId: lojaId }, transaction: t });
         // Reorganizar ordens do roteiro de origem
         const lojasOrigem = await RoteiroLoja.findAll({
-          where: { roteiroId: roteiroOrigemId },
+          where: { RoteiroId: roteiroOrigemId },
           order: [["ordem", "ASC"]],
           transaction: t,
         });
@@ -70,12 +70,12 @@ router.post("/mover-loja", async (req, res) => {
       }
       // Determinar nova ordem (ao final do roteiro destino)
       const maxOrdem = await RoteiroLoja.max("ordem", {
-        where: { roteiroId: roteiroDestinoId },
+        where: { RoteiroId: roteiroDestinoId },
         transaction: t,
       });
       const novaOrdem = maxOrdem != null ? maxOrdem + 1 : 0;
       await RoteiroLoja.upsert(
-        { roteiroId: roteiroDestinoId, lojaId, ordem: novaOrdem },
+        { RoteiroId: roteiroDestinoId, LojaId: lojaId, ordem: novaOrdem },
         { transaction: t }
       );
     });
@@ -97,19 +97,19 @@ router.patch("/:id/reordenar-loja", autenticar, autorizar("ADMIN"), async (req, 
     if (lojaId == null || novaOrdem == null)
       return res.status(400).json({ error: "lojaId e novaOrdem s\u00e3o obrigat\u00f3rios" });
 
-    const relacaoAtual = await RoteiroLoja.findOne({ where: { roteiroId, lojaId } });
+    const relacaoAtual = await RoteiroLoja.findOne({ where: { RoteiroId: roteiroId, LojaId: lojaId } });
     if (!relacaoAtual)
       return res.status(404).json({ error: "Loja n\u00e3o encontrada no roteiro" });
 
     await sequelize.transaction(async (t) => {
       const todasLojas = await RoteiroLoja.findAll({
-        where: { roteiroId },
+        where: { RoteiroId: roteiroId },
         order: [["ordem", "ASC"]],
         transaction: t,
       });
 
       // Remove a loja da posição atual e insere na nova posição
-      const semLoja = todasLojas.filter((l) => l.lojaId !== lojaId);
+      const semLoja = todasLojas.filter((l) => l.LojaId !== lojaId);
       const novaOrdemClamped = Math.max(0, Math.min(novaOrdem, semLoja.length));
       semLoja.splice(novaOrdemClamped, 0, relacaoAtual);
 
@@ -139,7 +139,7 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
 
     // Determinar loja esperada (primeira pendente na ordem)
     const lojasRoteiro = await RoteiroLoja.findAll({
-      where: { roteiroId },
+      where: { RoteiroId: roteiroId },
       order: [["ordem", "ASC"]],
     });
 
@@ -153,7 +153,7 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
 
     let lojaEsperadaId = null;
     for (const rel of lojasRoteiro) {
-      const loja = await Loja.findByPk(rel.lojaId, {
+      const loja = await Loja.findByPk(rel.LojaId, {
         include: [{ model: Maquina, as: "maquinas", attributes: ["id"] }],
       });
       if (loja && loja.maquinas.some((m) => !maquinasConcluidasHoje.has(m.id))) {

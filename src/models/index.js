@@ -254,10 +254,10 @@ Usuario.hasMany(RoteiroFinalizacaoDiaria, {
 });
 
 // RoteiroLoja
-Roteiro.hasMany(RoteiroLoja, { foreignKey: "roteiroId", as: "roteiroLojas" });
-RoteiroLoja.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
-Loja.hasMany(RoteiroLoja, { foreignKey: "lojaId", as: "lojaRoteiros" });
-RoteiroLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+Roteiro.hasMany(RoteiroLoja, { foreignKey: "RoteiroId", as: "roteiroLojas" });
+RoteiroLoja.belongsTo(Roteiro, { foreignKey: "RoteiroId", as: "roteiro" });
+Loja.hasMany(RoteiroLoja, { foreignKey: "LojaId", as: "lojaRoteiros" });
+RoteiroLoja.belongsTo(Loja, { foreignKey: "LojaId", as: "loja" });
 
 // LogOrdemRoteiro
 LogOrdemRoteiro.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });

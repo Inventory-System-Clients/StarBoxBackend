@@ -2,14 +2,15 @@ import { DataTypes } from "sequelize";
 import { sequelize } from "../database/connection.js";
 
 // Tabela de junção entre Roteiro e Loja com suporte a ordenação
+// Nomes das colunas em PascalCase pois foram criadas automaticamente pelo Sequelize
 const RoteiroLoja = sequelize.define(
   "RoteiroLojas",
   {
-    roteiroId: {
+    RoteiroId: {
       type: DataTypes.UUID,
       allowNull: false,
     },
-    lojaId: {
+    LojaId: {
       type: DataTypes.UUID,
       allowNull: false,
     },
