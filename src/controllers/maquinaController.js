@@ -1,27 +1,109 @@
 import { Maquina, Loja, Movimentacao } from "../models/index.js";
 import { Op } from "sequelize";
+
+const possuiNumero = (valor) =>
+  valor !== null &&
+  valor !== undefined &&
+  valor !== "" &&
+  !Number.isNaN(Number(valor));
+
+const inteiroSeguro = (valor, fallback = 0) => {
+  if (!possuiNumero(valor)) return fallback;
+  return parseInt(valor, 10);
+};
+
+const calcularContadoresProjetados = (historico) => {
+  let contadorInProjetado = 0;
+  let contadorOutProjetado = 0;
+
+  for (const mov of historico) {
+    const fichas = inteiroSeguro(mov.fichas, 0);
+    const sairam = inteiroSeguro(mov.sairam, 0);
+
+    if (possuiNumero(mov.contadorIn)) {
+      contadorInProjetado = inteiroSeguro(mov.contadorIn, contadorInProjetado);
+    } else {
+      contadorInProjetado += fichas;
+    }
+
+    if (possuiNumero(mov.contadorOut)) {
+      contadorOutProjetado = inteiroSeguro(
+        mov.contadorOut,
+        contadorOutProjetado,
+      );
+    } else {
+      contadorOutProjetado += sairam;
+    }
+  }
+
+  return {
+    contadorInProjetado: Math.max(0, contadorInProjetado),
+    contadorOutProjetado: Math.max(0, contadorOutProjetado),
+  };
+};
 // Calcula quantidade atual e sugestão de abastecimento
 export const calcularQuantidadeAtual = async (req, res) => {
   try {
     const { maquinaId, contadorIn, contadorOut } = req.query;
-    if (!maquinaId || contadorIn === undefined || contadorOut === undefined) {
+    if (!maquinaId) {
       return res.status(400).json({
-        error: "maquinaId, contadorIn e contadorOut são obrigatórios",
+        error: "maquinaId é obrigatório",
       });
     }
+
     const maquina = await Maquina.findByPk(maquinaId);
     if (!maquina) {
       return res.status(404).json({ error: "Máquina não encontrada" });
     }
+
+    const historico = await Movimentacao.findAll({
+      where: { maquinaId },
+      attributes: [
+        "contadorIn",
+        "contadorOut",
+        "fichas",
+        "sairam",
+        "totalPos",
+        "dataColeta",
+        "createdAt",
+      ],
+      order: [
+        ["dataColeta", "ASC"],
+        ["createdAt", "ASC"],
+      ],
+    });
+
+    const ultimaMov = historico[historico.length - 1] || null;
+    const { contadorInProjetado, contadorOutProjetado } =
+      calcularContadoresProjetados(historico);
+
     const capacidade = parseInt(maquina.capacidadePadrao) || 0;
-    const inVal = parseInt(contadorIn) || 0;
-    const outVal = parseInt(contadorOut) || 0;
-    const quantidadeAtual = capacidade - (outVal - inVal);
+    const totalPosAnterior = ultimaMov
+      ? inteiroSeguro(ultimaMov.totalPos, 0)
+      : capacidade;
+
+    const contadorInAtual = possuiNumero(contadorIn)
+      ? inteiroSeguro(contadorIn, contadorInProjetado)
+      : contadorInProjetado;
+    const contadorOutAtual = possuiNumero(contadorOut)
+      ? inteiroSeguro(contadorOut, contadorOutProjetado)
+      : contadorOutProjetado;
+
+    const saidaCalculada = Math.max(0, contadorOutAtual - contadorOutProjetado);
+    const totalPreEsperado = Math.max(0, totalPosAnterior - saidaCalculada);
+    const quantidadeAtual = totalPreEsperado;
     const sugestaoAbastecimento = Math.max(0, capacidade - quantidadeAtual);
+
     res.json({
       quantidadeAtual: quantidadeAtual >= 0 ? quantidadeAtual : 0,
+      totalPreEsperado,
       sugestaoAbastecimento,
       capacidadePadrao: capacidade,
+      contadorInSugerido: contadorInProjetado,
+      contadorOutSugerido: contadorOutProjetado,
+      contadorInAtual,
+      contadorOutAtual,
+      saidaCalculada,
     });
   } catch (error) {
     console.error("Erro ao calcular quantidade atual:", error);

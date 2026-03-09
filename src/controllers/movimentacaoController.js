@@ -19,11 +19,7 @@ import justificativasPendentes from "../utils/justificativasPendentes.js";
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
   // Validação: apenas campos realmente obrigatórios em todos os formulários
-  const requiredFields = [
-    "maquinaId",
-    "totalPre",
-    "abastecidas",
-  ];
+  const requiredFields = ["maquinaId", "totalPre", "abastecidas"];
   const missing = requiredFields.filter((f) => req.body[f] === undefined);
   if (missing.length > 0) {
     return res
@@ -53,7 +49,22 @@ export const registrarMovimentacao = async (req, res) => {
       roteiroId, // pode não vir do Movimentacoes.jsx
       quantidade_notas_entrada,
       valor_entrada_maquininha_pix,
+      ignoreInOut,
     } = req.body;
+
+    const funcionarioSemContador = req.usuario?.role === "FUNCIONARIO";
+    const contadorInDigitalSanitizado = funcionarioSemContador
+      ? null
+      : contadorInDigital;
+    const contadorOutDigitalSanitizado = funcionarioSemContador
+      ? null
+      : contadorOutDigital;
+    const contadorInSanitizado = funcionarioSemContador
+      ? null
+      : (contadorIn ?? contadorInDigitalSanitizado ?? null);
+    const contadorOutSanitizado = funcionarioSemContador
+      ? null
+      : (contadorOut ?? contadorOutDigitalSanitizado ?? null);
 
     // (Removido alerta/bloqueio de pular loja: agora permite movimentação em qualquer loja do roteiro)
 
@@ -61,6 +72,27 @@ export const registrarMovimentacao = async (req, res) => {
     if (!maquinaId || totalPre === undefined || abastecidas === undefined) {
       return res.status(400).json({
         error: "maquinaId, totalPre e abastecidas são obrigatórios",
+      });
+    }
+
+    const isValorContadorValido = (valor) =>
+      valor !== null &&
+      valor !== undefined &&
+      valor !== "" &&
+      !Number.isNaN(Number(valor));
+
+    const contadorInInformado = contadorIn ?? contadorInDigital ?? null;
+    const contadorOutInformado = contadorOut ?? contadorOutDigital ?? null;
+
+    if (
+      req.usuario?.role === "FUNCIONARIO_TODAS_LOJAS" &&
+      !ignoreInOut &&
+      (!isValorContadorValido(contadorInInformado) ||
+        !isValorContadorValido(contadorOutInformado))
+    ) {
+      return res.status(400).json({
+        error:
+          "Para FUNCIONARIO_TODAS_LOJAS, os campos IN/OUT são obrigatórios. Marque a opção de ignorar IN/OUT para continuar sem eles.",
       });
     }
 
@@ -73,28 +105,28 @@ export const registrarMovimentacao = async (req, res) => {
     if (ultimaMov) {
       // contadorInDigital
       if (
-        typeof contadorInDigital === "number" &&
-        contadorInDigital > 0 &&
+        typeof contadorInDigitalSanitizado === "number" &&
+        contadorInDigitalSanitizado > 0 &&
         typeof ultimaMov.contadorInDigital === "number" &&
         ultimaMov.contadorInDigital !== null &&
-        contadorInDigital < ultimaMov.contadorInDigital &&
+        contadorInDigitalSanitizado < ultimaMov.contadorInDigital &&
         req.usuario.role !== "ADMIN"
       ) {
         return res.status(400).json({
-          error: `O contador IN Digital (${contadorInDigital}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
+          error: `O contador IN Digital (${contadorInDigitalSanitizado}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
         });
       }
       // contadorOutDigital
       if (
-        typeof contadorOutDigital === "number" &&
-        contadorOutDigital > 0 &&
+        typeof contadorOutDigitalSanitizado === "number" &&
+        contadorOutDigitalSanitizado > 0 &&
         typeof ultimaMov.contadorOutDigital === "number" &&
         ultimaMov.contadorOutDigital !== null &&
-        contadorOutDigital < ultimaMov.contadorOutDigital &&
+        contadorOutDigitalSanitizado < ultimaMov.contadorOutDigital &&
         req.usuario.role !== "ADMIN"
       ) {
         return res.status(400).json({
-          error: `O contador OUT Digital (${contadorOutDigital}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
+          error: `O contador OUT Digital (${contadorOutDigitalSanitizado}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
         });
       }
     }
@@ -113,10 +145,13 @@ export const registrarMovimentacao = async (req, res) => {
     // Usar contadores digitais para cálculo
     let saidaRecalculada = 0;
     if (
-      typeof contadorInDigital === "number" &&
-      typeof contadorOutDigital === "number"
+      typeof contadorInDigitalSanitizado === "number" &&
+      typeof contadorOutDigitalSanitizado === "number"
     ) {
-      saidaRecalculada = Math.max(0, contadorOutDigital - contadorInDigital);
+      saidaRecalculada = Math.max(
+        0,
+        contadorOutDigitalSanitizado - contadorInDigitalSanitizado,
+      );
     } else if (ultimaMov && typeof ultimaMov.totalPos === "number") {
       saidaRecalculada = Math.max(0, ultimaMov.totalPos - totalPre);
     }
@@ -159,8 +194,8 @@ export const registrarMovimentacao = async (req, res) => {
       abastecidas,
       fichas: fichasQtd,
       valorFaturado: parseFloat(valorFaturado.toFixed(2)),
-      contadorIn: contadorIn ?? contadorInDigital ?? null,
-      contadorOut: contadorOut ?? contadorOutDigital ?? null,
+      contadorIn: contadorInSanitizado,
+      contadorOut: contadorOutSanitizado,
       contadorMaquina: contadorMaquina ?? null,
       quantidade_notas_entrada: quantidade_notas_entrada ?? null,
       valor_entrada_maquininha_pix: valor_entrada_maquininha_pix ?? null,
@@ -452,7 +487,8 @@ export const listarMovimentacoes = async (req, res) => {
     });
 
     // Normaliza a resposta: expõe lojaId diretamente (via maquina.lojaId)
-    const LogOrdemRoteiro = (await import("../models/LogOrdemRoteiro.js")).default;
+    const LogOrdemRoteiro = (await import("../models/LogOrdemRoteiro.js"))
+      .default;
     const result = await Promise.all(
       movimentacoes.map(async (mov) => {
         const json = mov.toJSON();
@@ -482,7 +518,7 @@ export const listarMovimentacoes = async (req, res) => {
         // Expor nome da loja visitada
         json.lojaNome = json.maquina?.loja?.nome || null;
         return json;
-      })
+      }),
     );
     res.json(result);
   } catch (error) {
@@ -852,11 +888,20 @@ export const relatorioMovimentacoesDia = async (req, res) => {
     const totalFaturado = movimentacoes.reduce((acc, m) => {
       const fqtd = parseInt(m.fichas) || 0;
       const vf = parseFloat(m.maquina?.valorFicha || 0);
-      const fat = fqtd * vf + parseFloat(m.quantidade_notas_entrada || 0) + parseFloat(m.valor_entrada_maquininha_pix || 0);
+      const fat =
+        fqtd * vf +
+        parseFloat(m.quantidade_notas_entrada || 0) +
+        parseFloat(m.valor_entrada_maquininha_pix || 0);
       return acc + fat;
     }, 0);
-    const totalFichas = movimentacoes.reduce((acc, m) => acc + (m.fichas || 0), 0);
-    const totalSairam = movimentacoes.reduce((acc, m) => acc + (m.sairam || 0), 0);
+    const totalFichas = movimentacoes.reduce(
+      (acc, m) => acc + (m.fichas || 0),
+      0,
+    );
+    const totalSairam = movimentacoes.reduce(
+      (acc, m) => acc + (m.sairam || 0),
+      0,
+    );
 
     res.json({
       data: targetDate.toISOString().split("T")[0],
@@ -868,7 +913,9 @@ export const relatorioMovimentacoesDia = async (req, res) => {
     });
   } catch (error) {
     console.error("Erro no relatório de movimentações do dia:", error);
-    res.status(500).json({ error: "Erro ao gerar relatório de movimentações do dia" });
+    res
+      .status(500)
+      .json({ error: "Erro ao gerar relatório de movimentações do dia" });
   }
 };
 
@@ -909,14 +956,17 @@ export const relatorioLucroTotalDia = async (req, res) => {
         },
       ],
     });
-    const movimentacoes = movimentacoesRaw.map(m => m.toJSON());
+    const movimentacoes = movimentacoesRaw.map((m) => m.toJSON());
 
-    console.log(`[RELATORIO LUCRO] ${movimentacoes.length} movimentações encontradas para loja ${lojaId} em ${dataISO}`);
+    console.log(
+      `[RELATORIO LUCRO] ${movimentacoes.length} movimentações encontradas para loja ${lojaId} em ${dataISO}`,
+    );
     if (movimentacoes.length > 0) {
       console.log("[RELATORIO LUCRO] Exemplo mov[0]:", {
         fichas: movimentacoes[0].fichas,
         quantidade_notas_entrada: movimentacoes[0].quantidade_notas_entrada,
-        valor_entrada_maquininha_pix: movimentacoes[0].valor_entrada_maquininha_pix,
+        valor_entrada_maquininha_pix:
+          movimentacoes[0].valor_entrada_maquininha_pix,
         maquina_valorFicha: movimentacoes[0].maquina?.valorFicha,
         maquina_comissao: movimentacoes[0].maquina?.comissaoLojaPercentual,
       });
@@ -950,7 +1000,11 @@ export const relatorioLucroTotalDia = async (req, res) => {
     const receitaBruta = totalFichasValor + totalDinheiro + totalPix;
 
     console.log("[RELATORIO LUCRO] Totais calculados:", {
-      receitaBruta, totalFichasValor, totalDinheiro, totalPix, comissaoTotal
+      receitaBruta,
+      totalFichasValor,
+      totalDinheiro,
+      totalPix,
+      comissaoTotal,
     });
 
     // 3) Custo dos produtos que saíram
@@ -973,7 +1027,7 @@ export const relatorioLucroTotalDia = async (req, res) => {
         },
       ],
     });
-    const itensVendidos = itensVendidosRaw.map(i => i.toJSON());
+    const itensVendidos = itensVendidosRaw.map((i) => i.toJSON());
 
     const custoProdutos = itensVendidos.reduce((acc, item) => {
       const qtd = parseInt(item.quantidadeSaiu) || 0;
@@ -1010,7 +1064,12 @@ export const relatorioLucroTotalDia = async (req, res) => {
     }
 
     // 5) Lucro líquido = receita - produtos - comissão - custos
-    const lucroTotal = receitaBruta - custoProdutos - comissaoTotal - custosFixos - custosVariaveis;
+    const lucroTotal =
+      receitaBruta -
+      custoProdutos -
+      comissaoTotal -
+      custosFixos -
+      custosVariaveis;
 
     res.json({
       lojaId,
@@ -1068,14 +1127,17 @@ export const relatorioComissaoTotalDia = async (req, res) => {
         },
       ],
     });
-    const movimentacoes = movimentacoesRaw.map(m => m.toJSON());
+    const movimentacoes = movimentacoesRaw.map((m) => m.toJSON());
 
-    console.log(`[RELATORIO COMISSAO] ${movimentacoes.length} movimentações encontradas para loja ${lojaId} em ${dataISO}`);
+    console.log(
+      `[RELATORIO COMISSAO] ${movimentacoes.length} movimentações encontradas para loja ${lojaId} em ${dataISO}`,
+    );
     if (movimentacoes.length > 0) {
       console.log("[RELATORIO COMISSAO] Exemplo mov[0]:", {
         fichas: movimentacoes[0].fichas,
         quantidade_notas_entrada: movimentacoes[0].quantidade_notas_entrada,
-        valor_entrada_maquininha_pix: movimentacoes[0].valor_entrada_maquininha_pix,
+        valor_entrada_maquininha_pix:
+          movimentacoes[0].valor_entrada_maquininha_pix,
         maquina_valorFicha: movimentacoes[0].maquina?.valorFicha,
         maquina_comissao: movimentacoes[0].maquina?.comissaoLojaPercentual,
         maquina_nome: movimentacoes[0].maquina?.nome,
@@ -1097,7 +1159,9 @@ export const relatorioComissaoTotalDia = async (req, res) => {
       const comissao = (receitaMaquina * percentual) / 100;
       comissaoTotal += comissao;
 
-      console.log(`[RELATORIO COMISSAO] Máquina ${m.maquina?.nome}: fichas=${fichas} x R$${valorFicha} = R$${fichasValor}, dinheiro=R$${dinheiro}, pix=R$${pix}, receita=R$${receitaMaquina}, comissao=${percentual}% = R$${comissao.toFixed(2)}`);
+      console.log(
+        `[RELATORIO COMISSAO] Máquina ${m.maquina?.nome}: fichas=${fichas} x R$${valorFicha} = R$${fichasValor}, dinheiro=R$${dinheiro}, pix=R$${pix}, receita=R$${receitaMaquina}, comissao=${percentual}% = R$${comissao.toFixed(2)}`,
+      );
 
       const maqId = m.maquina?.id;
       if (maqId) {
@@ -1121,7 +1185,9 @@ export const relatorioComissaoTotalDia = async (req, res) => {
       comissaoTotal: parseFloat(d.comissaoTotal.toFixed(2)),
     }));
 
-    console.log(`[RELATORIO COMISSAO] Total comissão: R$${comissaoTotal.toFixed(2)}, Máquinas: ${detalhesPorMaquina.length}`);
+    console.log(
+      `[RELATORIO COMISSAO] Total comissão: R$${comissaoTotal.toFixed(2)}, Máquinas: ${detalhesPorMaquina.length}`,
+    );
 
     res.json({
       lojaId,
@@ -1131,6 +1197,8 @@ export const relatorioComissaoTotalDia = async (req, res) => {
     });
   } catch (error) {
     console.error("Erro no relatório de comissão do dia:", error);
-    res.status(500).json({ error: "Erro ao gerar relatório de comissão do dia" });
+    res
+      .status(500)
+      .json({ error: "Erro ao gerar relatório de comissão do dia" });
   }
 };
