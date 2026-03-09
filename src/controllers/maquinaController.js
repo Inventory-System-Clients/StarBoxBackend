@@ -73,14 +73,10 @@ export const calcularQuantidadeAtual = async (req, res) => {
       ],
     });
 
-    const ultimaMov = historico[historico.length - 1] || null;
     const { contadorInProjetado, contadorOutProjetado } =
       calcularContadoresProjetados(historico);
 
     const capacidade = parseInt(maquina.capacidadePadrao) || 0;
-    const totalPosAnterior = ultimaMov
-      ? inteiroSeguro(ultimaMov.totalPos, 0)
-      : capacidade;
 
     const contadorInAtual = possuiNumero(contadorIn)
       ? inteiroSeguro(contadorIn, contadorInProjetado)
@@ -90,7 +86,14 @@ export const calcularQuantidadeAtual = async (req, res) => {
       : contadorOutProjetado;
 
     const saidaCalculada = Math.max(0, contadorOutAtual - contadorOutProjetado);
-    const totalPreEsperado = Math.max(0, totalPosAnterior - saidaCalculada);
+    // Quando o usuário informa IN/OUT, estes contadores viram a nova referência
+    // da máquina para a próxima sugestão e para validação de divergência.
+    const quantidadeAtualPorContadores =
+      capacidade - (contadorOutAtual - contadorInAtual);
+    const totalPreEsperado = Math.min(
+      capacidade,
+      Math.max(0, quantidadeAtualPorContadores),
+    );
     const quantidadeAtual = totalPreEsperado;
     const sugestaoAbastecimento = Math.max(0, capacidade - quantidadeAtual);
 
