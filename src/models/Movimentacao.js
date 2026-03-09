@@ -113,6 +113,11 @@ const Movimentacao = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    justificativa_ordem: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: "Justificativa quando funcionário pulou a ordem de lojas no roteiro",
+    },
     tipoOcorrencia: {
       type: DataTypes.STRING(50),
       allowNull: true,
