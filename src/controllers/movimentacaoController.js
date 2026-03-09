@@ -14,6 +14,7 @@ import {
 import { Op } from "sequelize";
 import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
+import justificativasPendentes from "../utils/justificativasPendentes.js";
 
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
@@ -144,6 +145,11 @@ export const registrarMovimentacao = async (req, res) => {
       parseFloat(quantidade_notas_entrada || 0) +
       parseFloat(valor_entrada_maquininha_pix || 0);
 
+    // Verificar justificativa de quebra de ordem pendente para esta loja
+    const justificativaPendente = maquina.lojaId
+      ? justificativasPendentes.get(maquina.lojaId)
+      : null;
+
     const movimentacao = await Movimentacao.create({
       maquinaId,
       usuarioId: req.usuario.id,
@@ -161,7 +167,14 @@ export const registrarMovimentacao = async (req, res) => {
       observacoes,
       tipoOcorrencia: tipoOcorrencia || "Normal",
       retiradaEstoque: retiradaEstoque || false,
+      roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
+      justificativa_ordem: justificativaPendente?.justificativa ?? null,
     });
+
+    // Consumir justificativa pendente após usá-la
+    if (justificativaPendente && maquina.lojaId) {
+      justificativasPendentes.delete(maquina.lojaId);
+    }
 
     // Registrar peças usadas, se houver
     if (

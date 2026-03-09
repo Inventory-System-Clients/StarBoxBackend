@@ -2,6 +2,7 @@ import express from "express";
 import { Roteiro, Loja, Usuario, Maquina, RoteiroLoja, LogOrdemRoteiro } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 import { autenticar, autorizar } from "../middlewares/auth.js";
+import justificativasPendentes from "../utils/justificativasPendentes.js";
 import { finalizarRoteiro, criarRoteiro, atualizarDiasSemana } from "../controllers/roteiroController.js";
 import { Op, literal } from "sequelize";
 
@@ -192,6 +193,13 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
       lojaEsperadaId,
       lojaSelecionadaId: lojaId,
       justificativa: justificativa.trim(),
+    });
+
+    // Armazenar para ser aplicada na próxima movimentação desta loja
+    justificativasPendentes.set(lojaId, {
+      justificativa: justificativa.trim(),
+      roteiroId,
+      timestamp: new Date(),
     });
 
     res.json({ success: true, message: "Justificativa registrada com sucesso" });
