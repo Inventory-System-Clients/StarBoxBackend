@@ -176,15 +176,22 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
     const maquinasConcluidasHoje = new Set(statusHoje.map((s) => s.maquina_id));
 
     let lojaEsperadaId = null;
+    let lojaEsperadaNome = null;
+    let lojaNome = null;
+    // Descobrir loja esperada (primeira pendente na ordem)
     for (const rel of lojasRoteiro) {
       const loja = await Loja.findByPk(rel.LojaId, {
         include: [{ model: Maquina, as: "maquinas", attributes: ["id"] }],
       });
       if (loja && loja.maquinas.some((m) => !maquinasConcluidasHoje.has(m.id))) {
         lojaEsperadaId = loja.id;
+        lojaEsperadaNome = loja.nome;
         break;
       }
     }
+    // Nome da loja visitada
+    const lojaSelecionada = await Loja.findByPk(lojaId);
+    lojaNome = lojaSelecionada ? lojaSelecionada.nome : null;
 
     await LogOrdemRoteiro.create({
       roteiroId,
@@ -193,16 +200,21 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
       lojaEsperadaId,
       lojaSelecionadaId: lojaId,
       justificativa: justificativa.trim(),
+      lojaEsperadaNome,
+      lojaNome,
     });
 
     // Armazenar para ser aplicada na próxima movimentação desta loja
     justificativasPendentes.set(lojaId, {
       justificativa: justificativa.trim(),
       roteiroId,
+      lojaEsperadaId,
+      lojaEsperadaNome,
+      lojaNome,
       timestamp: new Date(),
     });
 
-    res.json({ success: true, message: "Justificativa registrada com sucesso" });
+    res.json({ success: true, message: "Justificativa registrada com sucesso", lojaEsperadaId, lojaEsperadaNome, lojaId, lojaNome, justificativa: justificativa.trim() });
   } catch (error) {
     console.error("Erro ao salvar justificativa:", error);
     res.status(500).json({ error: "Erro ao salvar justificativa" });

@@ -38,6 +38,16 @@ const LogOrdemRoteiro = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: false,
     },
+    lojaEsperadaNome: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      field: "loja_esperada_nome",
+    },
+    lojaNome: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      field: "loja_nome",
+    },
   },
   {
     tableName: "log_ordem_roteiro",

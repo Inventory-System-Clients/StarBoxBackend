@@ -68,6 +68,14 @@ export const up = async (queryInterface, Sequelize) => {
       type: Sequelize.TEXT,
       allowNull: false,
     },
+    loja_esperada_nome: {
+      type: Sequelize.STRING(100),
+      allowNull: true,
+    },
+    loja_nome: {
+      type: Sequelize.STRING(100),
+      allowNull: true,
+    },
     created_at: {
       type: Sequelize.DATE,
       defaultValue: Sequelize.literal("CURRENT_TIMESTAMP"),
