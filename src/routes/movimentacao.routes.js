@@ -1,6 +1,4 @@
-import express from "express";
 import { Movimentacao } from "../models/index.js";
-import express from "express";
 import {
   registrarMovimentacao,
   listarMovimentacoes,
