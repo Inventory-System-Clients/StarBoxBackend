@@ -130,6 +130,11 @@ const Movimentacao = sequelize.define(
       allowNull: true,
       comment: "fichas / sairam (se sairam > 0)",
     },
+
+    roteiroId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
   },
   {
     tableName: "movimentacoes",

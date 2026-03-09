@@ -436,7 +436,16 @@ export const listarMovimentacoes = async (req, res) => {
       limit: parseInt(limite),
     });
 
-    res.json(movimentacoes);
+    // Normaliza a resposta: expõe lojaId diretamente (via maquina.lojaId)
+    const result = movimentacoes.map((mov) => {
+      const json = mov.toJSON();
+      if (!json.lojaId && json.maquina?.lojaId) {
+        json.lojaId = json.maquina.lojaId;
+      }
+      return json;
+    });
+
+    res.json(result);
   } catch (error) {
     console.error("Erro ao listar movimentações:", error);
     res.status(500).json({ error: "Erro ao listar movimentações" });
