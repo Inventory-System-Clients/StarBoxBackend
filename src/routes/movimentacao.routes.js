@@ -1,22 +1,5 @@
-// Ocultar justificativa de quebra de ordem
 import express from "express";
 import { Movimentacao } from "../models/index.js";
-// ...existing imports...
-
-const router = express.Router();
-
-// Ocultar justificativa de quebra de ordem
-router.patch(":id/ocultar-justificativa", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const mov = await Movimentacao.findByPk(id);
-    if (!mov) return res.status(404).json({ error: "Movimentação não encontrada" });
-    await mov.update({ status_justificativa: "oculta" });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao ocultar justificativa" });
-  }
-});
 import express from "express";
 import {
   registrarMovimentacao,
@@ -35,6 +18,18 @@ import {
 } from "../middlewares/auth.js";
 
 const router = express.Router();
+// Ocultar justificativa de quebra de ordem
+router.patch(":id/ocultar-justificativa", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const mov = await Movimentacao.findByPk(id);
+    if (!mov) return res.status(404).json({ error: "Movimentação não encontrada" });
+    await mov.update({ status_justificativa: "oculta" });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao ocultar justificativa" });
+  }
+});
 
 router.get("/", autenticar, listarMovimentacoes);
 
