@@ -118,6 +118,12 @@ const Movimentacao = sequelize.define(
       allowNull: true,
       comment: "Justificativa quando funcionário pulou a ordem de lojas no roteiro",
     },
+    status_justificativa: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      defaultValue: "nova",
+      comment: "Status da justificativa de quebra de ordem (nova, oculta, etc)",
+    },
     tipoOcorrencia: {
       type: DataTypes.STRING(50),
       allowNull: true,
@@ -143,20 +149,10 @@ const Movimentacao = sequelize.define(
       beforeSave: async (movimentacao) => {
         // Corrige cálculo para movimentações normais (não retirada de estoque)
         if (!movimentacao.retiradaEstoque) {
-          movimentacao.totalPos =
-      status_justificativa: {
-        type: DataTypes.STRING(20),
-        allowNull: true,
-        defaultValue: "nova",
-        comment: "Status da justificativa de quebra de ordem (nova, oculta, etc)",
-      },
-      tipoOcorrencia: {
+          movimentacao.totalPos = movimentacao.totalPre + movimentacao.abastecidas;
         } else {
           // Para retirada de estoque, mantém lógica anterior
-          movimentacao.totalPos =
-            movimentacao.totalPre -
-            movimentacao.sairam +
-            movimentacao.abastecidas;
+          movimentacao.totalPos = movimentacao.totalPre - movimentacao.sairam + movimentacao.abastecidas;
         }
 
         // Calcular média fichas/prêmio
