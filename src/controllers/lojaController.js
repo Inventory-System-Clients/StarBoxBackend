@@ -4,11 +4,13 @@ import { Loja, Maquina, UsuarioLoja } from "../models/index.js";
 export const listarLojas = async (req, res) => {
   try {
     let lojas;
-    const podeVerTodasLojas = ["ADMIN", "FUNCIONARIO_TODAS_LOJAS"].includes(
-      req.usuario.role,
-    );
+    const podeVerTodasLojas = [
+      "ADMIN",
+      "FUNCIONARIO_TODAS_LOJAS",
+      "CONTROLADOR_ESTOQUE",
+    ].includes(req.usuario.role);
 
-    // ADMIN e FUNCIONARIO_TODAS_LOJAS veem todas as lojas
+    // ADMIN, FUNCIONARIO_TODAS_LOJAS e CONTROLADOR_ESTOQUE veem todas as lojas
     if (podeVerTodasLojas) {
       lojas = await Loja.findAll({
         include: [

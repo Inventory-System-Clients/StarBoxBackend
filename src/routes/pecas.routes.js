@@ -38,21 +38,39 @@ router.delete("/:pecaId/carrinho", autenticar, async (req, res) => {
 router.post(
   "/",
   autenticar,
-  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"]),
+  autorizar([
+    "ADMIN",
+    "GERENCIADOR",
+    "FUNCIONARIO",
+    "FUNCIONARIO_TODAS_LOJAS",
+    "CONTROLADOR_ESTOQUE",
+  ]),
   criarPeca,
 );
 // Editar peça (ADMIN, GERENCIADOR, FUNCIONARIO)
 router.put(
   "/:id",
   autenticar,
-  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"]),
+  autorizar([
+    "ADMIN",
+    "GERENCIADOR",
+    "FUNCIONARIO",
+    "FUNCIONARIO_TODAS_LOJAS",
+    "CONTROLADOR_ESTOQUE",
+  ]),
   atualizarPeca,
 );
 // Excluir peça (ADMIN, GERENCIADOR, FUNCIONARIO)
 router.delete(
   "/:id",
   autenticar,
-  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"]),
+  autorizar([
+    "ADMIN",
+    "GERENCIADOR",
+    "FUNCIONARIO",
+    "FUNCIONARIO_TODAS_LOJAS",
+    "CONTROLADOR_ESTOQUE",
+  ]),
   excluirPeca,
 );
 

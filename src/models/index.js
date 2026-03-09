@@ -33,6 +33,7 @@ import MovimentacaoProduto from "./MovimentacaoProduto.js";
 import LogAtividade from "./LogAtividade.js";
 import UsuarioLoja from "./UsuarioLoja.js";
 import EstoqueLoja from "./EstoqueLoja.js";
+import EstoqueUsuario from "./EstoqueUsuario.js";
 import MovimentacaoEstoqueLoja from "./MovimentacaoEstoqueLoja.js";
 import MovimentacaoEstoqueLojaProduto from "./MovimentacaoEstoqueLojaProduto.js";
 import AlertaIgnorado from "./AlertaIgnorado.js";
@@ -80,7 +81,6 @@ Maquina.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 // Loja -> Gastos Fixos
 Loja.hasMany(GastoFixoLoja, { foreignKey: "lojaId", as: "gastosFixos" });
 GastoFixoLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
-
 
 // Máquina -> Movimentações
 Maquina.hasMany(Movimentacao, { foreignKey: "maquinaId", as: "movimentacoes" });
@@ -183,6 +183,17 @@ Produto.hasMany(EstoqueLoja, {
 EstoqueLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 EstoqueLoja.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 
+Usuario.hasMany(EstoqueUsuario, {
+  foreignKey: "usuarioId",
+  as: "estoquesUsuario",
+});
+Produto.hasMany(EstoqueUsuario, {
+  foreignKey: "produtoId",
+  as: "estoquesEmUsuarios",
+});
+EstoqueUsuario.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
+EstoqueUsuario.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
+
 // Manutenção
 Manutencao.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 Loja.hasMany(Manutencao, { foreignKey: "lojaId", as: "manutencoes" });
@@ -262,8 +273,14 @@ RoteiroLoja.belongsTo(Loja, { foreignKey: "LojaId", as: "loja" });
 // LogOrdemRoteiro
 LogOrdemRoteiro.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
 LogOrdemRoteiro.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
-LogOrdemRoteiro.belongsTo(Loja, { foreignKey: "lojaEsperadaId", as: "lojaEsperada" });
-LogOrdemRoteiro.belongsTo(Loja, { foreignKey: "lojaSelecionadaId", as: "lojaSelecionada" });
+LogOrdemRoteiro.belongsTo(Loja, {
+  foreignKey: "lojaEsperadaId",
+  as: "lojaEsperada",
+});
+LogOrdemRoteiro.belongsTo(Loja, {
+  foreignKey: "lojaSelecionadaId",
+  as: "lojaSelecionada",
+});
 LogOrdemRoteiro.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 
 export {
@@ -277,6 +294,7 @@ export {
   LogAtividade,
   UsuarioLoja,
   EstoqueLoja,
+  EstoqueUsuario,
   MovimentacaoEstoqueLoja,
   MovimentacaoEstoqueLojaProduto,
   AlertaIgnorado,

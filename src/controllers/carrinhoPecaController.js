@@ -1,7 +1,11 @@
 ﻿import { CarrinhoPeca, Usuario, Peca } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 
-const rolesFuncionario = ["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"];
+const rolesFuncionario = [
+  "FUNCIONARIO",
+  "FUNCIONARIO_TODAS_LOJAS",
+  "CONTROLADOR_ESTOQUE",
+];
 const ehRoleFuncionario = (role) => rolesFuncionario.includes(role);
 
 // Funcao utilitaria para remover peca do carrinho apos movimentacao

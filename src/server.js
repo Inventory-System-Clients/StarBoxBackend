@@ -155,8 +155,12 @@ const startServer = async () => {
         ALTER TYPE "enum_usuarios_role"
         ADD VALUE IF NOT EXISTS 'FUNCIONARIO_TODAS_LOJAS'
       `);
+      await sequelize.query(`
+        ALTER TYPE "enum_usuarios_role"
+        ADD VALUE IF NOT EXISTS 'CONTROLADOR_ESTOQUE'
+      `);
       console.log(
-        "✅ Migration: role FUNCIONARIO_TODAS_LOJAS adicionado ao enum de usuarios",
+        "✅ Migration: roles FUNCIONARIO_TODAS_LOJAS e CONTROLADOR_ESTOQUE adicionados ao enum de usuarios",
       );
     } catch (migErr) {
       console.warn("⚠️ Migration inline (enum_usuarios_role):", migErr.message);

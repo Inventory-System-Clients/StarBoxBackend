@@ -9,6 +9,7 @@ import relatorioRoutes from "./relatorio.routes.js";
 import totaisRoutes from "./totais.routes.js";
 import adminRoutes from "./admin.routes.js";
 import estoqueLojaRoutes from "./estoqueLoja.routes.js";
+import estoqueUsuarioRoutes from "./estoqueUsuario.routes.js";
 import movimentacaoEstoqueLojaRoutes from "./movimentacaoEstoqueLoja.routes.js";
 import veiculoRoutes from "./veiculo.routes.js";
 import alertasVeiculosRoutes from "./alertasVeiculos.routes.js";
@@ -41,6 +42,7 @@ router.use("/relatorios", relatorioRoutes);
 router.use("/totais", totaisRoutes);
 router.use("/admin", adminRoutes);
 router.use("/estoque-lojas", estoqueLojaRoutes);
+router.use("/estoque-usuarios", estoqueUsuarioRoutes);
 router.use("/movimentacao-estoque-loja", movimentacaoEstoqueLojaRoutes);
 
 router.use("/veiculos", veiculoRoutes);

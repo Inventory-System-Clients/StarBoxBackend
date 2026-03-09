@@ -5,6 +5,7 @@ import {
   Usuario,
   Produto,
   EstoqueLoja,
+  EstoqueUsuario,
   Loja,
   CarrinhoPeca,
   Peca,
@@ -50,7 +51,12 @@ export const registrarMovimentacao = async (req, res) => {
       quantidade_notas_entrada,
       valor_entrada_maquininha_pix,
       ignoreInOut,
+      origemEstoque,
+      confirmarUsoEstoqueLoja,
     } = req.body;
+
+    const origemEstoqueNormalizada =
+      origemEstoque === "loja" ? "loja" : "usuario";
 
     const funcionarioSemContador = req.usuario?.role === "FUNCIONARIO";
     const contadorInDigitalSanitizado = funcionarioSemContador
@@ -84,15 +90,20 @@ export const registrarMovimentacao = async (req, res) => {
     const contadorInInformado = contadorIn ?? contadorInDigital ?? null;
     const contadorOutInformado = contadorOut ?? contadorOutDigital ?? null;
 
+    const precisaInOut = [
+      "FUNCIONARIO_TODAS_LOJAS",
+      "CONTROLADOR_ESTOQUE",
+    ].includes(req.usuario?.role);
+
     if (
-      req.usuario?.role === "FUNCIONARIO_TODAS_LOJAS" &&
+      precisaInOut &&
       !ignoreInOut &&
       (!isValorContadorValido(contadorInInformado) ||
         !isValorContadorValido(contadorOutInformado))
     ) {
       return res.status(400).json({
         error:
-          "Para FUNCIONARIO_TODAS_LOJAS, os campos IN/OUT são obrigatórios. Marque a opção de ignorar IN/OUT para continuar sem eles.",
+          "Para FUNCIONARIO_TODAS_LOJAS e CONTROLADOR_ESTOQUE, os campos IN/OUT são obrigatórios. Marque a opção de ignorar IN/OUT para continuar sem eles.",
       });
     }
 
@@ -161,6 +172,121 @@ export const registrarMovimentacao = async (req, res) => {
     const maquina = await Maquina.findByPk(maquinaId);
     if (!maquina) {
       return res.status(404).json({ error: "Máquina não encontrada" });
+    }
+
+    const produtosComAbastecimento = Array.isArray(produtos)
+      ? produtos.filter((item) => Number(item?.quantidadeAbastecida || 0) > 0)
+      : [];
+
+    if (produtosComAbastecimento.length > 0) {
+      const saldoUsuarioCache = new Map();
+      const saldoLojaCache = new Map();
+      const insuficientes = [];
+      const exigeConfirmacaoUsoLoja = [];
+
+      const obterSaldoUsuario = async (produtoId) => {
+        if (saldoUsuarioCache.has(produtoId)) {
+          return saldoUsuarioCache.get(produtoId);
+        }
+
+        const estoqueUsuario = await EstoqueUsuario.findOne({
+          where: {
+            usuarioId: req.usuario.id,
+            produtoId,
+          },
+        });
+
+        const saldo = Number(estoqueUsuario?.quantidade || 0);
+        saldoUsuarioCache.set(produtoId, saldo);
+        return saldo;
+      };
+
+      const obterSaldoLoja = async (produtoId) => {
+        if (saldoLojaCache.has(produtoId)) {
+          return saldoLojaCache.get(produtoId);
+        }
+
+        const estoqueLoja = await EstoqueLoja.findOne({
+          where: {
+            lojaId: maquina.lojaId,
+            produtoId,
+          },
+        });
+
+        const saldo = Number(estoqueLoja?.quantidade || 0);
+        saldoLojaCache.set(produtoId, saldo);
+        return saldo;
+      };
+
+      for (const item of produtosComAbastecimento) {
+        const produto = await Produto.findByPk(item.produtoId, {
+          attributes: ["id", "nome"],
+        });
+
+        if (!produto) {
+          continue;
+        }
+
+        const quantidadeSolicitada = Number(item.quantidadeAbastecida || 0);
+
+        if (origemEstoqueNormalizada === "usuario") {
+          const saldoUsuario = await obterSaldoUsuario(item.produtoId);
+
+          if (saldoUsuario < quantidadeSolicitada) {
+            insuficientes.push({
+              produtoId: item.produtoId,
+              produtoNome: produto.nome,
+              quantidadeSolicitada,
+              saldoDisponivel: saldoUsuario,
+              origemEstoque: "usuario",
+            });
+          }
+          continue;
+        }
+
+        const saldoLoja = await obterSaldoLoja(item.produtoId);
+        if (saldoLoja < quantidadeSolicitada) {
+          insuficientes.push({
+            produtoId: item.produtoId,
+            produtoNome: produto.nome,
+            quantidadeSolicitada,
+            saldoDisponivel: saldoLoja,
+            origemEstoque: "loja",
+          });
+        }
+
+        const saldoUsuario = await obterSaldoUsuario(item.produtoId);
+        if (!confirmarUsoEstoqueLoja && saldoUsuario > 0) {
+          exigeConfirmacaoUsoLoja.push({
+            produtoId: item.produtoId,
+            produtoNome: produto.nome,
+            saldoUsuario,
+            quantidadeSolicitada,
+          });
+        }
+      }
+
+      if (insuficientes.length > 0) {
+        return res.status(400).json({
+          error: `Estoque ${origemEstoqueNormalizada} insuficiente para concluir a movimentação`,
+          origemEstoque: origemEstoqueNormalizada,
+          detalhes: insuficientes,
+        });
+      }
+
+      if (
+        origemEstoqueNormalizada === "loja" &&
+        !confirmarUsoEstoqueLoja &&
+        exigeConfirmacaoUsoLoja.length > 0
+      ) {
+        return res.status(409).json({
+          error:
+            "Voce possui saldo no estoque pessoal para um ou mais produtos. Confirme se deseja retirar da loja mesmo assim.",
+          codigo: "CONFIRMAR_USO_ESTOQUE_LOJA",
+          origemEstoque: origemEstoqueNormalizada,
+          detalhes: exigeConfirmacaoUsoLoja,
+        });
+      }
     }
 
     // valorFaturado = fichas * valorFicha + dinheiro(notas) + pix/cartão
@@ -259,24 +385,42 @@ export const registrarMovimentacao = async (req, res) => {
       }
       if (detalhesProdutos.length > 0) {
         await MovimentacaoProduto.bulkCreate(detalhesProdutos);
-        // Atualiza estoque da loja para produtos
+        // Atualiza estoque de origem para produtos abastecidos
         for (const produto of detalhesProdutos) {
           if (
             produto.quantidadeAbastecida &&
             produto.quantidadeAbastecida > 0
           ) {
-            const estoqueLoja = await EstoqueLoja.findOne({
-              where: {
-                lojaId: maquina.lojaId,
-                produtoId: produto.produtoId,
-              },
-            });
-            if (estoqueLoja) {
-              const novaQuantidade = Math.max(
-                0,
-                estoqueLoja.quantidade - produto.quantidadeAbastecida,
-              );
-              await estoqueLoja.update({ quantidade: novaQuantidade });
+            if (origemEstoqueNormalizada === "loja") {
+              const estoqueLoja = await EstoqueLoja.findOne({
+                where: {
+                  lojaId: maquina.lojaId,
+                  produtoId: produto.produtoId,
+                },
+              });
+
+              if (estoqueLoja) {
+                const novaQuantidade = Math.max(
+                  0,
+                  estoqueLoja.quantidade - produto.quantidadeAbastecida,
+                );
+                await estoqueLoja.update({ quantidade: novaQuantidade });
+              }
+            } else {
+              const estoqueUsuario = await EstoqueUsuario.findOne({
+                where: {
+                  usuarioId: req.usuario.id,
+                  produtoId: produto.produtoId,
+                },
+              });
+
+              if (estoqueUsuario) {
+                const novaQuantidade = Math.max(
+                  0,
+                  estoqueUsuario.quantidade - produto.quantidadeAbastecida,
+                );
+                await estoqueUsuario.update({ quantidade: novaQuantidade });
+              }
             }
           }
         }
@@ -433,8 +577,12 @@ export const registrarMovimentacao = async (req, res) => {
         });
       }
     }
+
+    const movimentacaoResposta = movimentacaoCompleta.toJSON();
+    movimentacaoResposta.origemEstoqueAplicada = origemEstoqueNormalizada;
+
     res.locals.entityId = movimentacao.id;
-    res.status(201).json(movimentacaoCompleta);
+    res.status(201).json(movimentacaoResposta);
     return;
   } catch (error) {
     console.error("Erro ao registrar movimentação:", error);

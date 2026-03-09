@@ -3,10 +3,12 @@ import { Op } from "sequelize";
 
 const ROLE_FUNCIONARIO = "FUNCIONARIO";
 const ROLE_FUNCIONARIO_TODAS_LOJAS = "FUNCIONARIO_TODAS_LOJAS";
+const ROLE_CONTROLADOR_ESTOQUE = "CONTROLADOR_ESTOQUE";
 const ROLES_VALIDAS = [
   "ADMIN",
   ROLE_FUNCIONARIO,
   ROLE_FUNCIONARIO_TODAS_LOJAS,
+  ROLE_CONTROLADOR_ESTOQUE,
   "GERENCIADOR",
 ];
 const ROLES_FUNCIONARIOS = [ROLE_FUNCIONARIO, ROLE_FUNCIONARIO_TODAS_LOJAS];
@@ -107,7 +109,7 @@ export const criarUsuario = async (req, res) => {
     if (!roleValida) {
       return res.status(400).json({
         error:
-          "Role inválida. Use ADMIN, FUNCIONARIO, FUNCIONARIO_TODAS_LOJAS ou GERENCIADOR",
+          "Role inválida. Use ADMIN, FUNCIONARIO, FUNCIONARIO_TODAS_LOJAS, CONTROLADOR_ESTOQUE ou GERENCIADOR",
       });
     }
 
@@ -187,7 +189,7 @@ export const atualizarUsuario = async (req, res) => {
     if (role && !ROLES_VALIDAS.includes(role)) {
       return res.status(400).json({
         error:
-          "Role inválida. Use ADMIN, FUNCIONARIO, FUNCIONARIO_TODAS_LOJAS ou GERENCIADOR",
+          "Role inválida. Use ADMIN, FUNCIONARIO, FUNCIONARIO_TODAS_LOJAS, CONTROLADOR_ESTOQUE ou GERENCIADOR",
       });
     }
 

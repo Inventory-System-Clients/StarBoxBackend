@@ -61,10 +61,11 @@ export const autorizar = (...rolesPermitidas) => {
 export const verificarPermissaoLoja = (acao = "visualizar") => {
   return async (req, res, next) => {
     try {
-      // Admin e FUNCIONARIO_TODAS_LOJAS têm acesso total
+      // Admin, FUNCIONARIO_TODAS_LOJAS e CONTROLADOR_ESTOQUE têm acesso total
       if (
         req.usuario.role === "ADMIN" ||
-        req.usuario.role === "FUNCIONARIO_TODAS_LOJAS"
+        req.usuario.role === "FUNCIONARIO_TODAS_LOJAS" ||
+        req.usuario.role === "CONTROLADOR_ESTOQUE"
       ) {
         return next();
       }
