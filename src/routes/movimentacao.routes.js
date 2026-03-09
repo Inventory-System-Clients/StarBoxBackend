@@ -1,3 +1,16 @@
+// Ocultar justificativa de quebra de ordem
+import { Movimentacao } from "../models/index.js";
+router.patch("/:id/ocultar-justificativa", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const mov = await Movimentacao.findByPk(id);
+    if (!mov) return res.status(404).json({ error: "Movimentação não encontrada" });
+    await mov.update({ status_justificativa: "oculta" });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao ocultar justificativa" });
+  }
+});
 import express from "express";
 import {
   registrarMovimentacao,

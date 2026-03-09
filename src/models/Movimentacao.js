@@ -144,7 +144,13 @@ const Movimentacao = sequelize.define(
         // Corrige cálculo para movimentações normais (não retirada de estoque)
         if (!movimentacao.retiradaEstoque) {
           movimentacao.totalPos =
-            movimentacao.totalPre + movimentacao.abastecidas;
+      status_justificativa: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        defaultValue: "nova",
+        comment: "Status da justificativa de quebra de ordem (nova, oculta, etc)",
+      },
+      tipoOcorrencia: {
         } else {
           // Para retirada de estoque, mantém lógica anterior
           movimentacao.totalPos =

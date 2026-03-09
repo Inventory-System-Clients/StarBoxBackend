@@ -413,6 +413,8 @@ export const listarMovimentacoes = async (req, res) => {
     const { lojaId, limite = 100 } = req.query;
     const where = {};
     if (lojaId) where.lojaId = lojaId;
+    // Filtrar apenas justificativas novas
+    where.status_justificativa = "nova";
     const include = [
       {
         model: Maquina,
