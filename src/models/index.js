@@ -44,7 +44,9 @@ import Manutencao from "./Manutencao.js";
 import WhatsAppAlerta from "./WhatsAppAlerta.js";
 import RoteiroFinalizacaoDiaria from "./RoteiroFinalizacaoDiaria.js";
 import GastoFixoLoja from "./GastoFixoLoja.js";
-Roteiro.associate({ Usuario, Loja });
+import RoteiroLoja from "./RoteiroLoja.js";
+import LogOrdemRoteiro from "./LogOrdemRoteiro.js";
+Roteiro.associate({ Usuario, Loja, RoteiroLoja });
 // Movimentação de Veículo -> Veículo e Usuário
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",
@@ -250,6 +252,20 @@ Usuario.hasMany(RoteiroFinalizacaoDiaria, {
   foreignKey: "finalizadoPorId",
   as: "roteirosFinalizados",
 });
+
+// RoteiroLoja
+Roteiro.hasMany(RoteiroLoja, { foreignKey: "roteiroId", as: "roteiroLojas" });
+RoteiroLoja.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
+Loja.hasMany(RoteiroLoja, { foreignKey: "lojaId", as: "lojaRoteiros" });
+RoteiroLoja.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+
+// LogOrdemRoteiro
+LogOrdemRoteiro.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
+LogOrdemRoteiro.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
+LogOrdemRoteiro.belongsTo(Loja, { foreignKey: "lojaEsperadaId", as: "lojaEsperada" });
+LogOrdemRoteiro.belongsTo(Loja, { foreignKey: "lojaSelecionadaId", as: "lojaSelecionada" });
+LogOrdemRoteiro.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
+
 export {
   CarrinhoPeca,
   Usuario,
@@ -276,4 +292,6 @@ export {
   WhatsAppAlerta,
   RoteiroFinalizacaoDiaria,
   GastoFixoLoja,
+  RoteiroLoja,
+  LogOrdemRoteiro,
 };

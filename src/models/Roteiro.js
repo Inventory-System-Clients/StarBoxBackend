@@ -30,7 +30,9 @@ Roteiro.associate = (models) => {
     foreignKey: "funcionarioId",
   });
   Roteiro.belongsToMany(models.Loja, {
-    through: "RoteiroLojas",
+    through: models.RoteiroLoja,
+    foreignKey: "roteiroId",
+    otherKey: "lojaId",
     as: "lojas",
   });
 };

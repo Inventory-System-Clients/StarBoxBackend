@@ -15,6 +15,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
           model: Loja,
           as: "lojas",
           attributes: ["id", "nome", "cidade", "estado"],
+          through: { attributes: ["ordem"] },
           include: [
             {
               model: Maquina,
@@ -55,8 +56,12 @@ async function getRoteiroExecucaoComStatus(req, res) {
       statusMaquinas.map((s) => s.maquina_id),
     );
 
+    const lojasOrdenadas = [...roteiro.lojas].sort(
+      (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0)
+    );
+
     let roteiroFinalizado = true;
-    const lojas = roteiro.lojas.map((loja) => {
+    const lojas = lojasOrdenadas.map((loja) => {
       let lojaFinalizada = true;
       // Movimentações consideradas para esta loja
       const movimentacoesLoja = statusMaquinas.filter((s) => {
@@ -77,6 +82,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
         nome: loja.nome,
         status: lojaFinalizada ? "finalizado" : "pendente",
         maquinas,
+        ordem: loja.RoteiroLojas?.ordem ?? 0,
         movimentacoesConsideradas: movimentacoesLoja.map((s) => ({
           maquina_id: s.maquina_id,
           roteiro_id: s.roteiro_id,
@@ -112,6 +118,7 @@ async function getTodosRoteirosComStatus(req, res) {
           model: Loja,
           as: "lojas",
           attributes: ["id", "nome", "cidade", "estado"],
+          through: { attributes: ["ordem"] },
           include: [
             {
               model: Maquina,
@@ -154,8 +161,11 @@ async function getTodosRoteirosComStatus(req, res) {
       const maquinasFinalizadas = new Set(
         statusMaquinasRoteiro.map((s) => s.maquina_id),
       );
+      const lojasOrdenadas = [...roteiro.lojas].sort(
+        (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0)
+      );
       let roteiroFinalizado = true;
-      const lojas = roteiro.lojas.map((loja) => {
+      const lojas = lojasOrdenadas.map((loja) => {
         let lojaFinalizada = true;
         const movimentacoesLoja = statusMaquinasRoteiro.filter((s) => {
           return loja.maquinas.some((m) => m.id === s.maquina_id);
@@ -175,6 +185,7 @@ async function getTodosRoteirosComStatus(req, res) {
           nome: loja.nome,
           status: lojaFinalizada ? "finalizado" : "pendente",
           maquinas,
+          ordem: loja.RoteiroLojas?.ordem ?? 0,
           movimentacoesConsideradas: movimentacoesLoja.map((s) => ({
             maquina_id: s.maquina_id,
             roteiro_id: s.roteiro_id,

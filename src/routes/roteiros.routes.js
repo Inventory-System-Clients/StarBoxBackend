@@ -1,5 +1,6 @@
 import express from "express";
-import { Roteiro, Loja, Usuario, Maquina } from "../models/index.js";
+import { Roteiro, Loja, Usuario, Maquina, RoteiroLoja, LogOrdemRoteiro } from "../models/index.js";
+import { sequelize } from "../database/connection.js";
 import { autenticar, autorizar } from "../middlewares/auth.js";
 import { finalizarRoteiro, criarRoteiro, atualizarDiasSemana } from "../controllers/roteiroController.js";
 import { Op, literal } from "sequelize";
@@ -15,7 +16,7 @@ router.get("/", async (req, res) => {
     const roteiros = await Roteiro.findAll({
       include: [
         { model: Usuario, as: "funcionario", attributes: ["id", "nome"] },
-        { model: Loja, as: "lojas", attributes: ["id", "nome"] },
+        { model: Loja, as: "lojas", attributes: ["id", "nome"], through: { attributes: ["ordem"] } },
       ],
     });
     res.json(roteiros);
@@ -49,22 +50,131 @@ router.post("/mover-loja", async (req, res) => {
     const { lojaId, roteiroOrigemId, roteiroDestinoId } = req.body;
     const roteiroDestino = await Roteiro.findByPk(roteiroDestinoId);
     if (!roteiroDestino)
-      return res
-        .status(404)
-        .json({ error: "Roteiro de destino não encontrado" });
+      return res.status(404).json({ error: "Roteiro de destino não encontrado" });
 
-    if (roteiroOrigemId) {
-      const roteiroOrigem = await Roteiro.findByPk(roteiroOrigemId);
-      if (!roteiroOrigem)
-        return res
-          .status(404)
-          .json({ error: "Roteiro de origem não encontrado" });
-      await roteiroOrigem.removeLoja(lojaId);
-    }
-    await roteiroDestino.addLoja(lojaId);
+    await sequelize.transaction(async (t) => {
+      if (roteiroOrigemId) {
+        const roteiroOrigem = await Roteiro.findByPk(roteiroOrigemId);
+        if (!roteiroOrigem)
+          throw Object.assign(new Error("Roteiro de origem não encontrado"), { status: 404 });
+        await RoteiroLoja.destroy({ where: { roteiroId: roteiroOrigemId, lojaId }, transaction: t });
+        // Reorganizar ordens do roteiro de origem
+        const lojasOrigem = await RoteiroLoja.findAll({
+          where: { roteiroId: roteiroOrigemId },
+          order: [["ordem", "ASC"]],
+          transaction: t,
+        });
+        for (let i = 0; i < lojasOrigem.length; i++) {
+          await lojasOrigem[i].update({ ordem: i }, { transaction: t });
+        }
+      }
+      // Determinar nova ordem (ao final do roteiro destino)
+      const maxOrdem = await RoteiroLoja.max("ordem", {
+        where: { roteiroId: roteiroDestinoId },
+        transaction: t,
+      });
+      const novaOrdem = maxOrdem != null ? maxOrdem + 1 : 0;
+      await RoteiroLoja.upsert(
+        { roteiroId: roteiroDestinoId, lojaId, ordem: novaOrdem },
+        { transaction: t }
+      );
+    });
+
     res.json({ success: true });
   } catch (error) {
+    if (error.status === 404) return res.status(404).json({ error: error.message });
+    console.error("Erro ao mover/adicionar loja:", error);
     res.status(500).json({ error: "Erro ao mover/adicionar loja" });
+  }
+});
+
+// Reordenar loja dentro do roteiro (ADMIN only)
+router.patch("/:id/reordenar-loja", autenticar, autorizar("ADMIN"), async (req, res) => {
+  try {
+    const { id: roteiroId } = req.params;
+    const { lojaId, novaOrdem } = req.body;
+
+    if (lojaId == null || novaOrdem == null)
+      return res.status(400).json({ error: "lojaId e novaOrdem s\u00e3o obrigat\u00f3rios" });
+
+    const relacaoAtual = await RoteiroLoja.findOne({ where: { roteiroId, lojaId } });
+    if (!relacaoAtual)
+      return res.status(404).json({ error: "Loja n\u00e3o encontrada no roteiro" });
+
+    await sequelize.transaction(async (t) => {
+      const todasLojas = await RoteiroLoja.findAll({
+        where: { roteiroId },
+        order: [["ordem", "ASC"]],
+        transaction: t,
+      });
+
+      // Remove a loja da posição atual e insere na nova posição
+      const semLoja = todasLojas.filter((l) => l.lojaId !== lojaId);
+      const novaOrdemClamped = Math.max(0, Math.min(novaOrdem, semLoja.length));
+      semLoja.splice(novaOrdemClamped, 0, relacaoAtual);
+
+      for (let i = 0; i < semLoja.length; i++) {
+        await semLoja[i].update({ ordem: i }, { transaction: t });
+      }
+    });
+
+    res.json({ success: true, message: "Loja reordenada com sucesso" });
+  } catch (error) {
+    console.error("Erro ao reordenar loja:", error);
+    res.status(500).json({ error: "Erro ao reordenar loja" });
+  }
+});
+
+// Registrar justificativa quando funcionário pula a ordem de lojas
+router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
+  try {
+    const { id: roteiroId } = req.params;
+    const { lojaId, justificativa } = req.body;
+    const usuarioId = req.usuario.id;
+
+    if (!justificativa || justificativa.trim() === "")
+      return res.status(400).json({ error: "Justificativa \u00e9 obrigat\u00f3ria" });
+    if (!lojaId)
+      return res.status(400).json({ error: "lojaId \u00e9 obrigat\u00f3rio" });
+
+    // Determinar loja esperada (primeira pendente na ordem)
+    const lojasRoteiro = await RoteiroLoja.findAll({
+      where: { roteiroId },
+      order: [["ordem", "ASC"]],
+    });
+
+    // Importar aqui para evitar dependência circular — já está no models/index.js
+    const MovimentacaoStatusDiario = (await import("../models/MovimentacaoStatusDiario.js")).default;
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    const statusHoje = await MovimentacaoStatusDiario.findAll({
+      where: { roteiro_id: roteiroId, data: dataHoje, concluida: true },
+    });
+    const maquinasConcluidasHoje = new Set(statusHoje.map((s) => s.maquina_id));
+
+    let lojaEsperadaId = null;
+    for (const rel of lojasRoteiro) {
+      const loja = await Loja.findByPk(rel.lojaId, {
+        include: [{ model: Maquina, as: "maquinas", attributes: ["id"] }],
+      });
+      if (loja && loja.maquinas.some((m) => !maquinasConcluidasHoje.has(m.id))) {
+        lojaEsperadaId = loja.id;
+        break;
+      }
+    }
+
+    await LogOrdemRoteiro.create({
+      roteiroId,
+      lojaId,
+      usuarioId,
+      lojaEsperadaId,
+      lojaSelecionadaId: lojaId,
+      justificativa: justificativa.trim(),
+    });
+
+    res.json({ success: true, message: "Justificativa registrada com sucesso" });
+  } catch (error) {
+    console.error("Erro ao salvar justificativa:", error);
+    res.status(500).json({ error: "Erro ao salvar justificativa" });
   }
 });
 
