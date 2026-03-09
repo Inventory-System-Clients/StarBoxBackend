@@ -450,14 +450,38 @@ export const listarMovimentacoes = async (req, res) => {
     });
 
     // Normaliza a resposta: expõe lojaId diretamente (via maquina.lojaId)
-    const result = movimentacoes.map((mov) => {
-      const json = mov.toJSON();
-      if (!json.lojaId && json.maquina?.lojaId) {
-        json.lojaId = json.maquina.lojaId;
-      }
-      return json;
-    });
-
+    const LogOrdemRoteiro = (await import("../models/LogOrdemRoteiro.js")).default;
+    const result = await Promise.all(
+      movimentacoes.map(async (mov) => {
+        const json = mov.toJSON();
+        if (!json.lojaId && json.maquina?.lojaId) {
+          json.lojaId = json.maquina.lojaId;
+        }
+        // Se houve quebra de ordem, buscar info do log
+        if (json.justificativa_ordem) {
+          const log = await LogOrdemRoteiro.findOne({
+            where: {
+              lojaId: json.lojaId,
+              justificativa: json.justificativa_ordem,
+            },
+            order: [["createdAt", "DESC"]],
+          });
+          if (log) {
+            json.lojaIdEsperada = log.lojaEsperadaId || null;
+            json.lojaEsperadaNome = log.lojaEsperadaNome || null;
+          } else {
+            json.lojaIdEsperada = null;
+            json.lojaEsperadaNome = null;
+          }
+        } else {
+          json.lojaIdEsperada = null;
+          json.lojaEsperadaNome = null;
+        }
+        // Expor nome da loja visitada
+        json.lojaNome = json.maquina?.loja?.nome || null;
+        return json;
+      })
+    );
     res.json(result);
   } catch (error) {
     console.error("Erro ao listar movimentações:", error);
