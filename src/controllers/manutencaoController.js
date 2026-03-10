@@ -291,24 +291,17 @@ export const concluirManutencao = async (req, res) => {
       return res.status(400).json({ error: "concluidoPorId é obrigatório" });
     }
 
-    // Se não usar peça, explicação é obrigatória
-    if (!pecaId && !explicacao_sem_peca) {
+    // Observação é obrigatória sempre
+    if (!explicacao_sem_peca || explicacao_sem_peca.trim() === '') {
       return res.status(400).json({
-        error: "Explicação obrigatória quando não usar peças"
-      });
-    }
-
-    // Se usar peça, explicação deve ser null
-    if (pecaId && explicacao_sem_peca) {
-      return res.status(400).json({
-        error: "Não é possível ter explicação e peça ao mesmo tempo"
+        error: "Observação é obrigatória ao concluir manutenção"
       });
     }
 
     // Validar tamanho da explicação
-    if (explicacao_sem_peca && explicacao_sem_peca.length > 100) {
+    if (explicacao_sem_peca.length > 100) {
       return res.status(400).json({
-        error: "Explicação deve ter no máximo 100 caracteres"
+        error: "Observação deve ter no máximo 100 caracteres"
       });
     }
 
