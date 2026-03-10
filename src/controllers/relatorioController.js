@@ -3,7 +3,9 @@ export const roteiroDiasSemMovimentacao = async (req, res) => {
   try {
     const { roteiroId, dataInicio, dataFim } = req.query;
     if (!roteiroId || !dataInicio || !dataFim) {
-      return res.status(400).json({ error: "roteiroId, dataInicio e dataFim são obrigatórios" });
+      return res
+        .status(400)
+        .json({ error: "roteiroId, dataInicio e dataFim são obrigatórios" });
     }
     const roteiro = await Roteiro.findByPk(roteiroId, {
       include: [{ model: Loja, as: "lojas", attributes: ["id", "nome"] }],
@@ -44,7 +46,9 @@ export const roteiroDiasSemMovimentacao = async (req, res) => {
           diasComMov.add(new Date(mov.dataColeta).toISOString().slice(0, 10));
         }
       }
-      const diasSemMovimentacao = diasPeriodo.filter((dia) => !diasComMov.has(dia));
+      const diasSemMovimentacao = diasPeriodo.filter(
+        (dia) => !diasComMov.has(dia),
+      );
       lojasResp.push({ id: loja.id, nome: loja.nome, diasSemMovimentacao });
     }
     res.json({ lojas: lojasResp });
@@ -59,7 +63,9 @@ export const relatorioRoteiro = async (req, res) => {
   try {
     const { roteiroId, dataInicio, dataFim } = req.query;
     if (!roteiroId || !dataInicio || !dataFim) {
-      return res.status(400).json({ error: "roteiroId, dataInicio e dataFim são obrigatórios" });
+      return res
+        .status(400)
+        .json({ error: "roteiroId, dataInicio e dataFim são obrigatórios" });
     }
 
     // Buscar roteiro e lojas
@@ -82,7 +88,12 @@ export const relatorioRoteiro = async (req, res) => {
     }
 
     // Novos agregadores globais
-    let totaisRoteiro = { fichas: 0, sairam: 0, abastecidas: 0, movimentacoes: 0 };
+    let totaisRoteiro = {
+      fichas: 0,
+      sairam: 0,
+      abastecidas: 0,
+      movimentacoes: 0,
+    };
     const produtosSairamMap = {};
     const produtosEntraramMap = {};
     const lojasResp = [];
@@ -101,7 +112,12 @@ export const relatorioRoteiro = async (req, res) => {
           },
           {
             association: "detalhesProdutos",
-            include: [{ association: "produto", attributes: ["id", "nome", "codigo", "emoji"] }],
+            include: [
+              {
+                association: "produto",
+                attributes: ["id", "nome", "codigo", "emoji"],
+              },
+            ],
           },
         ],
       });
@@ -121,7 +137,14 @@ export const relatorioRoteiro = async (req, res) => {
               nome: maq.nome,
               valorFicha: maq.valorFicha,
             },
-            totais: { fichas: 0, produtosSairam: 0, produtosEntraram: 0, movimentacoes: 0, dinheiro: 0, cartaoPix: 0 },
+            totais: {
+              fichas: 0,
+              produtosSairam: 0,
+              produtosEntraram: 0,
+              movimentacoes: 0,
+              dinheiro: 0,
+              cartaoPix: 0,
+            },
             produtosSairam: {},
             produtosEntraram: {},
           };
@@ -138,27 +161,53 @@ export const relatorioRoteiro = async (req, res) => {
           if (!prod) continue;
           // Saíram
           if (dp.quantidadeSaiu > 0) {
-            if (!m.produtosSairam[prod.id]) m.produtosSairam[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            if (!m.produtosSairam[prod.id])
+              m.produtosSairam[prod.id] = { ...prod.dataValues, quantidade: 0 };
             m.produtosSairam[prod.id].quantidade += dp.quantidadeSaiu;
-            if (!produtosSairamLoja[prod.id]) produtosSairamLoja[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            if (!produtosSairamLoja[prod.id])
+              produtosSairamLoja[prod.id] = {
+                ...prod.dataValues,
+                quantidade: 0,
+              };
             produtosSairamLoja[prod.id].quantidade += dp.quantidadeSaiu;
-            if (!produtosSairamMap[prod.id]) produtosSairamMap[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            if (!produtosSairamMap[prod.id])
+              produtosSairamMap[prod.id] = {
+                ...prod.dataValues,
+                quantidade: 0,
+              };
             produtosSairamMap[prod.id].quantidade += dp.quantidadeSaiu;
           }
           // Entraram
           if (dp.quantidadeAbastecida > 0) {
-            if (!m.produtosEntraram[prod.id]) m.produtosEntraram[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            if (!m.produtosEntraram[prod.id])
+              m.produtosEntraram[prod.id] = {
+                ...prod.dataValues,
+                quantidade: 0,
+              };
             m.produtosEntraram[prod.id].quantidade += dp.quantidadeAbastecida;
-            if (!produtosEntraramLoja[prod.id]) produtosEntraramLoja[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            if (!produtosEntraramLoja[prod.id])
+              produtosEntraramLoja[prod.id] = {
+                ...prod.dataValues,
+                quantidade: 0,
+              };
             produtosEntraramLoja[prod.id].quantidade += dp.quantidadeAbastecida;
-            if (!produtosEntraramMap[prod.id]) produtosEntraramMap[prod.id] = { ...prod.dataValues, quantidade: 0 };
+            if (!produtosEntraramMap[prod.id])
+              produtosEntraramMap[prod.id] = {
+                ...prod.dataValues,
+                quantidade: 0,
+              };
             produtosEntraramMap[prod.id].quantidade += dp.quantidadeAbastecida;
           }
         }
       }
 
       // Somar totais da loja
-      const totais = { fichas: 0, sairam: 0, abastecidas: 0, movimentacoes: movimentacoes.length };
+      const totais = {
+        fichas: 0,
+        sairam: 0,
+        abastecidas: 0,
+        movimentacoes: movimentacoes.length,
+      };
       const diasComMov = new Set();
       for (const mov of movimentacoes) {
         totais.fichas += mov.fichas || 0;
@@ -174,7 +223,9 @@ export const relatorioRoteiro = async (req, res) => {
       totaisRoteiro.movimentacoes += totais.movimentacoes;
 
       // Dias sem movimentação
-      const diasSemMovimentacao = diasPeriodo.filter((dia) => !diasComMov.has(dia));
+      const diasSemMovimentacao = diasPeriodo.filter(
+        (dia) => !diasComMov.has(dia),
+      );
 
       // Formatar máquinas para resposta
       const maquinas = Object.values(maquinasMap).map((m) => ({
@@ -185,7 +236,9 @@ export const relatorioRoteiro = async (req, res) => {
       }));
 
       // Buscar todas as máquinas da loja (mesmo sem movimentação)
-      const todasMaquinas = await loja.getMaquinas({ attributes: ["id", "nome", "codigo"] });
+      const todasMaquinas = await loja.getMaquinas({
+        attributes: ["id", "nome", "codigo"],
+      });
 
       // Mapear movimentações por dia e máquina
       const movPorDiaMaquina = {};
@@ -199,10 +252,16 @@ export const relatorioRoteiro = async (req, res) => {
       // Para cada dia, listar máquinas sem movimentação
       const maquinasNaoFeitas = diasPeriodo.map((dia) => {
         const maquinasFeitas = movPorDiaMaquina[dia] || new Set();
-        const maquinasSemMov = todasMaquinas.filter((m) => !maquinasFeitas.has(m.id));
+        const maquinasSemMov = todasMaquinas.filter(
+          (m) => !maquinasFeitas.has(m.id),
+        );
         return {
           data: dia,
-          maquinas: maquinasSemMov.map((m) => ({ id: m.id, nome: m.nome, codigo: m.codigo })),
+          maquinas: maquinasSemMov.map((m) => ({
+            id: m.id,
+            nome: m.nome,
+            codigo: m.codigo,
+          })),
         };
       });
 
@@ -218,8 +277,12 @@ export const relatorioRoteiro = async (req, res) => {
     }
 
     // Consolidar arrays globais
-    const produtosSairam = Object.values(produtosSairamMap).sort((a, b) => b.quantidade - a.quantidade);
-    const produtosEntraram = Object.values(produtosEntraramMap).sort((a, b) => b.quantidade - a.quantidade);
+    const produtosSairam = Object.values(produtosSairamMap).sort(
+      (a, b) => b.quantidade - a.quantidade,
+    );
+    const produtosEntraram = Object.values(produtosEntraramMap).sort(
+      (a, b) => b.quantidade - a.quantidade,
+    );
 
     res.json({
       roteiro: { id: roteiro.id, nome: roteiro.nome },
@@ -277,7 +340,17 @@ export const dashboardRelatorio = async (req, res) => {
             // Movimentações do dia
             const movimentacoes = await Movimentacao.findAll({
               where: whereMov,
-              include: [{ model: Maquina, as: "maquina", attributes: ["valorFicha", "lojaId", "comissaoLojaPercentual"] }],
+              include: [
+                {
+                  model: Maquina,
+                  as: "maquina",
+                  attributes: [
+                    "valorFicha",
+                    "lojaId",
+                    "comissaoLojaPercentual",
+                  ],
+                },
+              ],
             });
             let receitaBruta = 0;
             let comissaoTotal = 0;
@@ -288,20 +361,31 @@ export const dashboardRelatorio = async (req, res) => {
               const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
               const receitaMaquina = fichas * valorFicha + dinheiro + pix;
               receitaBruta += receitaMaquina;
-              const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
+              const percentual = parseFloat(
+                m.maquina?.comissaoLojaPercentual || 0,
+              );
               comissaoTotal += (receitaMaquina * percentual) / 100;
             }
             // Custo dos produtos saídos no dia
             const itensVendidos = await MovimentacaoProduto.findAll({
               attributes: ["quantidadeSaiu"],
               include: [
-                { model: Produto, as: "produto", attributes: ["custoUnitario"] },
+                {
+                  model: Produto,
+                  as: "produto",
+                  attributes: ["custoUnitario"],
+                },
                 {
                   model: Movimentacao,
                   attributes: [],
                   where: whereMov,
                   include: [
-                    { model: Maquina, as: "maquina", where: lojaId ? { lojaId } : undefined, attributes: [] },
+                    {
+                      model: Maquina,
+                      as: "maquina",
+                      where: lojaId ? { lojaId } : undefined,
+                      attributes: [],
+                    },
                   ],
                 },
               ],
@@ -317,7 +401,10 @@ export const dashboardRelatorio = async (req, res) => {
             total += receitaBruta - custoProdutos - comissaoTotal;
           } catch (errDia) {
             // Loga erro mas não interrompe o cálculo
-            console.error(`[comparacaoLucro] Erro no dia ${i}/${mes+1}/${ano}:`, errDia);
+            console.error(
+              `[comparacaoLucro] Erro no dia ${i}/${mes + 1}/${ano}:`,
+              errDia,
+            );
           }
         }
         return total;
@@ -327,7 +414,7 @@ export const dashboardRelatorio = async (req, res) => {
       if (isNaN(lucroAtual)) lucroAtual = 0;
       if (isNaN(lucroAnterior)) lucroAnterior = 0;
     } catch (errComp) {
-      console.error('[comparacaoLucro] Erro geral:', errComp);
+      console.error("[comparacaoLucro] Erro geral:", errComp);
       lucroAtual = 0;
       lucroAnterior = 0;
     }
@@ -348,12 +435,22 @@ export const dashboardRelatorio = async (req, res) => {
           model: Maquina,
           as: "maquina",
           where: whereMaquina,
-          attributes: ["id", "nome", "valorFicha", "capacidadePadrao", "comissaoLojaPercentual"],
+          attributes: [
+            "id",
+            "nome",
+            "valorFicha",
+            "capacidadePadrao",
+            "comissaoLojaPercentual",
+          ],
         },
       ],
     });
 
-    let totalFichasQtd = 0, totalFichasValor = 0, totalDinheiro = 0, totalPix = 0, totalSairam = 0;
+    let totalFichasQtd = 0,
+      totalFichasValor = 0,
+      totalDinheiro = 0,
+      totalPix = 0,
+      totalSairam = 0;
     for (const m of allMovs) {
       const fqtd = parseInt(m.fichas) || 0;
       const vf = parseFloat(m.maquina?.valorFicha || 0);
@@ -364,7 +461,9 @@ export const dashboardRelatorio = async (req, res) => {
       totalSairam += parseInt(m.sairam) || 0;
     }
 
-    const faturamento = parseFloat((totalFichasValor + totalDinheiro + totalPix).toFixed(2));
+    const faturamento = parseFloat(
+      (totalFichasValor + totalDinheiro + totalPix).toFixed(2),
+    );
     const saidas = totalSairam;
     const fichas = totalFichasQtd;
     const dinheiro = parseFloat(totalDinheiro.toFixed(2));
@@ -413,11 +512,17 @@ export const dashboardRelatorio = async (req, res) => {
       if (!timelineMap[dia]) timelineMap[dia] = 0;
       const fqtd = parseInt(m.fichas) || 0;
       const vf = parseFloat(m.maquina?.valorFicha || 0);
-      timelineMap[dia] += fqtd * vf + parseFloat(m.quantidade_notas_entrada || 0) + parseFloat(m.valor_entrada_maquininha_pix || 0);
+      timelineMap[dia] +=
+        fqtd * vf +
+        parseFloat(m.quantidade_notas_entrada || 0) +
+        parseFloat(m.valor_entrada_maquininha_pix || 0);
     }
     const timelineRaw = Object.entries(timelineMap)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([data, fat]) => ({ data, faturamento: parseFloat(fat.toFixed(2)) }));
+      .map(([data, fat]) => ({
+        data,
+        faturamento: parseFloat(fat.toFixed(2)),
+      }));
 
     // --- QUERY 4: PERFORMANCE POR MÁQUINA (in-memory a partir de allMovs) ---
     const perfMap = {};
@@ -425,11 +530,19 @@ export const dashboardRelatorio = async (req, res) => {
       const maq = m.maquina;
       if (!maq) continue;
       if (!perfMap[maq.id]) {
-        perfMap[maq.id] = { id: maq.id, nome: maq.nome, capacidadePadrao: maq.capacidadePadrao, faturamento: 0 };
+        perfMap[maq.id] = {
+          id: maq.id,
+          nome: maq.nome,
+          capacidadePadrao: maq.capacidadePadrao,
+          faturamento: 0,
+        };
       }
       const fqtd = parseInt(m.fichas) || 0;
       const vf = parseFloat(maq.valorFicha || 0);
-      perfMap[maq.id].faturamento += fqtd * vf + parseFloat(m.quantidade_notas_entrada || 0) + parseFloat(m.valor_entrada_maquininha_pix || 0);
+      perfMap[maq.id].faturamento +=
+        fqtd * vf +
+        parseFloat(m.quantidade_notas_entrada || 0) +
+        parseFloat(m.valor_entrada_maquininha_pix || 0);
     }
 
     const performanceMaquinas = await Promise.all(
@@ -673,7 +786,10 @@ export const balançoSemanal = async (req, res) => {
       (acc, mov) => {
         const fqtd = mov.fichas || 0;
         const vf = parseFloat(mov.maquina?.valorFicha || 0);
-        const fat = fqtd * vf + parseFloat(mov.quantidade_notas_entrada || 0) + parseFloat(mov.valor_entrada_maquininha_pix || 0);
+        const fat =
+          fqtd * vf +
+          parseFloat(mov.quantidade_notas_entrada || 0) +
+          parseFloat(mov.valor_entrada_maquininha_pix || 0);
         acc.totalFichas += fqtd;
         acc.totalFaturamento += fat;
         acc.totalSairam += mov.sairam || 0;
@@ -735,7 +851,10 @@ export const balançoSemanal = async (req, res) => {
       const fqtdL = mov.fichas || 0;
       const vfL = parseFloat(mov.maquina?.valorFicha || 0);
       lojasMap[lojaNome].fichas += fqtdL;
-      lojasMap[lojaNome].faturamento += fqtdL * vfL + parseFloat(mov.quantidade_notas_entrada || 0) + parseFloat(mov.valor_entrada_maquininha_pix || 0);
+      lojasMap[lojaNome].faturamento +=
+        fqtdL * vfL +
+        parseFloat(mov.quantidade_notas_entrada || 0) +
+        parseFloat(mov.valor_entrada_maquininha_pix || 0);
       lojasMap[lojaNome].sairam += mov.sairam || 0;
       lojasMap[lojaNome].abastecidas += mov.abastecidas || 0;
     });
@@ -895,7 +1014,10 @@ export const performanceMaquinas = async (req, res) => {
       const vf = parseFloat(maq.valorFicha || 0);
       e.totalMovimentacoes++;
       e.totalFichas += fqtd;
-      e.totalFaturamento += fqtd * vf + parseFloat(m.quantidade_notas_entrada || 0) + parseFloat(m.valor_entrada_maquininha_pix || 0);
+      e.totalFaturamento +=
+        fqtd * vf +
+        parseFloat(m.quantidade_notas_entrada || 0) +
+        parseFloat(m.valor_entrada_maquininha_pix || 0);
       e.totalSairam += parseInt(m.sairam) || 0;
       if (m.sairam > 0) e.fichasPremioSum += fqtd / m.sairam;
     }
@@ -915,9 +1037,12 @@ export const performanceMaquinas = async (req, res) => {
           totalFichas: p.totalFichas,
           totalFaturamento: parseFloat(p.totalFaturamento.toFixed(2)),
           totalSairam: p.totalSairam,
-          mediaFichasPremio: p.totalMovimentacoes > 0
-            ? parseFloat((p.fichasPremioSum / p.totalMovimentacoes).toFixed(2))
-            : 0,
+          mediaFichasPremio:
+            p.totalMovimentacoes > 0
+              ? parseFloat(
+                  (p.fichasPremioSum / p.totalMovimentacoes).toFixed(2),
+                )
+              : 0,
         },
       }));
 
@@ -932,6 +1057,332 @@ export const performanceMaquinas = async (req, res) => {
     console.error("Erro ao gerar relatório de performance:", error);
     res.status(500).json({ error: "Erro ao gerar relatório de performance" });
   }
+};
+
+// --- RELATÓRIO DE IMPRESSÃO (RESTAURADO E CORRIGIDO) ---
+const obterRelatorioImpressaoInterno = async ({
+  lojaId,
+  dataInicio,
+  dataFim,
+}) =>
+  new Promise((resolve, reject) => {
+    const reqMock = {
+      query: {
+        lojaId,
+        dataInicio,
+        dataFim,
+      },
+    };
+
+    const resMock = {
+      statusCode: 200,
+      status(code) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload) {
+        if (this.statusCode >= 400) {
+          const erro = new Error(payload?.error || "Erro ao gerar relatório");
+          erro.status = this.statusCode;
+          erro.payload = payload;
+          reject(erro);
+          return;
+        }
+        resolve(payload);
+      },
+    };
+
+    relatorioImpressao(reqMock, resMock).catch(reject);
+  });
+
+const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
+  const lojas = await Loja.findAll({ where: { ativo: true }, raw: true });
+
+  if (!lojas.length) {
+    const erro = new Error("Nenhuma loja ativa encontrada");
+    erro.status = 404;
+    throw erro;
+  }
+
+  const respostas = await Promise.allSettled(
+    lojas.map((loja) =>
+      obterRelatorioImpressaoInterno({
+        lojaId: loja.id,
+        dataInicio,
+        dataFim,
+      }),
+    ),
+  );
+
+  const relatoriosPorLoja = respostas
+    .map((resposta, index) => {
+      if (resposta.status !== "fulfilled") return null;
+      return {
+        loja: lojas[index],
+        dados: resposta.value,
+      };
+    })
+    .filter(Boolean);
+
+  if (!relatoriosPorLoja.length) {
+    const erro = new Error(
+      "Não foi possível gerar o relatório consolidado para o período selecionado.",
+    );
+    erro.status = 404;
+    throw erro;
+  }
+
+  const lojasSemDados = respostas
+    .map((resposta, index) => {
+      if (resposta.status === "fulfilled") return null;
+      return lojas[index]?.nome || `Loja ${index + 1}`;
+    })
+    .filter(Boolean);
+
+  const produtosMap = new Map();
+
+  const rankingLojas = relatoriosPorLoja.map(({ loja, dados }) => {
+    const totais = dados?.totais || {};
+
+    const custoProdutosCalculado = (dados?.produtosSairam || []).reduce(
+      (acc, produto) =>
+        acc +
+        Number(produto.quantidade || 0) *
+          Number(produto.custoUnitario || produto.valorUnitario || 0),
+      0,
+    );
+
+    const custoProdutos = Number(
+      totais.custoProdutosTotal ?? custoProdutosCalculado,
+    );
+    const custoFixo = Number(
+      totais.custoFixoPeriodo ?? totais.gastoFixoTotalPeriodo ?? 0,
+    );
+    const custoVariavel = Number(
+      totais.custoVariavelPeriodo ?? totais.gastoVariavelTotalPeriodo ?? 0,
+    );
+    const taxaDeCartao = Number(totais.taxaDeCartao ?? 0);
+    const custoTotal = Number(
+      totais.gastoTotalPeriodo ??
+        custoProdutos + custoFixo + custoVariavel + taxaDeCartao,
+    );
+
+    const dinheiroLoja = Number(totais.valorDinheiroLoja || 0);
+    const cartaoPixLojaBruto = Number(totais.valorCartaoPixLoja || 0);
+
+    const dinheiroMaquinas = Number(
+      totais.valorDinheiroMaquinas ??
+        (dados?.maquinas || []).reduce(
+          (acc, maquina) => acc + Number(maquina?.totais?.dinheiro || 0),
+          0,
+        ),
+    );
+
+    const cartaoPixMaquinasBruto = Number(
+      totais.valorCartaoPixMaquinasBruto ??
+        (dados?.maquinas || []).reduce(
+          (acc, maquina) => acc + Number(maquina?.totais?.cartaoPix || 0),
+          0,
+        ),
+    );
+
+    const cartaoPixMaquinasLiquido = Number(
+      totais.valorCartaoPixMaquinasLiquido ?? cartaoPixMaquinasBruto,
+    );
+
+    const cartaoPixLojaLiquido = Number(
+      totais.valorCartaoPixLiquidoLoja ??
+        Math.max(cartaoPixLojaBruto - taxaDeCartao, 0),
+    );
+
+    const dinheiro = dinheiroLoja + dinheiroMaquinas;
+    const cartaoPix = cartaoPixLojaBruto + cartaoPixMaquinasBruto;
+    const cartaoPixLiquido = cartaoPixLojaLiquido + cartaoPixMaquinasLiquido;
+
+    const lucroBruto = Number(
+      totais.valorBrutoConsolidadoLojaMaquinas ?? dinheiro + cartaoPix,
+    );
+
+    const lucroLiquido = Number(
+      totais.valorLiquidoConsolidadoLojaMaquinas ??
+        dinheiro + cartaoPixLiquido - custoTotal,
+    );
+
+    const percentualTaxaCartaoMedia = Number(
+      cartaoPix > 0 ? (taxaDeCartao / cartaoPix) * 100 : 0,
+    );
+
+    const fichas = Number(totais.fichas || 0);
+    const produtosSairam = Number(totais.produtosSairam || 0);
+    const produtosEntraram = Number(totais.produtosEntraram || 0);
+
+    (dados?.produtosSairam || []).forEach((produto) => {
+      const id = String(produto.id ?? produto.codigo ?? produto.nome);
+      const existente = produtosMap.get(id);
+      const quantidade = Number(produto.quantidade || 0);
+
+      if (!existente) {
+        produtosMap.set(id, {
+          id,
+          nome: produto.nome || "Produto",
+          codigo: produto.codigo || "S/C",
+          emoji: produto.emoji || "📦",
+          quantidade,
+        });
+        return;
+      }
+
+      existente.quantidade += quantidade;
+    });
+
+    return {
+      lojaId: loja?.id,
+      lojaNome: dados?.loja?.nome || loja?.nome || "Loja",
+      lucroBruto,
+      lucroLiquido,
+      custoTotal,
+      custoVariavel,
+      custoProdutos,
+      custoFixo,
+      taxaDeCartao,
+      dinheiro,
+      cartaoPix,
+      cartaoPixLiquido,
+      percentualTaxaCartaoMedia,
+      fichas,
+      produtosSairam,
+      produtosEntraram,
+    };
+  });
+
+  const totais = rankingLojas.reduce(
+    (acc, loja) => {
+      acc.lucroBrutoTotal += loja.lucroBruto;
+      acc.lucroLiquidoTotal += loja.lucroLiquido;
+      acc.custoTotal += loja.custoTotal;
+      acc.custoVariavelTotal += loja.custoVariavel;
+      acc.custoProdutosTotal += loja.custoProdutos;
+      acc.custoFixoTotal += loja.custoFixo;
+      acc.taxaDeCartaoTotal += loja.taxaDeCartao;
+      acc.dinheiroTotal += loja.dinheiro;
+      acc.cartaoPixTotal += loja.cartaoPix;
+      acc.cartaoPixLiquidoTotal += loja.cartaoPixLiquido;
+      acc.fichasTotal += loja.fichas;
+      acc.produtosSairamTotal += loja.produtosSairam;
+      acc.produtosEntraramTotal += loja.produtosEntraram;
+      acc.somaPercentualTaxaPonderado +=
+        loja.percentualTaxaCartaoMedia * loja.cartaoPix;
+      acc.somaBasePercentualTaxa += loja.cartaoPix;
+      return acc;
+    },
+    {
+      lucroBrutoTotal: 0,
+      lucroLiquidoTotal: 0,
+      custoTotal: 0,
+      custoVariavelTotal: 0,
+      custoProdutosTotal: 0,
+      custoFixoTotal: 0,
+      taxaDeCartaoTotal: 0,
+      dinheiroTotal: 0,
+      cartaoPixTotal: 0,
+      cartaoPixLiquidoTotal: 0,
+      fichasTotal: 0,
+      produtosSairamTotal: 0,
+      produtosEntraramTotal: 0,
+      somaPercentualTaxaPonderado: 0,
+      somaBasePercentualTaxa: 0,
+    },
+  );
+
+  totais.percentualTaxaCartaoMediaTotal = Number(
+    (totais.somaBasePercentualTaxa > 0
+      ? totais.somaPercentualTaxaPonderado / totais.somaBasePercentualTaxa
+      : 0
+    ).toFixed(2),
+  );
+  delete totais.somaPercentualTaxaPonderado;
+  delete totais.somaBasePercentualTaxa;
+
+  const rankingLojasComParticipacao = rankingLojas.map((loja) => ({
+    ...loja,
+    participacaoLucroBruto:
+      totais.lucroBrutoTotal > 0
+        ? (loja.lucroBruto / totais.lucroBrutoTotal) * 100
+        : 0,
+  }));
+
+  const rankingProdutos = Array.from(produtosMap.values())
+    .sort((a, b) => b.quantidade - a.quantidade)
+    .slice(0, 15);
+
+  const rankingLucroBrutoLojas = [...rankingLojasComParticipacao]
+    .sort((a, b) => b.lucroBruto - a.lucroBruto)
+    .slice(0, 10);
+
+  const rankingLucroLojas = [...rankingLojasComParticipacao]
+    .sort((a, b) => b.lucroLiquido - a.lucroLiquido)
+    .slice(0, 10);
+
+  const rankingGastoLojas = [...rankingLojasComParticipacao]
+    .sort((a, b) => b.custoTotal - a.custoTotal)
+    .slice(0, 10);
+
+  const participacaoLojas = [...rankingLojasComParticipacao]
+    .sort((a, b) => b.participacaoLucroBruto - a.participacaoLucroBruto)
+    .slice(0, 10);
+
+  const gastosFixosPorLoja = [...rankingLojasComParticipacao]
+    .map((loja) => ({
+      lojaNome: loja.lojaNome,
+      custoFixo: Number(loja.custoFixo || 0),
+    }))
+    .filter((item) => item.custoFixo > 0)
+    .sort((a, b) => b.custoFixo - a.custoFixo);
+
+  const totalRecebimentos = totais.dinheiroTotal + totais.cartaoPixLiquidoTotal;
+
+  return {
+    tipo: "todas-lojas",
+    periodo: {
+      inicio: dataInicio,
+      fim: dataFim,
+    },
+    totais,
+    destaques: {
+      lojaMaiorLucro: rankingLucroLojas[0] || null,
+      lojaMaiorGasto: rankingGastoLojas[0] || null,
+      lojaMaiorParticipacao: participacaoLojas[0] || null,
+      produtoMaisSaiu: rankingProdutos[0] || null,
+    },
+    graficos: {
+      rankingLucroBrutoLojas,
+      rankingLucroLojas,
+      rankingGastoLojas,
+      participacaoLojas,
+      rankingProdutos,
+      pagamento: [
+        {
+          metodo: "Dinheiro",
+          valor: totais.dinheiroTotal,
+          percentual:
+            totalRecebimentos > 0
+              ? (totais.dinheiroTotal / totalRecebimentos) * 100
+              : 0,
+        },
+        {
+          metodo: "Cartão / Pix (Líquido)",
+          valor: totais.cartaoPixLiquidoTotal,
+          percentual:
+            totalRecebimentos > 0
+              ? (totais.cartaoPixLiquidoTotal / totalRecebimentos) * 100
+              : 0,
+        },
+      ],
+      gastosFixosPorLoja,
+    },
+    lojasSemDados,
+    lojasComDados: relatoriosPorLoja.length,
+  };
 };
 
 // --- RELATÓRIO DE IMPRESSÃO (RESTAURADO E CORRIGIDO) ---
@@ -989,7 +1440,14 @@ export const relatorioImpressao = async (req, res) => {
             {
               model: Produto,
               as: "produto",
-              attributes: ["id", "nome", "codigo", "emoji", "preco", "custoUnitario"],
+              attributes: [
+                "id",
+                "nome",
+                "codigo",
+                "emoji",
+                "preco",
+                "custoUnitario",
+              ],
             },
           ],
         },
@@ -1138,7 +1596,9 @@ export const relatorioImpressao = async (req, res) => {
           codigo: p.produto.codigo,
           emoji: p.produto.emoji,
           quantidade: p.quantidade,
-          valorUnitario: parseFloat(p.produto.preco || p.produto.custoUnitario || 0),
+          valorUnitario: parseFloat(
+            p.produto.preco || p.produto.custoUnitario || 0,
+          ),
           preco: parseFloat(p.produto.preco || 0),
           custoUnitario: parseFloat(p.produto.custoUnitario || 0),
         }))
@@ -1150,7 +1610,9 @@ export const relatorioImpressao = async (req, res) => {
           codigo: p.produto.codigo,
           emoji: p.produto.emoji,
           quantidade: p.quantidade,
-          valorUnitario: parseFloat(p.produto.preco || p.produto.custoUnitario || 0),
+          valorUnitario: parseFloat(
+            p.produto.preco || p.produto.custoUnitario || 0,
+          ),
           preco: parseFloat(p.produto.preco || 0),
           custoUnitario: parseFloat(p.produto.custoUnitario || 0),
         }))
@@ -1211,7 +1673,9 @@ export const relatorioImpressao = async (req, res) => {
         codigo: p.produto.codigo,
         emoji: p.produto.emoji,
         quantidade: p.quantidade,
-        valorUnitario: parseFloat(p.produto.preco || p.produto.custoUnitario || 0),
+        valorUnitario: parseFloat(
+          p.produto.preco || p.produto.custoUnitario || 0,
+        ),
         preco: parseFloat(p.produto.preco || 0),
         custoUnitario: parseFloat(p.produto.custoUnitario || 0),
       })),
@@ -1221,7 +1685,9 @@ export const relatorioImpressao = async (req, res) => {
         codigo: p.produto.codigo,
         emoji: p.produto.emoji,
         quantidade: p.quantidade,
-        valorUnitario: parseFloat(p.produto.preco || p.produto.custoUnitario || 0),
+        valorUnitario: parseFloat(
+          p.produto.preco || p.produto.custoUnitario || 0,
+        ),
         preco: parseFloat(p.produto.preco || 0),
         custoUnitario: parseFloat(p.produto.custoUnitario || 0),
       })),
@@ -1237,6 +1703,189 @@ export const relatorioImpressao = async (req, res) => {
       message:
         process.env.NODE_ENV === "development" ? error.message : undefined,
     });
+  }
+};
+
+export const relatorioTodasLojas = async (req, res) => {
+  try {
+    const { dataInicio, dataFim } = req.query;
+
+    if (!dataInicio || !dataFim) {
+      return res
+        .status(400)
+        .json({ error: "dataInicio e dataFim são obrigatórios" });
+    }
+
+    const consolidado = await gerarConsolidadoTodasLojas({
+      dataInicio,
+      dataFim,
+    });
+    return res.json(consolidado);
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ error: error.message });
+    }
+
+    console.error("Erro ao gerar relatório consolidado de lojas:", error);
+    return res.status(500).json({
+      error: "Erro ao gerar relatório consolidado de lojas",
+      message:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const rankingLucroBrutoLojas = async (req, res) => {
+  try {
+    const { dataInicio, dataFim } = req.query;
+
+    if (!dataInicio || !dataFim) {
+      return res
+        .status(400)
+        .json({ error: "dataInicio e dataFim são obrigatórios" });
+    }
+
+    const consolidado = await gerarConsolidadoTodasLojas({
+      dataInicio,
+      dataFim,
+    });
+    return res.json({
+      rankingLucroBrutoLojas:
+        consolidado?.graficos?.rankingLucroBrutoLojas || [],
+    });
+  } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ error: error.message });
+    }
+
+    console.error("Erro ao gerar ranking de lucro bruto:", error);
+    return res.status(500).json({
+      error: "Erro ao gerar ranking de lucro bruto",
+      message:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+export const alertasMovimentacaoOut = async (req, res) => {
+  try {
+    const maquinas = await Maquina.findAll({
+      where: { ativo: true },
+      include: [{ model: Loja, as: "loja", attributes: ["nome"] }],
+    });
+
+    const alertas = [];
+    const ignorados = await AlertaIgnorado.findAll();
+    const ignoradosSet = new Set(ignorados.map((a) => a.alertaId));
+
+    for (const maquina of maquinas) {
+      const movimentacoes = await Movimentacao.findAll({
+        where: { maquinaId: maquina.id },
+        order: [["dataColeta", "DESC"]],
+        limit: 2,
+        attributes: [
+          "id",
+          "contadorOut",
+          "contadorIn",
+          "fichas",
+          "sairam",
+          "dataColeta",
+        ],
+      });
+
+      if (!movimentacoes || movimentacoes.length < 2) continue;
+
+      const atual = movimentacoes[0];
+      const anterior = movimentacoes[1];
+      const diffOut = (atual.contadorOut || 0) - (anterior.contadorOut || 0);
+      const alertaId = `${maquina.id}-${atual.id}`;
+
+      if (
+        atual.contadorOut !== null &&
+        atual.contadorOut !== 0 &&
+        diffOut !== (atual.sairam || 0) &&
+        !ignoradosSet.has(alertaId)
+      ) {
+        alertas.push({
+          id: alertaId,
+          tipo: "movimentacao_out",
+          maquinaId: maquina.id,
+          maquinaNome: maquina.nome,
+          lojaNome: maquina.loja?.nome || null,
+          contador_out: atual.contadorOut || 0,
+          contador_out_anterior: anterior.contadorOut || 0,
+          sairam: atual.sairam ?? 0,
+          dataMovimentacao: atual.dataColeta,
+        });
+      }
+    }
+
+    return res.json({ alertas });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ error: "Erro ao buscar alertas OUT", message: error.message });
+  }
+};
+
+export const alertasMovimentacaoIn = async (req, res) => {
+  try {
+    const maquinas = await Maquina.findAll({
+      where: { ativo: true },
+      include: [{ model: Loja, as: "loja", attributes: ["nome"] }],
+    });
+
+    const alertas = [];
+    const ignorados = await AlertaIgnorado.findAll();
+    const ignoradosSet = new Set(ignorados.map((a) => a.alertaId));
+
+    for (const maquina of maquinas) {
+      const movimentacoes = await Movimentacao.findAll({
+        where: { maquinaId: maquina.id },
+        order: [["dataColeta", "DESC"]],
+        limit: 2,
+        attributes: [
+          "id",
+          "contadorOut",
+          "contadorIn",
+          "fichas",
+          "sairam",
+          "dataColeta",
+        ],
+      });
+
+      if (!movimentacoes || movimentacoes.length < 2) continue;
+
+      const atual = movimentacoes[0];
+      const anterior = movimentacoes[1];
+      const diffIn = (atual.contadorIn || 0) - (anterior.contadorIn || 0);
+      const alertaId = `${maquina.id}-${atual.id}`;
+
+      if (
+        atual.contadorIn !== null &&
+        atual.contadorIn !== 0 &&
+        diffIn !== (atual.fichas || 0) &&
+        !ignoradosSet.has(alertaId)
+      ) {
+        alertas.push({
+          id: alertaId,
+          tipo: "movimentacao_in",
+          maquinaId: maquina.id,
+          maquinaNome: maquina.nome,
+          lojaNome: maquina.loja?.nome || null,
+          contador_in: atual.contadorIn || 0,
+          contador_in_anterior: anterior.contadorIn || 0,
+          fichas: atual.fichas,
+          dataMovimentacao: atual.dataColeta,
+        });
+      }
+    }
+
+    return res.json({ alertas });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ error: "Erro ao buscar alertas IN", message: error.message });
   }
 };
 
@@ -1263,7 +1912,13 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
           // Movimentações do dia
           const movimentacoes = await Movimentacao.findAll({
             where: whereMov,
-            include: [{ model: Maquina, as: "maquina", attributes: ["valorFicha", "lojaId", "comissaoLojaPercentual"] }],
+            include: [
+              {
+                model: Maquina,
+                as: "maquina",
+                attributes: ["valorFicha", "lojaId", "comissaoLojaPercentual"],
+              },
+            ],
           });
           let receitaBruta = 0;
           let comissaoTotal = 0;
@@ -1274,7 +1929,9 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
             const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
             const receitaMaquina = fichas * valorFicha + dinheiro + pix;
             receitaBruta += receitaMaquina;
-            const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
+            const percentual = parseFloat(
+              m.maquina?.comissaoLojaPercentual || 0,
+            );
             comissaoTotal += (receitaMaquina * percentual) / 100;
           }
           // Custo dos produtos saídos no dia
@@ -1287,7 +1944,12 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
                 attributes: [],
                 where: whereMov,
                 include: [
-                  { model: Maquina, as: "maquina", where: lojaId ? { lojaId } : undefined, attributes: [] },
+                  {
+                    model: Maquina,
+                    as: "maquina",
+                    where: lojaId ? { lojaId } : undefined,
+                    attributes: [],
+                  },
                 ],
               },
             ],
@@ -1303,7 +1965,10 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
           total += receitaBruta - custoProdutos - comissaoTotal;
         } catch (errDia) {
           // Loga erro mas não interrompe o cálculo
-          console.error(`[comparacaoLucro] Erro no dia ${i}/${mes+1}/${ano}:`, errDia);
+          console.error(
+            `[comparacaoLucro] Erro no dia ${i}/${mes + 1}/${ano}:`,
+            errDia,
+          );
         }
       }
       return total;
@@ -1314,7 +1979,7 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
     if (isNaN(lucroAtual)) lucroAtual = 0;
     if (isNaN(lucroAnterior)) lucroAnterior = 0;
   } catch (errComp) {
-    console.error('[comparacaoLucro] Erro geral:', errComp);
+    console.error("[comparacaoLucro] Erro geral:", errComp);
     lucroAtual = 0;
     lucroAnterior = 0;
   }
