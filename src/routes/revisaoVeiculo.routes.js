@@ -5,12 +5,12 @@ import {
   verificarTodas,
   verificarRevisaoVeiculo,
 } from "../controllers/revisaoVeiculoController.js";
-import { authMiddleware } from "../middlewares/auth.js";
+import { autenticar } from "../middlewares/auth.js";
 
 const router = Router();
 
 // Todas as rotas requerem autenticação
-router.use(authMiddleware);
+router.use(autenticar);
 
 // Listar revisões pendentes
 router.get("/", listarRevisoes);
