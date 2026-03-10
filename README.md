@@ -38,6 +38,39 @@ cp .env.example .env
 
 Edite o arquivo `.env` com suas configurações do PostgreSQL.
 
+Para liberar acesso do frontend (Vercel), configure também:
+
+```env
+FRONTEND_URL=https://seu-projeto.vercel.app
+ALLOW_VERCEL_PREVIEWS=false
+```
+
+Se quiser permitir URLs de preview da Vercel (`*.vercel.app`), use:
+
+```env
+ALLOW_VERCEL_PREVIEWS=true
+```
+
+### Integração de alertas via Evolution API
+
+Para habilitar notificações de WhatsApp centralizadas, configure no `.env`:
+
+```env
+EVOLUTION_URL=http://localhost:8080
+EVOLUTION_INSTANCE_NAME=bot_alertas
+EVOLUTION_API_KEY=sua_chave_global_da_evolution
+WHATSAPP_ALERT_DESTINO=5511999999999
+ALERT_DEDUPLICATION_MINUTES=10
+ALERT_QUEUE_ENABLED=true
+REDIS_URL=redis://localhost:6379
+```
+
+- O backend envia mensagens pelo endpoint de texto da Evolution configurado em `EVOLUTION_SEND_TEXT_PATH_TEMPLATE`.
+- Os envios ficam auditados em `whatsapp_alertas` com status `pendente`, `enviado` ou `erro`.
+- Com `ALERT_QUEUE_ENABLED=true`, os envios passam por fila (BullMQ), com retries automáticos e processamento em background.
+- Se a fila estiver desativada ou indisponível, o backend faz fallback para envio síncrono sem quebrar o fluxo.
+- Em produção, prefira rodar a Evolution API com PM2 e Redis/PostgreSQL conforme a documentação oficial.
+
 4. Crie o banco de dados no PostgreSQL:
 
 ```sql

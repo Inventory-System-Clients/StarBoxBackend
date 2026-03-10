@@ -16,6 +16,7 @@ import { Op } from "sequelize";
 import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
+import AlertManager from "../services/alertManager.js";
 
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
@@ -354,6 +355,8 @@ export const registrarMovimentacao = async (req, res) => {
       totalPos: movimentacao.totalPos,
     });
 
+    const produtoIdsAjustadosNoEstoqueLoja = new Set();
+
     // Se produtos foram informados, registrar detalhes
     if (produtos && produtos.length > 0) {
       let detalhesProdutos = [];
@@ -405,6 +408,7 @@ export const registrarMovimentacao = async (req, res) => {
                   estoqueLoja.quantidade - produto.quantidadeAbastecida,
                 );
                 await estoqueLoja.update({ quantidade: novaQuantidade });
+                produtoIdsAjustadosNoEstoqueLoja.add(produto.produtoId);
               }
             } else {
               const estoqueUsuario = await EstoqueUsuario.findOne({
@@ -449,6 +453,7 @@ export const registrarMovimentacao = async (req, res) => {
           const quantidadeAnterior = estoqueLoja.quantidade;
           const novaQuantidade = quantidadeAnterior + produto.retiradaProduto;
           await estoqueLoja.update({ quantidade: novaQuantidade });
+          produtoIdsAjustadosNoEstoqueLoja.add(produto.produtoId);
           console.log(
             "✅ [registrarMovimentacao] Devolução: retirada devolvida ao estoque da loja:",
             {
@@ -466,6 +471,65 @@ export const registrarMovimentacao = async (req, res) => {
               produtoId: produto.produtoId,
             },
           );
+        }
+      }
+    }
+
+    if (
+      origemEstoqueNormalizada === "loja" &&
+      produtoIdsAjustadosNoEstoqueLoja.size > 0
+    ) {
+      const lojaAlerta = await Loja.findByPk(maquina.lojaId, {
+        attributes: ["id", "nome", "telefone"],
+      });
+
+      const destinatarioAlerta =
+        lojaAlerta?.telefone || process.env.WHATSAPP_ALERT_DESTINO || null;
+
+      if (destinatarioAlerta) {
+        const estoquesAjustados = await EstoqueLoja.findAll({
+          where: {
+            lojaId: maquina.lojaId,
+            produtoId: {
+              [Op.in]: Array.from(produtoIdsAjustadosNoEstoqueLoja),
+            },
+          },
+          include: [
+            {
+              model: Produto,
+              as: "produto",
+              attributes: ["id", "nome", "estoqueMinimo"],
+            },
+          ],
+        });
+
+        for (const estoqueItem of estoquesAjustados) {
+          const minimoDefinido = Number(
+            estoqueItem.estoqueMinimo ??
+              estoqueItem.produto?.estoqueMinimo ??
+              0,
+          );
+
+          if (Number(estoqueItem.quantidade) > minimoDefinido) {
+            continue;
+          }
+
+          AlertManager.estoqueCritico({
+            nomeUsuario: req.usuario?.nome || "Sistema",
+            telefoneChefe: destinatarioAlerta,
+            nomeMaquina:
+              maquina.nome || `Loja ${lojaAlerta?.nome || maquina.lojaId}`,
+            produto: estoqueItem.produto?.nome || estoqueItem.produtoId,
+            quantidadeAtual: Number(estoqueItem.quantidade),
+            estoqueMinimo: minimoDefinido,
+            referenciaTipo: "estoque_loja",
+            referenciaId: estoqueItem.id,
+          }).catch((erroAlerta) => {
+            console.error(
+              "Erro ao disparar alerta de estoque critico:",
+              erroAlerta.message,
+            );
+          });
         }
       }
     }

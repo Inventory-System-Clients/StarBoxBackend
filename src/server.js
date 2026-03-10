@@ -7,6 +7,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { sequelize } from "./database/connection.js";
 import routes from "./routes/index.js";
+import { processarJobAlertaWhatsApp } from "./services/alertManager.js";
+import { inicializarFilaAlertas } from "./services/alertQueueService.js";
 
 dotenv.config();
 
@@ -30,19 +32,41 @@ const allowedOrigins = [
   "http://localhost:5174",
   "https://starbox.selfmachine.com.br",
   process.env.FRONTEND_URL,
+  ...(process.env.FRONTEND_URLS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
 ].filter(Boolean); // Remove undefined se FRONTEND_URL não estiver definida
+
+const permiteVercelPreviews = ["1", "true", "yes", "on"].includes(
+  String(process.env.ALLOW_VERCEL_PREVIEWS || "false")
+    .toLowerCase()
+    .trim(),
+);
+
+const vercelPreviewRegex = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
+
+const origemPermitida = (origin) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  if (permiteVercelPreviews && vercelPreviewRegex.test(origin)) {
+    return true;
+  }
+
+  return false;
+};
 
 app.use(
   cors({
     origin: function (origin, callback) {
       // Permitir requisições sem origin (como mobile apps, Postman, curl)
-      if (!origin) return callback(null, true);
-      if (
-        [
-          "https://starbox.selfmachine.com.br",
-          "http://localhost:5173",
-        ].includes(origin)
-      ) {
+      if (origemPermitida(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
@@ -58,12 +82,8 @@ app.use(
 
 // Middleware para garantir headers CORS em todas as respostas, inclusive OPTIONS
 app.use((req, res, next) => {
-  const allowedOrigins = [
-    "https://starbox.selfmachine.com.br",
-    "http://localhost:5173",
-  ];
   const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
+  if (origemPermitida(origin)) {
     res.header("Access-Control-Allow-Origin", origin);
   }
   res.header(
@@ -207,6 +227,18 @@ const startServer = async () => {
         ativo: true,
       });
       console.log("✅ Usuário admin criado:", adminEmail);
+    }
+
+    const statusFilaAlertas = await inicializarFilaAlertas({
+      processador: processarJobAlertaWhatsApp,
+    });
+
+    if (statusFilaAlertas.enabled) {
+      console.log(
+        `✅ Fila de alertas inicializada (${statusFilaAlertas.queueName}) com concorrencia ${statusFilaAlertas.concurrency}`,
+      );
+    } else {
+      console.log(`ℹ️ Fila de alertas desativada: ${statusFilaAlertas.reason}`);
     }
 
     app.listen(PORT, "0.0.0.0", () => {

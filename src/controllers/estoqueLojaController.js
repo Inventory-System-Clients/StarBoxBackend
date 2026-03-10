@@ -1,4 +1,37 @@
 import { EstoqueLoja, Loja, Produto } from "../models/index.js";
+import AlertManager from "../services/alertManager.js";
+
+const dispararAlertaEstoqueCriticoLoja = async ({
+  loja,
+  produto,
+  estoque,
+  usuarioNome,
+}) => {
+  const minimoDefinido = Number(
+    estoque?.estoqueMinimo ?? produto?.estoqueMinimo ?? 0,
+  );
+  const quantidadeAtual = Number(estoque?.quantidade || 0);
+
+  if (quantidadeAtual > minimoDefinido) {
+    return;
+  }
+
+  const destinatario = loja?.telefone || process.env.WHATSAPP_ALERT_DESTINO;
+  if (!destinatario) {
+    return;
+  }
+
+  await AlertManager.estoqueCritico({
+    nomeUsuario: usuarioNome || "Sistema",
+    telefoneChefe: destinatario,
+    nomeMaquina: `Estoque da loja ${loja?.nome || loja?.id || "Nao informado"}`,
+    produto: produto?.nome || "Produto nao informado",
+    quantidadeAtual,
+    estoqueMinimo: minimoDefinido,
+    referenciaTipo: "estoque_loja",
+    referenciaId: estoque?.id,
+  });
+};
 
 // Listar estoque de uma loja
 export const listarEstoqueLoja = async (req, res) => {
@@ -44,7 +77,7 @@ export const atualizarEstoqueLoja = async (req, res) => {
     if (quantidade < 0) {
       console.log(
         "❌ [atualizarEstoqueLoja] Quantidade negativa rejeitada:",
-        quantidade
+        quantidade,
       );
       return res
         .status(400)
@@ -62,7 +95,7 @@ export const atualizarEstoqueLoja = async (req, res) => {
     if (!produto) {
       console.log(
         "❌ [atualizarEstoqueLoja] Produto não encontrado:",
-        produtoId
+        produtoId,
       );
       return res.status(404).json({ error: "Produto não encontrado" });
     }
@@ -114,6 +147,18 @@ export const atualizarEstoqueLoja = async (req, res) => {
       ],
     });
 
+    dispararAlertaEstoqueCriticoLoja({
+      loja,
+      produto,
+      estoque: estoqueAtualizado,
+      usuarioNome: req.usuario?.nome,
+    }).catch((erroAlerta) => {
+      console.error(
+        "Erro ao disparar alerta de estoque (atualizarEstoqueLoja):",
+        erroAlerta.message,
+      );
+    });
+
     res.json({
       message: created
         ? "Estoque criado com sucesso"
@@ -150,7 +195,7 @@ export const criarOuAtualizarProdutoEstoque = async (req, res) => {
     if (quantidade < 0) {
       console.log(
         "❌ [criarOuAtualizarProdutoEstoque] Quantidade negativa rejeitada:",
-        quantidade
+        quantidade,
       );
       return res
         .status(400)
@@ -162,7 +207,7 @@ export const criarOuAtualizarProdutoEstoque = async (req, res) => {
     if (!loja) {
       console.log(
         "❌ [criarOuAtualizarProdutoEstoque] Loja não encontrada:",
-        lojaId
+        lojaId,
       );
       return res.status(404).json({ error: "Loja não encontrada" });
     }
@@ -172,7 +217,7 @@ export const criarOuAtualizarProdutoEstoque = async (req, res) => {
     if (!produto) {
       console.log(
         "❌ [criarOuAtualizarProdutoEstoque] Produto não encontrado:",
-        produtoId
+        produtoId,
       );
       return res.status(404).json({ error: "Produto não encontrado" });
     }
@@ -222,6 +267,18 @@ export const criarOuAtualizarProdutoEstoque = async (req, res) => {
           attributes: ["id", "nome", "codigo", "emoji", "estoqueMinimo"],
         },
       ],
+    });
+
+    dispararAlertaEstoqueCriticoLoja({
+      loja,
+      produto,
+      estoque: estoqueAtualizado,
+      usuarioNome: req.usuario?.nome,
+    }).catch((erroAlerta) => {
+      console.error(
+        "Erro ao disparar alerta de estoque (criarOuAtualizarProdutoEstoque):",
+        erroAlerta.message,
+      );
     });
 
     res.json({
@@ -311,7 +368,7 @@ export const atualizarVariosEstoques = async (req, res) => {
     }
 
     console.log(
-      `Processados: ${resultados.length} sucessos, ${erros.length} erros`
+      `Processados: ${resultados.length} sucessos, ${erros.length} erros`,
     );
 
     res.json({

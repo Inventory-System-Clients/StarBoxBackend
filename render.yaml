@@ -18,6 +18,12 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 7d
+      - key: FRONTEND_URL
+        sync: false
+      - key: FRONTEND_URLS
+        sync: false
+      - key: ALLOW_VERCEL_PREVIEWS
+        value: "false"
       - key: ADMIN_EMAIL
         value: admin@agarramais.com
       - key: ADMIN_PASSWORD
