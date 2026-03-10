@@ -1,4 +1,10 @@
-import { EstoqueUsuario, Produto, Usuario } from "../models/index.js";
+import { Op } from "sequelize";
+import {
+  EstoqueUsuario,
+  MovimentacaoEstoqueUsuario,
+  Produto,
+  Usuario,
+} from "../models/index.js";
 
 const ROLES_GESTAO_ESTOQUE = ["ADMIN", "CONTROLADOR_ESTOQUE"];
 
@@ -230,6 +236,79 @@ export const listarUsuariosDisponiveisEstoque = async (req, res) => {
   } catch (error) {
     console.error("Erro ao listar usuarios para estoque:", error);
     return res.status(500).json({ error: "Erro ao listar usuarios" });
+  }
+};
+
+export const listarMovimentacoesEstoqueUsuario = async (req, res) => {
+  try {
+    if (!podeGerenciarTodosEstoques(req.usuario)) {
+      return res.status(403).json({
+        error:
+          "Somente ADMIN e CONTROLADOR_ESTOQUE podem visualizar movimentacoes de estoque do usuario",
+      });
+    }
+
+    const { usuarioId, dataInicio, dataFim } = req.query;
+
+    // Regra do front: sem filtros completos nao deve aparecer nada.
+    if (!usuarioId || !dataInicio || !dataFim) {
+      return res.json([]);
+    }
+
+    const usuario = await buscarUsuario(usuarioId);
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuario nao encontrado" });
+    }
+
+    const inicio = new Date(`${dataInicio}T00:00:00`);
+    const fim = new Date(`${dataFim}T23:59:59.999`);
+
+    if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) {
+      return res.status(400).json({
+        error: "dataInicio e dataFim devem estar no formato YYYY-MM-DD",
+      });
+    }
+
+    if (inicio > fim) {
+      return res.status(400).json({
+        error: "dataInicio nao pode ser maior que dataFim",
+      });
+    }
+
+    const movimentacoes = await MovimentacaoEstoqueUsuario.findAll({
+      where: {
+        usuarioId,
+        dataMovimentacao: {
+          [Op.between]: [inicio, fim],
+        },
+      },
+      include: [
+        {
+          model: Usuario,
+          as: "usuario",
+          attributes: ["id", "nome", "email", "role"],
+        },
+        {
+          model: Usuario,
+          as: "lancadoPor",
+          attributes: ["id", "nome", "email", "role"],
+        },
+        {
+          model: Produto,
+          as: "produto",
+          attributes: ["id", "nome", "codigo", "emoji"],
+        },
+      ],
+      order: [["dataMovimentacao", "DESC"]],
+      limit: 500,
+    });
+
+    return res.json(movimentacoes);
+  } catch (error) {
+    console.error("Erro ao listar movimentacoes de estoque do usuario:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro ao listar movimentacoes de estoque" });
   }
 };
 
@@ -577,6 +656,7 @@ export const movimentarEstoqueUsuario = async (req, res) => {
     );
 
     const movimentacoesProcessadas = [];
+    const registrosHistorico = [];
 
     for (let index = 0; index < movimentacoesNormalizadas.length; index += 1) {
       const item = movimentacoesNormalizadas[index];
@@ -609,6 +689,16 @@ export const movimentarEstoqueUsuario = async (req, res) => {
         quantidadeAnterior: saldoAnterior,
         quantidadeAtual: saldoAtual,
       });
+
+      registrosHistorico.push({
+        usuarioId,
+        lancadoPorId: req.usuario.id,
+        produtoId: item.produtoId,
+        tipoMovimentacao: item.tipoMovimentacao,
+        quantidade: item.quantidade,
+        quantidadeAnterior: saldoAnterior,
+        quantidadeAtual: saldoAtual,
+      });
     }
 
     for (const produtoIdAtual of produtoIds) {
@@ -634,6 +724,10 @@ export const movimentarEstoqueUsuario = async (req, res) => {
           ativo: true,
         });
       }
+    }
+
+    if (registrosHistorico.length > 0) {
+      await MovimentacaoEstoqueUsuario.bulkCreate(registrosHistorico);
     }
 
     return res.json({

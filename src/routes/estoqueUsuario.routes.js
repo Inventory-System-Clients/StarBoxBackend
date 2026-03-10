@@ -6,6 +6,7 @@ import {
   listarAlertasEstoqueUsuario,
   listarEstoquesUsuarios,
   listarUsuariosDisponiveisEstoque,
+  listarMovimentacoesEstoqueUsuario,
   movimentarEstoqueUsuario,
   criarOuAtualizarProdutoEstoqueUsuario,
   atualizarEstoqueUsuario,
@@ -31,6 +32,13 @@ router.get(
   autenticar,
   autorizar(["ADMIN", "CONTROLADOR_ESTOQUE"]),
   listarUsuariosDisponiveisEstoque,
+);
+
+router.get(
+  "/movimentacoes",
+  autenticar,
+  autorizar(["ADMIN", "CONTROLADOR_ESTOQUE"]),
+  listarMovimentacoesEstoqueUsuario,
 );
 
 router.get("/:usuarioId/alertas", autenticar, listarAlertasEstoqueUsuario);

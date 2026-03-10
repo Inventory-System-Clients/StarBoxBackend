@@ -36,6 +36,7 @@ import EstoqueLoja from "./EstoqueLoja.js";
 import EstoqueUsuario from "./EstoqueUsuario.js";
 import MovimentacaoEstoqueLoja from "./MovimentacaoEstoqueLoja.js";
 import MovimentacaoEstoqueLojaProduto from "./MovimentacaoEstoqueLojaProduto.js";
+import MovimentacaoEstoqueUsuario from "./MovimentacaoEstoqueUsuario.js";
 import AlertaIgnorado from "./AlertaIgnorado.js";
 import Veiculo from "./Veiculo.js";
 import RegistroDinheiro from "./RegistroDinheiro.js";
@@ -194,6 +195,31 @@ Produto.hasMany(EstoqueUsuario, {
 EstoqueUsuario.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 EstoqueUsuario.belongsTo(Produto, { foreignKey: "produtoId", as: "produto" });
 
+Usuario.hasMany(MovimentacaoEstoqueUsuario, {
+  foreignKey: "usuarioId",
+  as: "movimentacoesEstoqueUsuario",
+});
+Usuario.hasMany(MovimentacaoEstoqueUsuario, {
+  foreignKey: "lancadoPorId",
+  as: "movimentacoesEstoqueLancadas",
+});
+Produto.hasMany(MovimentacaoEstoqueUsuario, {
+  foreignKey: "produtoId",
+  as: "movimentacoesEstoqueUsuario",
+});
+MovimentacaoEstoqueUsuario.belongsTo(Usuario, {
+  foreignKey: "usuarioId",
+  as: "usuario",
+});
+MovimentacaoEstoqueUsuario.belongsTo(Usuario, {
+  foreignKey: "lancadoPorId",
+  as: "lancadoPor",
+});
+MovimentacaoEstoqueUsuario.belongsTo(Produto, {
+  foreignKey: "produtoId",
+  as: "produto",
+});
+
 // Manutenção
 Manutencao.belongsTo(Loja, { foreignKey: "lojaId", as: "loja" });
 Loja.hasMany(Manutencao, { foreignKey: "lojaId", as: "manutencoes" });
@@ -297,6 +323,7 @@ export {
   EstoqueUsuario,
   MovimentacaoEstoqueLoja,
   MovimentacaoEstoqueLojaProduto,
+  MovimentacaoEstoqueUsuario,
   AlertaIgnorado,
   Veiculo,
   MovimentacaoVeiculo,
