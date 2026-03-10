@@ -76,7 +76,7 @@ export const obterLoja = async (req, res) => {
 // US04 - Criar loja
 export const criarLoja = async (req, res) => {
   try {
-    const { nome, endereco, cidade, estado, responsavel, telefone } = req.body;
+    const { nome, endereco, numero, bairro, cidade, estado, responsavel, telefone } = req.body;
 
     if (!nome) {
       return res.status(400).json({ error: "Nome da loja é obrigatório" });
@@ -85,6 +85,8 @@ export const criarLoja = async (req, res) => {
     const loja = await Loja.create({
       nome,
       endereco,
+      numero,
+      bairro,
       cidade,
       estado,
       responsavel,
@@ -108,12 +110,14 @@ export const atualizarLoja = async (req, res) => {
       return res.status(404).json({ error: "Loja não encontrada" });
     }
 
-    const { nome, endereco, cidade, estado, responsavel, telefone, ativo } =
+    const { nome, endereco, numero, bairro, cidade, estado, responsavel, telefone, ativo } =
       req.body;
 
     await loja.update({
       nome: nome ?? loja.nome,
       endereco: endereco ?? loja.endereco,
+      numero: numero ?? loja.numero,
+      bairro: bairro ?? loja.bairro,
       cidade: cidade ?? loja.cidade,
       estado: estado ?? loja.estado,
       responsavel: responsavel ?? loja.responsavel,

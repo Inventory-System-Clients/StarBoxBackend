@@ -17,6 +17,14 @@ const Loja = sequelize.define(
       type: DataTypes.STRING(255),
       allowNull: true,
     },
+    numero: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+    },
+    bairro: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
     cidade: {
       type: DataTypes.STRING(100),
       allowNull: true,
