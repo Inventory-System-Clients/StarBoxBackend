@@ -71,6 +71,15 @@ const veiculoController = {
         estado,
         emoji,
         emUso,
+        parada,
+        modo,
+        nivelCombustivel,
+        nivelLimpeza,
+      } = req.body;
+      
+      const veiculo = await Veiculo.findByPk(id);
+      if (!veiculo)
+        return res.status(404).json({ error: "Veículo não encontrado" });
       
       const kmAnterior = veiculo.km;
       
@@ -92,15 +101,7 @@ const veiculoController = {
       if (km !== undefined && km !== kmAnterior) {
         await verificarRevisaoPendente(id);
       }
-      m,
-        estado,
-        emoji,
-        emUso,
-        parada,
-        modo,
-        nivelCombustivel,
-        nivelLimpeza,
-      });
+      
       res.json(veiculo);
     } catch (err) {
       res
