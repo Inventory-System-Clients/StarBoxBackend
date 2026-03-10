@@ -481,6 +481,115 @@ export const atualizarVariosEstoquesUsuario = async (req, res) => {
   }
 };
 
+export const movimentarEstoqueUsuario = async (req, res) => {
+  try {
+    const { usuarioId } = req.params;
+    const { produtoId, tipoMovimentacao, quantidade } = req.body;
+
+    if (!produtoId) {
+      return res.status(400).json({ error: "produtoId e obrigatorio" });
+    }
+
+    const tipoNormalizado = String(tipoMovimentacao || "").toLowerCase();
+    if (!["entrada", "saida"].includes(tipoNormalizado)) {
+      return res.status(400).json({
+        error: "tipoMovimentacao deve ser 'entrada' ou 'saida'",
+      });
+    }
+
+    const quantidadeNumerica = Number(quantidade);
+    if (
+      Number.isNaN(quantidadeNumerica) ||
+      !Number.isFinite(quantidadeNumerica) ||
+      quantidadeNumerica <= 0
+    ) {
+      return res.status(400).json({
+        error: "quantidade deve ser um numero maior que zero",
+      });
+    }
+
+    const usuario = await buscarUsuario(usuarioId);
+    if (!usuario) {
+      return res.status(404).json({ error: "Usuario nao encontrado" });
+    }
+
+    const produto = await buscarProduto(produtoId);
+    if (!produto) {
+      return res.status(404).json({ error: "Produto nao encontrado" });
+    }
+
+    let estoque = await EstoqueUsuario.findOne({
+      where: { usuarioId, produtoId },
+    });
+
+    const quantidadeAnterior = Number(estoque?.quantidade || 0);
+
+    if (
+      tipoNormalizado === "saida" &&
+      quantidadeNumerica > quantidadeAnterior
+    ) {
+      return res.status(400).json({
+        error: `Nao e possivel retirar ${quantidadeNumerica}. Estoque atual: ${quantidadeAnterior}`,
+      });
+    }
+
+    const quantidadeAtual =
+      tipoNormalizado === "entrada"
+        ? quantidadeAnterior + quantidadeNumerica
+        : quantidadeAnterior - quantidadeNumerica;
+
+    if (!estoque) {
+      estoque = await EstoqueUsuario.create({
+        usuarioId,
+        produtoId,
+        quantidade: quantidadeAtual,
+        estoqueMinimo: Number(produto.estoqueMinimo || 0),
+        ativo: true,
+      });
+    } else {
+      estoque.quantidade = quantidadeAtual;
+      if (!estoque.ativo) {
+        estoque.ativo = true;
+      }
+      await estoque.save();
+    }
+
+    const estoqueAtualizado = await EstoqueUsuario.findByPk(estoque.id, {
+      include: [
+        {
+          model: Produto,
+          as: "produto",
+          attributes: ["id", "nome", "codigo", "emoji", "estoqueMinimo"],
+        },
+        {
+          model: Usuario,
+          as: "usuario",
+          attributes: ["id", "nome", "email", "role", "ativo"],
+        },
+      ],
+    });
+
+    return res.json({
+      message:
+        tipoNormalizado === "entrada"
+          ? "Entrada registrada com sucesso"
+          : "Saida registrada com sucesso",
+      movimentacao: {
+        usuarioId,
+        produtoId,
+        tipoMovimentacao: tipoNormalizado,
+        quantidade: quantidadeNumerica,
+        quantidadeAnterior,
+        quantidadeAtual,
+      },
+      estoque: estoqueAtualizado,
+    });
+  } catch (error) {
+    console.error("Erro ao movimentar estoque do usuario:", error);
+    return res.status(500).json({ error: "Erro ao movimentar estoque" });
+  }
+};
+
 export const deletarEstoqueUsuario = async (req, res) => {
   try {
     const { usuarioId, produtoId } = req.params;
