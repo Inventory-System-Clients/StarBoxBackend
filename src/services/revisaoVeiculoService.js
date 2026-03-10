@@ -126,7 +126,6 @@ export const reconhecerAlertaRevisao = async (veiculoId) => {
 
     console.log(`[Revisão] Alerta reconhecido para veículo ${veiculo.nome}`);
     
-      alertaRevisaoPendente: false, // Desativar alerta ao concluir
     return veiculo;
   } catch (error) {
     console.error("[Revisão] Erro ao reconhecer alerta:", error);
