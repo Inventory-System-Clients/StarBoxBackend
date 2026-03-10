@@ -484,27 +484,55 @@ export const atualizarVariosEstoquesUsuario = async (req, res) => {
 export const movimentarEstoqueUsuario = async (req, res) => {
   try {
     const { usuarioId } = req.params;
-    const { produtoId, tipoMovimentacao, quantidade } = req.body;
+    const movimentacoesEntrada = Array.isArray(req.body?.movimentacoes)
+      ? req.body.movimentacoes
+      : [
+          {
+            produtoId: req.body?.produtoId,
+            tipoMovimentacao: req.body?.tipoMovimentacao,
+            quantidade: req.body?.quantidade,
+          },
+        ];
 
-    if (!produtoId) {
-      return res.status(400).json({ error: "produtoId e obrigatorio" });
-    }
-
-    const tipoNormalizado = String(tipoMovimentacao || "").toLowerCase();
-    if (!["entrada", "saida"].includes(tipoNormalizado)) {
+    if (movimentacoesEntrada.length === 0) {
       return res.status(400).json({
-        error: "tipoMovimentacao deve ser 'entrada' ou 'saida'",
+        error: "Informe ao menos uma movimentacao",
       });
     }
 
-    const quantidadeNumerica = Number(quantidade);
-    if (
-      Number.isNaN(quantidadeNumerica) ||
-      !Number.isFinite(quantidadeNumerica) ||
-      quantidadeNumerica <= 0
-    ) {
-      return res.status(400).json({
-        error: "quantidade deve ser um numero maior que zero",
+    const movimentacoesNormalizadas = [];
+
+    for (let index = 0; index < movimentacoesEntrada.length; index += 1) {
+      const item = movimentacoesEntrada[index] || {};
+      const tipoNormalizado = String(item.tipoMovimentacao || "").toLowerCase();
+      const quantidadeNumerica = Number(item.quantidade);
+
+      if (!item.produtoId) {
+        return res.status(400).json({
+          error: `Linha ${index + 1}: produtoId e obrigatorio`,
+        });
+      }
+
+      if (!["entrada", "saida"].includes(tipoNormalizado)) {
+        return res.status(400).json({
+          error: `Linha ${index + 1}: tipoMovimentacao deve ser 'entrada' ou 'saida'`,
+        });
+      }
+
+      if (
+        Number.isNaN(quantidadeNumerica) ||
+        !Number.isFinite(quantidadeNumerica) ||
+        quantidadeNumerica <= 0
+      ) {
+        return res.status(400).json({
+          error: `Linha ${index + 1}: quantidade deve ser um numero maior que zero`,
+        });
+      }
+
+      movimentacoesNormalizadas.push({
+        produtoId: item.produtoId,
+        tipoMovimentacao: tipoNormalizado,
+        quantidade: quantidadeNumerica,
       });
     }
 
@@ -513,76 +541,104 @@ export const movimentarEstoqueUsuario = async (req, res) => {
       return res.status(404).json({ error: "Usuario nao encontrado" });
     }
 
-    const produto = await buscarProduto(produtoId);
-    if (!produto) {
-      return res.status(404).json({ error: "Produto nao encontrado" });
-    }
+    const produtoIds = [
+      ...new Set(
+        movimentacoesNormalizadas.map((item) => String(item.produtoId)),
+      ),
+    ];
 
-    let estoque = await EstoqueUsuario.findOne({
-      where: { usuarioId, produtoId },
+    const produtos = await Produto.findAll({
+      where: { id: produtoIds },
+      attributes: ["id", "nome", "codigo", "emoji", "estoqueMinimo"],
     });
 
-    const quantidadeAnterior = Number(estoque?.quantidade || 0);
-
-    if (
-      tipoNormalizado === "saida" &&
-      quantidadeNumerica > quantidadeAnterior
-    ) {
-      return res.status(400).json({
-        error: `Nao e possivel retirar ${quantidadeNumerica}. Estoque atual: ${quantidadeAnterior}`,
+    const produtosMap = new Map(
+      produtos.map((item) => [String(item.id), item]),
+    );
+    const produtoNaoEncontrado = produtoIds.find((id) => !produtosMap.has(id));
+    if (produtoNaoEncontrado) {
+      return res.status(404).json({
+        error: `Produto nao encontrado: ${produtoNaoEncontrado}`,
       });
     }
 
-    const quantidadeAtual =
-      tipoNormalizado === "entrada"
-        ? quantidadeAnterior + quantidadeNumerica
-        : quantidadeAnterior - quantidadeNumerica;
+    const estoquesExistentes = await EstoqueUsuario.findAll({
+      where: { usuarioId, produtoId: produtoIds },
+    });
 
-    if (!estoque) {
-      estoque = await EstoqueUsuario.create({
-        usuarioId,
-        produtoId,
-        quantidade: quantidadeAtual,
-        estoqueMinimo: Number(produto.estoqueMinimo || 0),
-        ativo: true,
-      });
-    } else {
-      estoque.quantidade = quantidadeAtual;
-      if (!estoque.ativo) {
-        estoque.ativo = true;
+    const estoqueMap = new Map(
+      estoquesExistentes.map((item) => [String(item.produtoId), item]),
+    );
+    const saldoSimulado = new Map(
+      produtoIds.map((produtoIdAtual) => [
+        produtoIdAtual,
+        Number(estoqueMap.get(produtoIdAtual)?.quantidade || 0),
+      ]),
+    );
+
+    const movimentacoesProcessadas = [];
+
+    for (let index = 0; index < movimentacoesNormalizadas.length; index += 1) {
+      const item = movimentacoesNormalizadas[index];
+      const produtoKey = String(item.produtoId);
+      const saldoAnterior = Number(saldoSimulado.get(produtoKey) || 0);
+
+      if (
+        item.tipoMovimentacao === "saida" &&
+        item.quantidade > saldoAnterior
+      ) {
+        const produtoNome = produtosMap.get(produtoKey)?.nome || produtoKey;
+        return res.status(400).json({
+          error: `Linha ${index + 1}: nao e possivel retirar ${item.quantidade} de ${produtoNome}. Estoque atual: ${saldoAnterior}`,
+        });
       }
-      await estoque.save();
+
+      const saldoAtual =
+        item.tipoMovimentacao === "entrada"
+          ? saldoAnterior + item.quantidade
+          : saldoAnterior - item.quantidade;
+
+      saldoSimulado.set(produtoKey, saldoAtual);
+      movimentacoesProcessadas.push({
+        linha: index + 1,
+        usuarioId,
+        produtoId: item.produtoId,
+        produtoNome: produtosMap.get(produtoKey)?.nome || null,
+        tipoMovimentacao: item.tipoMovimentacao,
+        quantidade: item.quantidade,
+        quantidadeAnterior: saldoAnterior,
+        quantidadeAtual: saldoAtual,
+      });
     }
 
-    const estoqueAtualizado = await EstoqueUsuario.findByPk(estoque.id, {
-      include: [
-        {
-          model: Produto,
-          as: "produto",
-          attributes: ["id", "nome", "codigo", "emoji", "estoqueMinimo"],
-        },
-        {
-          model: Usuario,
-          as: "usuario",
-          attributes: ["id", "nome", "email", "role", "ativo"],
-        },
-      ],
-    });
+    for (const produtoIdAtual of produtoIds) {
+      const saldoFinal = Number(saldoSimulado.get(produtoIdAtual) || 0);
+      const estoqueExistente = estoqueMap.get(produtoIdAtual);
+
+      if (estoqueExistente) {
+        estoqueExistente.quantidade = saldoFinal;
+        if (!estoqueExistente.ativo) {
+          estoqueExistente.ativo = true;
+        }
+        await estoqueExistente.save();
+        continue;
+      }
+
+      if (saldoFinal > 0) {
+        const produtoAtual = produtosMap.get(produtoIdAtual);
+        await EstoqueUsuario.create({
+          usuarioId,
+          produtoId: produtoAtual.id,
+          quantidade: saldoFinal,
+          estoqueMinimo: Number(produtoAtual.estoqueMinimo || 0),
+          ativo: true,
+        });
+      }
+    }
 
     return res.json({
-      message:
-        tipoNormalizado === "entrada"
-          ? "Entrada registrada com sucesso"
-          : "Saida registrada com sucesso",
-      movimentacao: {
-        usuarioId,
-        produtoId,
-        tipoMovimentacao: tipoNormalizado,
-        quantidade: quantidadeNumerica,
-        quantidadeAnterior,
-        quantidadeAtual,
-      },
-      estoque: estoqueAtualizado,
+      message: `${movimentacoesProcessadas.length} movimentacao(oes) registrada(s) com sucesso`,
+      movimentacoes: movimentacoesProcessadas,
     });
   } catch (error) {
     console.error("Erro ao movimentar estoque do usuario:", error);
