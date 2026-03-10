@@ -18,6 +18,47 @@ import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
 import AlertManager from "../services/alertManager.js";
 
+const possuiNumero = (valor) =>
+  valor !== null &&
+  valor !== undefined &&
+  valor !== "" &&
+  !Number.isNaN(Number(valor));
+
+const inteiroSeguro = (valor, fallback = 0) => {
+  if (!possuiNumero(valor)) return fallback;
+  return parseInt(valor, 10);
+};
+
+const calcularContadoresProjetados = (historico) => {
+  let contadorInProjetado = 0;
+  let contadorOutProjetado = 0;
+
+  for (const mov of historico) {
+    const fichas = inteiroSeguro(mov.fichas, 0);
+    const sairam = inteiroSeguro(mov.sairam, 0);
+
+    if (possuiNumero(mov.contadorIn)) {
+      contadorInProjetado = inteiroSeguro(mov.contadorIn, contadorInProjetado);
+    } else {
+      contadorInProjetado += fichas;
+    }
+
+    if (possuiNumero(mov.contadorOut)) {
+      contadorOutProjetado = inteiroSeguro(
+        mov.contadorOut,
+        contadorOutProjetado,
+      );
+    } else {
+      contadorOutProjetado += sairam;
+    }
+  }
+
+  return {
+    contadorInProjetado: Math.max(0, contadorInProjetado),
+    contadorOutProjetado: Math.max(0, contadorOutProjetado),
+  };
+};
+
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
   // Validação: apenas campos realmente obrigatórios em todos os formulários
@@ -59,19 +100,27 @@ export const registrarMovimentacao = async (req, res) => {
     const origemEstoqueNormalizada =
       origemEstoque === "loja" ? "loja" : "usuario";
 
+    const isAdmin = req.usuario?.role === "ADMIN";
+    const normalizarContador = (valor) => {
+      if (!possuiNumero(valor)) return null;
+      return inteiroSeguro(valor, null);
+    };
+
     const funcionarioSemContador = req.usuario?.role === "FUNCIONARIO";
     const contadorInDigitalSanitizado = funcionarioSemContador
       ? null
-      : contadorInDigital;
+      : normalizarContador(contadorInDigital);
     const contadorOutDigitalSanitizado = funcionarioSemContador
       ? null
-      : contadorOutDigital;
+      : normalizarContador(contadorOutDigital);
     const contadorInSanitizado = funcionarioSemContador
       ? null
-      : (contadorIn ?? contadorInDigitalSanitizado ?? null);
+      : (normalizarContador(contadorIn) ?? contadorInDigitalSanitizado ?? null);
     const contadorOutSanitizado = funcionarioSemContador
       ? null
-      : (contadorOut ?? contadorOutDigitalSanitizado ?? null);
+      : (normalizarContador(contadorOut) ??
+        contadorOutDigitalSanitizado ??
+        null);
 
     // (Removido alerta/bloqueio de pular loja: agora permite movimentação em qualquer loja do roteiro)
 
@@ -88,8 +137,8 @@ export const registrarMovimentacao = async (req, res) => {
       valor !== "" &&
       !Number.isNaN(Number(valor));
 
-    const contadorInInformado = contadorIn ?? contadorInDigital ?? null;
-    const contadorOutInformado = contadorOut ?? contadorOutDigital ?? null;
+    const contadorInInformado = contadorInSanitizado;
+    const contadorOutInformado = contadorOutSanitizado;
 
     const precisaInOut = [
       "FUNCIONARIO_TODAS_LOJAS",
@@ -113,32 +162,55 @@ export const registrarMovimentacao = async (req, res) => {
       where: { maquinaId },
       order: [["createdAt", "DESC"]],
     });
-    // Validação: contadorIn/contadorOut digitais não pode ser menor que o anterior, exceto ADMIN, ou se não enviado ou zero
+
+    const historicoContadores = await Movimentacao.findAll({
+      where: { maquinaId },
+      attributes: [
+        "contadorIn",
+        "contadorOut",
+        "fichas",
+        "sairam",
+        "dataColeta",
+        "createdAt",
+      ],
+      order: [
+        ["dataColeta", "ASC"],
+        ["createdAt", "ASC"],
+      ],
+    });
+
+    const { contadorOutProjetado } =
+      calcularContadoresProjetados(historicoContadores);
+
+    // Validação: somente ADMIN pode digitar IN/OUT livremente
     if (ultimaMov) {
-      // contadorInDigital
+      // IN não pode ser menor que o anterior para não-admin
       if (
-        typeof contadorInDigitalSanitizado === "number" &&
-        contadorInDigitalSanitizado > 0 &&
-        typeof ultimaMov.contadorInDigital === "number" &&
-        ultimaMov.contadorInDigital !== null &&
-        contadorInDigitalSanitizado < ultimaMov.contadorInDigital &&
-        req.usuario.role !== "ADMIN"
+        isValorContadorValido(contadorInSanitizado) &&
+        isValorContadorValido(ultimaMov.contadorIn) &&
+        contadorInSanitizado < inteiroSeguro(ultimaMov.contadorIn, 0) &&
+        !isAdmin
       ) {
         return res.status(400).json({
-          error: `O contador IN Digital (${contadorInDigitalSanitizado}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
+          error: `O contador IN (${contadorInSanitizado}) não pode ser menor que o anterior (${inteiroSeguro(ultimaMov.contadorIn, 0)}). Apenas ADMIN pode informar IN/OUT livremente.`,
         });
       }
-      // contadorOutDigital
-      if (
-        typeof contadorOutDigitalSanitizado === "number" &&
-        contadorOutDigitalSanitizado > 0 &&
-        typeof ultimaMov.contadorOutDigital === "number" &&
-        ultimaMov.contadorOutDigital !== null &&
-        contadorOutDigitalSanitizado < ultimaMov.contadorOutDigital &&
-        req.usuario.role !== "ADMIN"
-      ) {
+
+      // OUT não pode ser menor que o anterior para não-admin,
+      // exceto quando for exatamente o valor sugerido.
+      const outAnterior = inteiroSeguro(ultimaMov.contadorOut, 0);
+      const outDigitado = contadorOutSanitizado;
+      const outSugerido = inteiroSeguro(contadorOutProjetado, 0);
+      const outMenorQueAnterior =
+        isValorContadorValido(outDigitado) &&
+        isValorContadorValido(ultimaMov.contadorOut) &&
+        outDigitado < outAnterior;
+      const outEhSugerido =
+        isValorContadorValido(outDigitado) && outDigitado === outSugerido;
+
+      if (!isAdmin && outMenorQueAnterior && !outEhSugerido) {
         return res.status(400).json({
-          error: `O contador OUT Digital (${contadorOutDigitalSanitizado}) não pode ser menor que o anterior. Verifique o valor digitado ou peça ajuda ao gestor.`,
+          error: `O contador OUT (${outDigitado}) não pode ser menor que o anterior (${outAnterior}). Se OUT ficar abaixo do anterior, somente o valor sugerido (${outSugerido}) é permitido.`,
         });
       }
     }
@@ -146,7 +218,7 @@ export const registrarMovimentacao = async (req, res) => {
       ultimaMov &&
       typeof ultimaMov.totalPos === "number" &&
       totalPre > ultimaMov.totalPos &&
-      req.usuario.role !== "ADMIN"
+      !isAdmin
     ) {
       return res.status(400).json({
         error: `Não é permitido abastecer a máquina com uma quantidade maior (${totalPre}) do que o total pós da última movimentação. Confira o que você digitou.`,
