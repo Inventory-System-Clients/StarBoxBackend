@@ -60,6 +60,21 @@ const Veiculo = sequelize.define(
       allowNull: false,
       defaultValue: "está limpo",
     },
+    kmInicialCadastro: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "km_inicial_cadastro",
+    },
+    proximaRevisaoKm: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "proxima_revisao_km",
+    },
+    ultimaRevisaoKm: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "ultima_revisao_km",
+    },
   },
   {
     tableName: "veiculos",

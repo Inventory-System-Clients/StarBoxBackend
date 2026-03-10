@@ -2,6 +2,7 @@ import MovimentacaoVeiculo from "../models/MovimentacaoVeiculo.js";
 import Veiculo from "../models/Veiculo.js";
 import Usuario from "../models/Usuario.js";
 import { Op, Sequelize } from "sequelize";
+import { verificarRevisaoPendente } from "../services/revisaoVeiculoService.js";
 // Buscar a última movimentação de cada veículo
 export const ultimasMovimentacoesPorVeiculo = async (req, res) => {
   try {
@@ -74,6 +75,12 @@ export const registrarMovimentacaoVeiculo = async (req, res) => {
       obs,
       km,
     });
+    
+    // Se informou km, verificar se precisa de revisão
+    if (km) {
+      await verificarRevisaoPendente(veiculoId);
+    }
+    
     res.status(201).json(movimentacao);
   } catch (error) {
     console.error("Erro ao registrar movimentação de veículo:", error);
