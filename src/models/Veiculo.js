@@ -75,6 +75,12 @@ const Veiculo = sequelize.define(
       allowNull: true,
       field: "ultima_revisao_km",
     },
+    alertaRevisaoPendente: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "alerta_revisao_pendente",
+    },
   },
   {
     tableName: "veiculos",

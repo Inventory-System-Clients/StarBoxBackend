@@ -4,6 +4,7 @@ import {
   marcarRevisaoConcluida,
   verificarTodas,
   verificarRevisaoVeiculo,
+  reconhecerAlerta,
 } from "../controllers/revisaoVeiculoController.js";
 import { autenticar } from "../middlewares/auth.js";
 
@@ -20,6 +21,9 @@ router.post("/verificar-todas", verificarTodas);
 
 // Verificar revisão de um veículo específico
 router.post("/:veiculoId/verificar", verificarRevisaoVeiculo);
+
+// Reconhecer alerta de revisão (marcar como visto)
+router.post("/:veiculoId/reconhecer", reconhecerAlerta);
 
 // Marcar revisão como concluída
 router.post("/:veiculoId/concluir", marcarRevisaoConcluida);

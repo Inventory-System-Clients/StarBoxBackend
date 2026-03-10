@@ -3,6 +3,7 @@ import {
   concluirRevisao,
   verificarTodasRevisoes,
   verificarRevisaoPendente,
+  reconhecerAlertaRevisao,
 } from "../services/revisaoVeiculoService.js";
 
 /**
@@ -16,6 +17,28 @@ export const listarRevisoes = async (req, res) => {
   } catch (error) {
     console.error("[Revisão Controller] Erro ao listar revisões:", error);
     res.status(500).json({ error: "Erro ao listar revisões pendentes" });
+  }
+};
+
+/**
+ * POST /revisoes-veiculos/:veiculoId/reconhecer
+ * Reconhece/aceita o alerta de revisão (marca como visto)
+ */
+export const reconhecerAlerta = async (req, res) => {
+  try {
+    const { veiculoId } = req.params;
+
+    const veiculo = await reconhecerAlertaRevisao(veiculoId);
+
+    res.json({
+      message: "Alerta de revisão reconhecido",
+      veiculo,
+    });
+  } catch (error) {
+    console.error("[Revisão Controller] Erro ao reconhecer alerta:", error);
+    res.status(500).json({ 
+      error: error.message || "Erro ao reconhecer alerta de revisão" 
+    });
   }
 };
 

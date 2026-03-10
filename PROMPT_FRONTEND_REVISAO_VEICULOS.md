@@ -28,7 +28,63 @@ Implementar interface para gerenciar revisões de veículos que devem ocorrer a 
 
 ## 📡 Endpoints da API
 
-### 1. Listar Revisões Pendentes
+### 1. Listar Veículos com Status de Revisão
+
+**GET** `/veiculos`
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response 200:**
+```json
+[
+  {
+    "id": "uuid-123",
+    "nome": "Carro 1",
+    "modelo": "Toyota Corolla",
+    "km": 45320,
+    "proximaRevisaoKm": 50000,
+    "alertaRevisaoPendente": true,  // <-- Mostrar alerta visual
+    "estado": "Bom",
+    "emUso": false
+  },
+  {
+    "id": "uuid-456",
+    "nome": "Moto Entrega",
+    "modelo": "Honda CG 160",
+    "km": 8500,
+    "proximaRevisaoKm": 10000,
+    "alertaRevisaoPendente": false,  // <-- Sem alerta
+    "estado": "Bom",
+    "emUso": true
+  }
+]
+```
+
+### 2. Reconhecer Alerta de Revisão (Clicar "OK")
+
+**POST** `/revisoes-veiculos/:veiculoId/reconhecer`
+
+**Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response 200:**
+```json
+{
+  "message": "Alerta de revisão reconhecido",
+  "veiculo": {
+    "id": "uuid-123",
+    "nome": "Carro 1",
+    "alertaRevisaoPendente": false
+  }
+}
+```
+
+### 3. Listar Revisões Pendentes
 
 **GET** `/revisoes-veiculos`
 
@@ -63,7 +119,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 2. Verificar Revisão de Um Veículo
+### 4. Verificar Revisão de Um Veículo
 
 **POST** `/revisoes-veiculos/:veiculoId/verificar`
 
@@ -93,7 +149,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 3. Marcar Revisão Como Concluída
+### 5. Marcar Revisão Como Concluída
 
 **POST** `/revisoes-veiculos/:veiculoId/concluir`
 
@@ -126,7 +182,7 @@ Authorization: Bearer <token>
 
 ---
 
-### 4. Verificar Todas as Revisões (Admin)
+### 6. Verificar Todas as Revisões (Admin)
 
 **POST** `/revisoes-veiculos/verificar-todas`
 
@@ -142,6 +198,149 @@ Authorization: Bearer <token>
   "alertasCriados": 3,
   "alertas": [...]
 }
+```
+
+---
+
+## 🎨 Alerta Visual na Lista de Veículos
+
+**Implementar na tela principal de veículos**
+
+### Layout do Card de Veículo com Alerta
+
+```jsx
+import React, { useEffect, useState } from 'react';
+import { Card, Button, Alert, Tag } from 'antd';
+import { WarningOutlined, CarOutlined } from '@ant-design/icons';
+import api from '../services/api';
+
+const ListaVeiculos = () => {
+  const [veiculos, setVeiculos] = useState([]);
+
+  useEffect(() => {
+    carregarVeiculos();
+  }, []);
+
+  const carregarVeiculos = async () => {
+    const response = await api.get('/veiculos');
+    setVeiculos(response.data);
+  };
+
+  const reconhecerAlerta = async (veiculoId) => {
+    try {
+      await api.post(`/revisoes-veiculos/${veiculoId}/reconhecer`);
+      message.success('Alerta reconhecido!');
+      carregarVeiculos(); // Recarregar lista
+    } catch (error) {
+      message.error('Erro ao reconhecer alerta');
+    }
+  };
+
+  return (
+    <div style={{ padding: '24px' }}>
+      <h2><CarOutlined /> Veículos</h2>
+      
+      {veiculos.map((veiculo) => (
+        <Card
+          key={veiculo.id}
+          style={{ marginBottom: '16px' }}
+          title={veiculo.nome}
+          extra={veiculo.emUso && <Tag color="blue">Em Uso</Tag>}
+        >
+          {/* ALERTA DE REVISÃO */}
+          {veiculo.alertaRevisaoPendente && (
+            <Alert
+              message="⚠️ REVISÃO NECESSÁRIA"
+              description={`Este veículo atingiu ${veiculo.km.toLocaleString('pt-BR')} km e precisa de revisão!`}
+              type="warning"
+              showIcon
+              icon={<WarningOutlined />}
+              action={
+                <Button 
+                  size="small" 
+                  type="primary"
+                  onClick={() => reconhecerAlerta(veiculo.id)}
+                >
+                  OK, Entendi
+                </Button>
+              }
+              style={{ marginBottom: '16px' }}
+            />
+          )}
+
+          <div>
+            <p><strong>Modelo:</strong> {veiculo.modelo}</p>
+            <p><strong>KM Atual:</strong> {veiculo.km.toLocaleString('pt-BR')}</p>
+            <p><strong>Próxima Revisão:</strong> {veiculo.proximaRevisaoKm.toLocaleString('pt-BR')} km</p>
+            <p><strong>Estado:</strong> {veiculo.estado}</p>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+};
+
+export default ListaVeiculos;
+```
+
+### Variação: Banner no Topo da Lista
+
+```jsx
+const ListaVeiculos = () => {
+  const [veiculos, setVeiculos] = useState([]);
+  const veiculosComAlerta = veiculos.filter(v => v.alertaRevisaoPendente);
+
+  const reconhecerTodosAlertas = async () => {
+    try {
+      await Promise.all(
+        veiculosComAlerta.map(v => 
+          api.post(`/revisoes-veiculos/${v.id}/reconhecer`)
+        )
+      );
+      message.success('Todos os alertas reconhecidos!');
+      carregarVeiculos();
+    } catch (error) {
+      message.error('Erro ao reconhecer alertas');
+    }
+  };
+
+  return (
+    <div style={{ padding: '24px' }}>
+      <h2><CarOutlined /> Veículos</h2>
+      
+      {/* Banner no topo se houver alertas */}
+      {veiculosComAlerta.length > 0 && (
+        <Alert
+          message={`⚠️ ${veiculosComAlerta.length} veículo(s) precisam de revisão`}
+          description={
+            <div>
+              <p>Os seguintes veículos atingiram a quilometragem de revisão:</p>
+              <ul>
+                {veiculosComAlerta.map(v => (
+                  <li key={v.id}>{v.nome} - {v.km.toLocaleString('pt-BR')} km</li>
+                ))}
+              </ul>
+            </div>
+          }
+          type="warning"
+          showIcon
+          closable={false}
+          action={
+            <Button type="primary" onClick={reconhecerTodosAlertas}>
+              OK, Reconhecer Todos
+            </Button>
+          }
+          style={{ marginBottom: '24px' }}
+        />
+      )}
+
+      {/* Lista de veículos */}
+      {veiculos.map((veiculo) => (
+        <VeiculoCard key={veiculo.id} veiculo={veiculo} />
+      ))}
+    </div>
+  );
+};
 ```
 
 ---
@@ -302,16 +501,67 @@ const RevisoesPendentes = () => {
             <p>
               <strong>KM em que a revisão foi feita:</strong>
             </p>
-            <Input
-              type="number"
-              value={kmRevisao}
-              onChange={(e) => setKmRevisao(e.target.value)}
-              placeholder="Ex: 45000"
-            />
-            <p style={{ marginTop: '8px', fontSize: '12px', color: '#888' }}>
-              Deixe em branco para usar o KM atual ({formatarKm(veiculoSelecionado.kmAtual)})
-            </p>
-          </>
+            <Input  
+4. ✅ **Quando passa de 10.000 km → ativa `alertaRevisaoPendente = true`**
+5. ✅ Cria alerta automático no WhatsApp (se configurado)
+6. ✅ **Quando usuário clica "OK" → `alertaRevisaoPendente = false`**
+7. ✅ **Quando marca revisão concluída → `alertaRevisaoPendente = false`**
+
+### Frontend deve:
+
+1. **Na listagem de veículos:**
+   - Mostrar alerta visual para veículos com `alertaRevisaoPendente = true`
+   - Botão "OK, Entendi" que chama `POST /revisoes-veiculos/:id/reconhecer`
+   - Alerta desaparece após reconhecimento
+
+2. **Opcional - Badge no menu:**
+   - Exibir contador de veículos com alerta pendente
+   
+3. **Tela de revisões detalhadas:**
+   - Listar todas as revisões que precisam ser agendadas
+   - Permitir marcar como concluída
+
+---
+
+## 🔄 Fluxo Completo
+
+### Cenário 1: Veículo Passa de 10.000 km
+
+1. **Usuário registra movimentação** com KM = 10.500
+2. **Backend detecta** que passou de 10.000 km
+3. **Backend atualiza:**
+   - `proximaRevisaoKm = 20000`
+   - `alertaRevisaoPendente = true`
+   - Cria registro em `whatsapp_alertas`
+4. **Frontend carrega veículos** via `GET /veiculos`
+5. **Frontend mostra alerta** vermelho/amarelo no card do veículo
+6. **Usuário clica "OK, Entendi"**
+7. **Frontend chama** `POST /revisoes-veiculos/:id/reconhecer`
+8. **Backend atualiza** `alertaRevisaoPendente = false`
+9. **Alerta desaparece** da interface
+
+### Cenário 2: Revisão é Concluída
+
+1. **Mecânico faz revisão** no veículo
+2. **Usuário acessa** tela de revisões pendentes
+3. **Clica "Marcar como Concluída"**
+4. **Frontend chama** `POST /revisoes-veiculos/:id/concluir`
+5. **Backend atualiza:**
+   - `ultimaRevisaoKm = 10500`
+   - `proximaRevisaoKm = 20000`
+   - `alertaRevisaoPendente = false`
+6. **Alerta é removido** automaticamente
+
+---
+
+## 📊 Estados do Alerta
+
+| Situação | `alertaRevisaoPendente` | Ação do Usuário |
+|----------|------------------------|-----------------|
+| Veículo novo (5.000 km) | `false` | Nenhuma |
+| Passa de 10.000 km | `true` → **ALERTA ATIVO** | Clicar "OK" ou concluir revisão |
+| Usuário clica "OK" | `false` | Nenhuma (pode voltar a `true` nos próximos 10.000 km) |
+| Revisão concluída | `false` | Nenhum
         )}
       </Modal>
     </div>

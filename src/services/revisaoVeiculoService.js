@@ -62,6 +62,7 @@ export const verificarRevisaoPendente = async (veiculoId) => {
     // Atualizar próxima revisão do veículo
     await veiculo.update({
       proximaRevisaoKm: novaProximaRevisao,
+      alertaRevisaoPendente: true, // Ativar alerta visual
     });
 
     console.log(`[Revisão] Alerta criado para veículo ${veiculo.nome} - KM ${kmAtual}`);
@@ -104,6 +105,31 @@ export const listarRevisoesPendentes = async () => {
     return revisoesPendentes;
   } catch (error) {
     console.error("[Revisão] Erro ao listar revisões pendentes:", error);
+    throw error;
+  }
+};
+
+/**
+ * Reconhecer alerta de revisão (marcar como visto pelo usuário)
+ */
+export const reconhecerAlertaRevisao = async (veiculoId) => {
+  try {
+    const veiculo = await Veiculo.findByPk(veiculoId);
+    
+    if (!veiculo) {
+      throw new Error("Veículo não encontrado");
+    }
+
+    await veiculo.update({
+      alertaRevisaoPendente: false,
+    });
+
+    console.log(`[Revisão] Alerta reconhecido para veículo ${veiculo.nome}`);
+    
+      alertaRevisaoPendente: false, // Desativar alerta ao concluir
+    return veiculo;
+  } catch (error) {
+    console.error("[Revisão] Erro ao reconhecer alerta:", error);
     throw error;
   }
 };
