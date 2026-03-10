@@ -77,6 +77,7 @@ export const calcularQuantidadeAtual = async (req, res) => {
       calcularContadoresProjetados(historico);
 
     const capacidade = parseInt(maquina.capacidadePadrao) || 0;
+    const ultimaMovimentacao = historico[historico.length - 1] || null;
 
     const contadorInAtual = possuiNumero(contadorIn)
       ? inteiroSeguro(contadorIn, contadorInProjetado)
@@ -85,17 +86,39 @@ export const calcularQuantidadeAtual = async (req, res) => {
       ? inteiroSeguro(contadorOut, contadorOutProjetado)
       : contadorOutProjetado;
 
-    const saidaCalculada = Math.max(0, contadorOutAtual - contadorOutProjetado);
-    // Quando o usuário informa IN/OUT, estes contadores viram a nova referência
-    // da máquina para a próxima sugestão e para validação de divergência.
+    const totalPosUltimaMovimentacao = possuiNumero(
+      ultimaMovimentacao?.totalPos,
+    )
+      ? inteiroSeguro(ultimaMovimentacao.totalPos, capacidade)
+      : capacidade;
+
+    const contadorOutUltimaMovimentacao = possuiNumero(
+      ultimaMovimentacao?.contadorOut,
+    )
+      ? inteiroSeguro(ultimaMovimentacao.contadorOut, contadorOutProjetado)
+      : contadorOutProjetado;
+
+    const quantidadeDeveriaTerSaido = Math.max(
+      0,
+      contadorOutAtual - contadorOutUltimaMovimentacao,
+    );
+
     const quantidadeAtualPorContadores =
-      capacidade - (contadorOutAtual - contadorInAtual);
+      totalPosUltimaMovimentacao - quantidadeDeveriaTerSaido;
     const totalPreEsperado = Math.min(
       capacidade,
       Math.max(0, quantidadeAtualPorContadores),
     );
     const quantidadeAtual = totalPreEsperado;
-    const sugestaoAbastecimento = Math.max(0, capacidade - quantidadeAtual);
+    const sugestaoAbastecimentoBruta = Math.max(
+      0,
+      capacidade - quantidadeAtual,
+    );
+    const sugestaoAbastecimento = Math.min(
+      sugestaoAbastecimentoBruta,
+      quantidadeAtual,
+    );
+    const saidaCalculada = quantidadeDeveriaTerSaido;
 
     res.json({
       quantidadeAtual: quantidadeAtual >= 0 ? quantidadeAtual : 0,
@@ -106,6 +129,9 @@ export const calcularQuantidadeAtual = async (req, res) => {
       contadorOutSugerido: contadorOutProjetado,
       contadorInAtual,
       contadorOutAtual,
+      totalPosUltimaMovimentacao,
+      contadorOutUltimaMovimentacao,
+      quantidadeDeveriaTerSaido,
       saidaCalculada,
     });
   } catch (error) {
