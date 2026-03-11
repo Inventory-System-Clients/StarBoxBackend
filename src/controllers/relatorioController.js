@@ -306,6 +306,7 @@ import {
   Produto,
   AlertaIgnorado,
   RegistroDinheiro,
+  FluxoCaixa,
 } from "../models/index.js";
 
 // --- DASHBOARD GERAL ---
@@ -350,6 +351,12 @@ export const dashboardRelatorio = async (req, res) => {
                     "comissaoLojaPercentual",
                   ],
                 },
+                {
+                  model: FluxoCaixa,
+                  as: "fluxoCaixa",
+                  required: false,
+                  attributes: ["valorRetirado", "conferencia"],
+                },
               ],
             });
             let receitaBruta = 0;
@@ -359,7 +366,14 @@ export const dashboardRelatorio = async (req, res) => {
               const valorFicha = parseFloat(m.maquina?.valorFicha || 0);
               const dinheiro = parseFloat(m.quantidade_notas_entrada || 0);
               const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
-              const receitaMaquina = fichas * valorFicha + dinheiro + pix;
+              
+              let valorFichas = fichas * valorFicha;
+              // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
+              if (m.retiradaDinheiro && m.fluxoCaixa && m.fluxoCaixa.valorRetirado !== null) {
+                valorFichas = parseFloat(m.fluxoCaixa.valorRetirado);
+              }
+              
+              const receitaMaquina = valorFichas + dinheiro + pix;
               receitaBruta += receitaMaquina;
               const percentual = parseFloat(
                 m.maquina?.comissaoLojaPercentual || 0,
@@ -443,6 +457,12 @@ export const dashboardRelatorio = async (req, res) => {
             "comissaoLojaPercentual",
           ],
         },
+        {
+          model: FluxoCaixa,
+          as: "fluxoCaixa",
+          required: false,
+          attributes: ["valorRetirado", "conferencia"],
+        },
       ],
     });
 
@@ -455,7 +475,14 @@ export const dashboardRelatorio = async (req, res) => {
       const fqtd = parseInt(m.fichas) || 0;
       const vf = parseFloat(m.maquina?.valorFicha || 0);
       totalFichasQtd += fqtd;
-      totalFichasValor += fqtd * vf;
+      
+      // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
+      if (m.retiradaDinheiro && m.fluxoCaixa && m.fluxoCaixa.valorRetirado !== null) {
+        totalFichasValor += parseFloat(m.fluxoCaixa.valorRetirado);
+      } else {
+        totalFichasValor += fqtd * vf;
+      }
+      
       totalDinheiro += parseFloat(m.quantidade_notas_entrada || 0);
       totalPix += parseFloat(m.valor_entrada_maquininha_pix || 0);
       totalSairam += parseInt(m.sairam) || 0;
@@ -1463,6 +1490,12 @@ export const relatorioImpressao = async (req, res) => {
           attributes: ["id", "codigo", "nome", "valorFicha"],
         },
         {
+          model: FluxoCaixa,
+          as: "fluxoCaixa",
+          required: false,
+          attributes: ["valorRetirado", "conferencia"],
+        },
+        {
           model: MovimentacaoProduto,
           as: "detalhesProdutos",
           include: [
@@ -1578,8 +1611,15 @@ export const relatorioImpressao = async (req, res) => {
       const valorFichaMaquina = Number(
         mov.maquina?.valorFicha || loja.valorFichaPadrao || 2.5,
       );
+      
+      let valorFichas = Number(mov.fichas || 0) * valorFichaMaquina;
+      // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
+      if (mov.retiradaDinheiro && mov.fluxoCaixa && mov.fluxoCaixa.valorRetirado !== null) {
+        valorFichas = Number(mov.fluxoCaixa.valorRetirado);
+      }
+      
       const faturamentoBrutoMov =
-        Number(mov.fichas || 0) * valorFichaMaquina +
+        valorFichas +
         Number(mov.quantidade_notas_entrada || 0) +
         Number(mov.valor_entrada_maquininha_pix || 0);
       dadosPorMaquina[maquinaId].faturamentoBrutoMovimentacoes +=
@@ -1684,9 +1724,16 @@ export const relatorioImpressao = async (req, res) => {
       const valorFichaMaquina = Number(
         mov.maquina?.valorFicha || loja.valorFichaPadrao || 2.5,
       );
+      
+      let valorFichas = Number(mov.fichas || 0) * valorFichaMaquina;
+      // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
+      if (mov.retiradaDinheiro && mov.fluxoCaixa && mov.fluxoCaixa.valorRetirado !== null) {
+        valorFichas = Number(mov.fluxoCaixa.valorRetirado);
+      }
+      
       return (
         acc +
-        Number(mov.fichas || 0) * valorFichaMaquina +
+        valorFichas +
         Number(mov.quantidade_notas_entrada || 0) +
         Number(mov.valor_entrada_maquininha_pix || 0)
       );
@@ -2033,6 +2080,12 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
                 as: "maquina",
                 attributes: ["valorFicha", "lojaId", "comissaoLojaPercentual"],
               },
+              {
+                model: FluxoCaixa,
+                as: "fluxoCaixa",
+                required: false,
+                attributes: ["valorRetirado", "conferencia"],
+              },
             ],
           });
           let receitaBruta = 0;
@@ -2042,7 +2095,14 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
             const valorFicha = parseFloat(m.maquina?.valorFicha || 0);
             const dinheiro = parseFloat(m.quantidade_notas_entrada || 0);
             const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
-            const receitaMaquina = fichas * valorFicha + dinheiro + pix;
+            
+            let valorFichas = fichas * valorFicha;
+            // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
+            if (m.retiradaDinheiro && m.fluxoCaixa && m.fluxoCaixa.valorRetirado !== null) {
+              valorFichas = parseFloat(m.fluxoCaixa.valorRetirado);
+            }
+            
+            const receitaMaquina = valorFichas + dinheiro + pix;
             receitaBruta += receitaMaquina;
             const percentual = parseFloat(
               m.maquina?.comissaoLojaPercentual || 0,

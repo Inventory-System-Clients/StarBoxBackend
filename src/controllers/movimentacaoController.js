@@ -11,6 +11,7 @@ import {
   Peca,
   Manutencao,
   ContasFinanceiro,
+  FluxoCaixa,
 } from "../models/index.js";
 import { Op } from "sequelize";
 import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
@@ -87,6 +88,7 @@ export const registrarMovimentacao = async (req, res) => {
       observacoes,
       tipoOcorrencia,
       retiradaEstoque,
+      retiradaDinheiro,
       retiradaProduto,
       produtos = [], // Array de { produtoId, quantidadeSaiu, quantidadeAbastecida }
       roteiroId, // pode não vir do Movimentacoes.jsx
@@ -401,6 +403,7 @@ export const registrarMovimentacao = async (req, res) => {
       observacoes,
       tipoOcorrencia: tipoOcorrencia || "Normal",
       retiradaEstoque: retiradaEstoque || false,
+      retiradaDinheiro: retiradaDinheiro || false,
       roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
       justificativa_ordem: justificativaPendente?.justificativa ?? null,
     });
@@ -408,6 +411,15 @@ export const registrarMovimentacao = async (req, res) => {
     // Consumir justificativa pendente após usá-la
     if (justificativaPendente && maquina.lojaId) {
       justificativasPendentes.delete(maquina.lojaId);
+    }
+
+    // Se a movimentação é marcada como retirada de dinheiro, criar registro no FluxoCaixa
+    if (retiradaDinheiro) {
+      await FluxoCaixa.create({
+        movimentacaoId: movimentacao.id,
+        conferencia: "pendente",
+      });
+      console.log("✅ [registrarMovimentacao] Registro de FluxoCaixa criado para movimentação:", movimentacao.id);
     }
 
     // Registrar peças usadas, se houver

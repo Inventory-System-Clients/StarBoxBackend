@@ -97,6 +97,16 @@ const Movimentacao = sequelize.define(
         "Indica se é uma retirada de estoque (não conta como venda/receita)",
     },
 
+    // Retirada de Dinheiro (Fluxo de Caixa)
+    retiradaDinheiro: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "retirada_dinheiro",
+      comment:
+        "Indica se é uma retirada de dinheiro que deve aparecer no fluxo de caixa",
+    },
+
     // Notas e Pagamento Digital
     quantidade_notas_entrada: {
       type: DataTypes.DECIMAL(10, 2),
