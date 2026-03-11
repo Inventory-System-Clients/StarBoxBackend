@@ -25,6 +25,8 @@ export function create(req, res) {
     payment_method: req.body.payment_method || "boleto",
     payment_details: req.body.payment_details || "",
     boleto_em_maos: req.body.boleto_em_maos || false,
+    recorrente: req.body.recorrente || false,
+    beneficiario: req.body.beneficiario || "",
   })
     .then((bill) => res.json(bill))
     .catch((err) => {
@@ -49,6 +51,8 @@ export function update(req, res) {
       payment_method: req.body.payment_method,
       payment_details: req.body.payment_details,
       boleto_em_maos: req.body.boleto_em_maos,
+      recorrente: req.body.recorrente,
+      beneficiario: req.body.beneficiario,
     },
     { where: { id } },
   )

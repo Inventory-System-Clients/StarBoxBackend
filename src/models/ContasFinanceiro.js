@@ -53,6 +53,16 @@ const ContasFinanceiro = sequelize.define(
       defaultValue: false,
       comment: "Indica se o boleto foi recebido ou está em mãos",
     },
+    recorrente: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: "Indica se a conta se repete todos os meses na mesma data",
+    },
+    beneficiario: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: "Nome da pessoa ou empresa que receberá o pagamento",
+    },
   },
   {
     tableName: "contas_financeiro",
