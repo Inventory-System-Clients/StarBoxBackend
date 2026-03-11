@@ -63,6 +63,11 @@ const ContasFinanceiro = sequelize.define(
       allowNull: true,
       comment: "Nome da pessoa ou empresa que receberá o pagamento",
     },
+    numero: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      comment: "Número do documento, boleto, conta ou código de referência",
+    },
   },
   {
     tableName: "contas_financeiro",
