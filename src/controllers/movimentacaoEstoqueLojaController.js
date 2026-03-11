@@ -52,11 +52,19 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
       return res.status(404).json({ error: "Loja não encontrada." });
     }
 
+    console.log(`📍 Loja destino: ${lojaDestino.nome}, isDepositoPrincipal: ${lojaDestino.isDepositoPrincipal}`);
+
     // Buscar loja principal (depósito)
     const lojaDepositoPrincipal = await Loja.findOne({
       where: { isDepositoPrincipal: true },
       transaction: t,
     });
+
+    if (lojaDepositoPrincipal) {
+      console.log(`🏭 Depósito principal encontrado: ${lojaDepositoPrincipal.nome} (ID: ${lojaDepositoPrincipal.id})`);
+    } else {
+      console.warn('⚠️ Nenhum depósito principal encontrado no sistema!');
+    }
 
     const movimentacao = await MovimentacaoEstoqueLoja.create(
       {
@@ -98,15 +106,16 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
         { transaction: t },
       );
 
-      // 🔥 LÓGICA NOVA: Se for ENTRADA em loja DIFERENTE do depósito principal, desconta do depósito
+      // 🔥 LÓGICA: Se for ENTRADA em loja DIFERENTE do depósito principal, desconta do depósito
       if (
         tipo === "entrada" &&
         lojaDepositoPrincipal &&
         !lojaDestino.isDepositoPrincipal
       ) {
-        console.log(
-          `🏭 Descontando ${qtd} unidades do depósito principal (${lojaDepositoPrincipal.nome})`,
-        );
+        const produto = await Produto.findByPk(item.produtoId, { transaction: t });
+        console.log(`🏭 [DESCONTO DEPÓSITO] Produto: ${produto?.nome}`);
+        console.log(`   - Loja destino: ${lojaDestino.nome} (não é depósito)`);
+        console.log(`   - Quantidade a descontar: ${qtd}`);
 
         const [estoqueDeposito, createdDeposito] =
           await EstoqueLoja.findOrCreate({
@@ -118,15 +127,18 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
             transaction: t,
           });
 
+        console.log(`   - Estoque atual no depósito: ${estoqueDeposito.quantidade}`);
+
         // Descontar do depósito
         const novaQtdDeposito = Math.max(0, estoqueDeposito.quantidade - qtd);
 
         if (estoqueDeposito.quantidade < qtd) {
           console.warn(
-            `⚠️ Estoque insuficiente no depósito. Disponível: ${estoqueDeposito.quantidade}, Solicitado: ${qtd}`,
+            `⚠️ [AVISO] Estoque insuficiente no depósito!`,
           );
-          // Pode optar por bloquear ou apenas avisar
-          // Para não bloquear, continua com o desconto até zero
+          console.warn(`   - Disponível: ${estoqueDeposito.quantidade}`);
+          console.warn(`   - Solicitado: ${qtd}`);
+          console.warn(`   - Operação continuará, mas estoque ficará zerado`);
         }
 
         await estoqueDeposito.update(
@@ -135,8 +147,15 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
         );
 
         console.log(
-          `✅ Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`,
+          `✅ [SUCESSO] Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`,
         );
+      } else if (tipo === "entrada") {
+        if (lojaDestino.isDepositoPrincipal) {
+          console.log(`ℹ️ Entrada no próprio depósito principal - não desconta de si mesmo`);
+        }
+        if (!lojaDepositoPrincipal) {
+          console.log(`ℹ️ Nenhum depósito principal configurado - não há desconto`);
+        }
       }
     }
 
