@@ -134,7 +134,7 @@ export const obterFluxoCaixa = async (req, res) => {
 export const atualizarFluxoCaixa = async (req, res) => {
   try {
     const { id } = req.params;
-    const { valorRetirado, conferencia, observacoes } = req.body;
+    const { valorEsperado, valorRetirado, conferencia, observacoes } = req.body;
     const usuarioId = req.usuario.id;
 
     const fluxo = await FluxoCaixa.findByPk(id);
@@ -144,6 +144,7 @@ export const atualizarFluxoCaixa = async (req, res) => {
     }
 
     // Atualizar dados
+    fluxo.valorEsperado = valorEsperado !== undefined ? valorEsperado : fluxo.valorEsperado;
     fluxo.valorRetirado = valorRetirado !== undefined ? valorRetirado : fluxo.valorRetirado;
     fluxo.conferencia = conferencia || fluxo.conferencia;
     fluxo.observacoes = observacoes !== undefined ? observacoes : fluxo.observacoes;

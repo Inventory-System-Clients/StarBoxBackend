@@ -26,6 +26,7 @@ interface Movimentacao {
 interface FluxoCaixa {
   id: string;
   movimentacaoId: string;           // Referência à movimentação
+  valorEsperado: number | null;     // ✨ Valor esperado (editável, padrão é valorFaturado)
   valorRetirado: number | null;     // Valor real trazido da máquina
   conferencia: "pendente" | "bateu" | "nao_bateu";
   observacoes: string | null;
@@ -229,7 +230,7 @@ function FluxoCaixa() {
     }
   };
 
-  const conferirFluxo = async (fluxoId, valorRetirado, conferencia, observacoes) => {
+  const conferirFluxo = async (fluxoId, valorEsperado, valorRetirado, conferencia, observacoes) => {
     try {
       const response = await fetch(`/api/fluxo-caixa/${fluxoId}`, {
         method: 'PUT',
@@ -238,6 +239,7 @@ function FluxoCaixa() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
+          valorEsperado: parseFloat(valorEsperado), // ✨ NOVO
           valorRetirado: parseFloat(valorRetirado),
           conferencia,
           observacoes
@@ -374,12 +376,18 @@ export default FluxoCaixa;
 function ItemFluxoCaixa({ fluxo, onConferir }) {
   const [editando, setEditando] = useState(false);
   const [formConferencia, setFormConferencia] = useState({
+    valorEsperado: fluxo.valorEsperado || fluxo.movimentacao?.valorFaturado || 0, // ✨ EDITÁVEL
     valorRetirado: fluxo.valorRetirado || '',
     conferencia: fluxo.conferencia || 'pendente',
     observacoes: fluxo.observacoes || ''
   });
 
   const handleSalvar = () => {
+    if (!formConferencia.valorEsperado) {
+      alert('⚠️ Digite o valor esperado');
+      return;
+    }
+
     if (!formConferencia.valorRetirado) {
       alert('⚠️ Digite o valor retirado');
       return;
@@ -392,6 +400,7 @@ function ItemFluxoCaixa({ fluxo, onConferir }) {
 
     onConferir(
       fluxo.id,
+      formConferencia.valorEsperado, // ✨ NOVO
       formConferencia.valorRetirado,
       formConferencia.conferencia,
       formConferencia.observacoes
@@ -399,8 +408,8 @@ function ItemFluxoCaixa({ fluxo, onConferir }) {
     setEditando(false);
   };
 
-  const valorEsperado = fluxo.movimentacao?.valorFaturado || 0;
-  const valorRetirado = formConferencia.valorRetirado || fluxo.valorRetirado;
+  const valorEsperado = parseFloat(formConferencia.valorEsperado);
+  const valorRetirado = parseFloat(formConferencia.valorRetirado || fluxo.valorRetirado || 0);
   const diferenca = valorRetirado ? valorRetirado - valorEsperado : 0;
 
   return (
@@ -421,22 +430,52 @@ function ItemFluxoCaixa({ fluxo, onConferir }) {
         <strong>{fluxo.movimentacao.maquina.nome}</strong>
         <br />
         <small>Código: {fluxo.movimentacao.maquina.codigo}</small>
-      </td>
-      <td>
-        {fluxo.movimentacao.usuario.nome}
-        <br />
-        <small>{fluxo.movimentacao.usuario.email}</small>
-      </td>
-      <td className="valor-esperado">
-        R$ {valorEsperado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+      </{editando ? (
+          <div className="input-group">
+            <label className="input-label">Esperado:</label>
+            <input
+              type="number"
+              step="0.01"
+              value={formConferencia.valorEsperado}
+              onChange={(e) => setFormConferencia(prev => ({
+                ...prev,
+                valorEsperado: e.target.value
+              }))}
+              placeholder="0.00"
+              className="input-valor input-esperado"
+            />
+          </div>
+        ) : (
+          <>
+            <strong>
+              R$ {(fluxo.valorEsperado || fluxo.movimentacao?.valorFaturado || 0)
+                .toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </strong>
+            {fluxo.valorEsperado && fluxo.valorEsperado !== fluxo.movimentacao?.valorFaturado && (
+              <span className="badge badge-warning" title="Valor ajustado manualmente">
+                ✏️ Editado
+              </span>
+            )}
+          </>
+        )}
       </td>
       <td>
         {editando ? (
-          <input
-            type="number"
-            step="0.01"
-            value={formConferencia.valorRetirado}
-            onChange={(e) => setFormConferencia(prev => ({
+          <div className="input-group">
+            <label className="input-label">Retirado:</label>
+            <input
+              type="number"
+              step="0.01"
+              value={formConferencia.valorRetirado}
+              onChange={(e) => setFormConferencia(prev => ({
+                ...prev,
+                valorRetirado: e.target.value
+              }))}
+              placeholder="0.00"
+              className="input-valor input-retirado"
+              autoFocus
+            />
+          </div onChange={(e) => setFormConferencia(prev => ({
               ...prev,
               valorRetirado: e.target.value
             }))}
@@ -597,11 +636,40 @@ Adicione um item de menu para a nova aba:
   background: #f8f9fa;
 }
 
-.tabela-fluxo-caixa tr.status-bateu {
-  background: #d4edda;
+.tabelagroup {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
-.tabela-fluxo-caixa tr.status-nao_bateu {
+.input-label {
+  font-size: 11px;
+  color: #666;
+  font-weight: 600;
+}
+
+.input-valor {
+  width: 120px;
+  padding: 6px;
+  border: 2px solid #007bff;
+  border-radius: 4px;
+}
+
+.input-esperado {
+  border-color: #ffc107 !important;
+}
+
+.input-retirado {
+  border-color: #007bff !important;
+}
+
+.badge-warning {
+  background: #fff3cd;
+  color: #856404;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 5a tr.status-nao_bateu {
   background: #f8d7da;
 }
 
@@ -745,19 +813,21 @@ Adicione um item de menu para a nova aba:
       "id": "uuid-movimentacao",
       "dataColeta": "2026-03-10T14:30:00.000Z",
       "fichas": 150,
-      "valorFaturado": 375.00,
-      "maquina": {
-        "id": "uuid-maquina",
-        "nome": "Máquina do Galo",
-        "codigo": "MAQ-001",
-        "loja": {
-          "id": "uuid-loja",
-          "nome": "Loja Centro",
-          "endereco": "Rua das Flores",
-          "numero": "123",
-          "bairro": "Centro",
-          "cidade": "São Paulo",
-          "estado": "SP"
+      "vEsperado": 380.00,
+  "valorRetirado": 370.00,
+  "conferencia": "nao_bateu",
+  "observacoes": "Faltaram R$ 10,00 - Valor esperado ajustado manualmente"
+}
+```
+
+**Resposta (200 OK)**
+```json
+{
+  "id": "uuid-fluxo",
+  "valorEsperado": 380.00,
+  "valorRetirado": 370.00,
+  "conferencia": "nao_bateu",
+  "observacoes": "Faltaram R$ 10,00 - Valor esperado ajustado manualmente
         }
       },
       "usuario": {

@@ -25,6 +25,7 @@ DROP TABLE IF EXISTS fluxo_caixa CASCADE;
 CREATE TABLE fluxo_caixa (
   id UUID PRIMARY KEY,
   movimentacao_id UUID NOT NULL UNIQUE,
+  valor_esperado DECIMAL(10, 2) DEFAULT NULL,
   valor_retirado DECIMAL(10, 2) DEFAULT NULL,
   conferencia conferencia_status NOT NULL DEFAULT 'pendente',
   observacoes TEXT DEFAULT NULL,
@@ -36,6 +37,7 @@ CREATE TABLE fluxo_caixa (
 
 -- Comentários nas colunas
 COMMENT ON TABLE fluxo_caixa IS 'Controle de fluxo de caixa para retiradas de dinheiro das máquinas';
+COMMENT ON COLUMN fluxo_caixa.valor_esperado IS 'Valor esperado (editável, padrão é o valorFaturado da movimentação)';
 COMMENT ON COLUMN fluxo_caixa.valor_retirado IS 'Valor real de dinheiro retirado/trazido da máquina';
 COMMENT ON COLUMN fluxo_caixa.conferencia IS 'Se o valor retirado bateu com o esperado';
 COMMENT ON COLUMN fluxo_caixa.observacoes IS 'Observações sobre a conferência';

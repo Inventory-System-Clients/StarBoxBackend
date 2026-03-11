@@ -21,6 +21,13 @@ const FluxoCaixa = sequelize.define(
       onDelete: "CASCADE",
       comment: "Referência à movimentação que originou a retirada de dinheiro",
     },
+    valorEsperado: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: null,
+      field: "valor_esperado",
+      comment: "Valor esperado (editável, padrão é o valorFaturado da movimentação)",
+    },
     valorRetirado: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: true,
