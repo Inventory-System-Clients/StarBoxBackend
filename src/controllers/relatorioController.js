@@ -305,7 +305,6 @@ import {
   Maquina,
   Produto,
   AlertaIgnorado,
-  RegistroDinheiro,
   FluxoCaixa,
 } from "../models/index.js";
 
@@ -366,13 +365,17 @@ export const dashboardRelatorio = async (req, res) => {
               const valorFicha = parseFloat(m.maquina?.valorFicha || 0);
               const dinheiro = parseFloat(m.quantidade_notas_entrada || 0);
               const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
-              
+
               let valorFichas = fichas * valorFicha;
               // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
-              if (m.retiradaDinheiro && m.fluxoCaixa && m.fluxoCaixa.valorRetirado !== null) {
+              if (
+                m.retiradaDinheiro &&
+                m.fluxoCaixa &&
+                m.fluxoCaixa.valorRetirado !== null
+              ) {
                 valorFichas = parseFloat(m.fluxoCaixa.valorRetirado);
               }
-              
+
               const receitaMaquina = valorFichas + dinheiro + pix;
               receitaBruta += receitaMaquina;
               const percentual = parseFloat(
@@ -475,14 +478,18 @@ export const dashboardRelatorio = async (req, res) => {
       const fqtd = parseInt(m.fichas) || 0;
       const vf = parseFloat(m.maquina?.valorFicha || 0);
       totalFichasQtd += fqtd;
-      
+
       // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
-      if (m.retiradaDinheiro && m.fluxoCaixa && m.fluxoCaixa.valorRetirado !== null) {
+      if (
+        m.retiradaDinheiro &&
+        m.fluxoCaixa &&
+        m.fluxoCaixa.valorRetirado !== null
+      ) {
         totalFichasValor += parseFloat(m.fluxoCaixa.valorRetirado);
       } else {
         totalFichasValor += fqtd * vf;
       }
-      
+
       totalDinheiro += parseFloat(m.quantidade_notas_entrada || 0);
       totalPix += parseFloat(m.valor_entrada_maquininha_pix || 0);
       totalSairam += parseInt(m.sairam) || 0;
@@ -1465,15 +1472,11 @@ export const relatorioImpressao = async (req, res) => {
       return res.status(404).json({ error: "Loja não encontrada" });
     }
 
-    // Buscar registros de dinheiro da loja e máquinas
-    const registrosDinheiro = await RegistroDinheiro.findAll({
-      where: {
-        lojaId,
-        inicio: { [Op.lte]: fim },
-        fim: { [Op.gte]: inicio },
-      },
-      raw: true,
-    });
+    // Sem RegistroDinheiro, os totais financeiros são consolidados pelas
+    // movimentações e valores conferidos no fluxo de caixa por máquina.
+    let valorTotalLoja = 0;
+    let valorDinheiroLoja = 0;
+    let valorCartaoPixLoja = 0;
 
     // Buscar movimentações normalmente
     const movimentacoes = await Movimentacao.findAll({
@@ -1517,33 +1520,8 @@ export const relatorioImpressao = async (req, res) => {
       order: [["dataColeta", "DESC"]],
     });
 
-    // Consolidar valores de RegistroDinheiro
-    let valorTotalLoja = 0;
-    let valorDinheiroLoja = 0;
-    let valorCartaoPixLoja = 0;
-    registrosDinheiro.forEach((r) => {
-      if (r.registrarTotalLoja) {
-        valorTotalLoja +=
-          parseFloat(r.valorDinheiro || 0) + parseFloat(r.valorCartaoPix || 0);
-        valorDinheiroLoja += parseFloat(r.valorDinheiro || 0);
-        valorCartaoPixLoja += parseFloat(r.valorCartaoPix || 0);
-      }
-    });
-
-    // Consolidar valores por máquina
-    const valoresPorMaquina = {};
-    registrosDinheiro.forEach((r) => {
-      if (!r.registrarTotalLoja && r.maquinaId) {
-        if (!valoresPorMaquina[r.maquinaId])
-          valoresPorMaquina[r.maquinaId] = { dinheiro: 0, cartaoPix: 0 };
-        valoresPorMaquina[r.maquinaId].dinheiro += parseFloat(
-          r.valorDinheiro || 0,
-        );
-        valoresPorMaquina[r.maquinaId].cartaoPix += parseFloat(
-          r.valorCartaoPix || 0,
-        );
-      }
-    });
+    // Sem lançamento específico da loja, mantém totais da loja zerados e
+    // utiliza os totais de máquinas para o consolidado.
 
     // Calcular totais
     const totalFichas = movimentacoes.reduce(
@@ -1597,6 +1575,8 @@ export const relatorioImpressao = async (req, res) => {
           totalSairam: 0,
           totalAbastecidas: 0,
           numMovimentacoes: 0,
+          dinheiroMovimentacoes: 0,
+          cartaoPixMovimentacoes: 0,
           faturamentoBrutoMovimentacoes: 0,
           produtosSairam: {},
           produtosEntraram: {},
@@ -1611,17 +1591,24 @@ export const relatorioImpressao = async (req, res) => {
       const valorFichaMaquina = Number(
         mov.maquina?.valorFicha || loja.valorFichaPadrao || 2.5,
       );
-      
+
       let valorFichas = Number(mov.fichas || 0) * valorFichaMaquina;
       // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
-      if (mov.retiradaDinheiro && mov.fluxoCaixa && mov.fluxoCaixa.valorRetirado !== null) {
+      if (
+        mov.retiradaDinheiro &&
+        mov.fluxoCaixa &&
+        mov.fluxoCaixa.valorRetirado !== null
+      ) {
         valorFichas = Number(mov.fluxoCaixa.valorRetirado);
       }
-      
-      const faturamentoBrutoMov =
-        valorFichas +
-        Number(mov.quantidade_notas_entrada || 0) +
-        Number(mov.valor_entrada_maquininha_pix || 0);
+
+      const dinheiroMov =
+        valorFichas + Number(mov.quantidade_notas_entrada || 0);
+      const cartaoPixMov = Number(mov.valor_entrada_maquininha_pix || 0);
+      const faturamentoBrutoMov = dinheiroMov + cartaoPixMov;
+
+      dadosPorMaquina[maquinaId].dinheiroMovimentacoes += dinheiroMov;
+      dadosPorMaquina[maquinaId].cartaoPixMovimentacoes += cartaoPixMov;
       dadosPorMaquina[maquinaId].faturamentoBrutoMovimentacoes +=
         faturamentoBrutoMov;
 
@@ -1661,17 +1648,11 @@ export const relatorioImpressao = async (req, res) => {
 
     // Formatar dados por máquina, incluindo valores de dinheiro/cartão/pix
     const maquinasDetalhadas = Object.values(dadosPorMaquina).map((m) => {
-      const dinheiroMaquina = Number(
-        valoresPorMaquina[m.maquina.id]?.dinheiro || 0,
+      const dinheiroMaquina = Number(m.dinheiroMovimentacoes || 0);
+      const cartaoPixMaquina = Number(m.cartaoPixMovimentacoes || 0);
+      const faturamentoBrutoMaquina = Number(
+        m.faturamentoBrutoMovimentacoes || 0,
       );
-      const cartaoPixMaquina = Number(
-        valoresPorMaquina[m.maquina.id]?.cartaoPix || 0,
-      );
-      const faturamentoRegistroMaquina = dinheiroMaquina + cartaoPixMaquina;
-      const faturamentoBrutoMaquina =
-        faturamentoRegistroMaquina > 0
-          ? faturamentoRegistroMaquina
-          : Number(m.faturamentoBrutoMovimentacoes || 0);
       const ticketPorPremioMaquina =
         Number(m.totalSairam || 0) > 0
           ? faturamentoBrutoMaquina / Number(m.totalSairam || 0)
@@ -1724,13 +1705,17 @@ export const relatorioImpressao = async (req, res) => {
       const valorFichaMaquina = Number(
         mov.maquina?.valorFicha || loja.valorFichaPadrao || 2.5,
       );
-      
+
       let valorFichas = Number(mov.fichas || 0) * valorFichaMaquina;
       // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
-      if (mov.retiradaDinheiro && mov.fluxoCaixa && mov.fluxoCaixa.valorRetirado !== null) {
+      if (
+        mov.retiradaDinheiro &&
+        mov.fluxoCaixa &&
+        mov.fluxoCaixa.valorRetirado !== null
+      ) {
         valorFichas = Number(mov.fluxoCaixa.valorRetirado);
       }
-      
+
       return (
         acc +
         valorFichas +
@@ -1741,6 +1726,14 @@ export const relatorioImpressao = async (req, res) => {
 
     const faturamentoBrutoMaquinas = maquinasDetalhadas.reduce(
       (acc, item) => acc + Number(item?.totais?.faturamentoBruto || 0),
+      0,
+    );
+    const valorDinheiroMaquinas = maquinasDetalhadas.reduce(
+      (acc, item) => acc + Number(item?.totais?.dinheiro || 0),
+      0,
+    );
+    const valorCartaoPixMaquinasBruto = maquinasDetalhadas.reduce(
+      (acc, item) => acc + Number(item?.totais?.cartaoPix || 0),
       0,
     );
 
@@ -1781,7 +1774,7 @@ export const relatorioImpressao = async (req, res) => {
     const valorTotal = valorTotalLoja;
     const diferenca = valorFichasReais - valorTotal;
     let avisoFichas = null;
-    if (Math.abs(diferenca) > 0.01) {
+    if (valorTotal > 0 && Math.abs(diferenca) > 0.01) {
       avisoFichas = `Atenção: diferença entre valor das fichas em reais (R$ ${valorFichasReais.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}) e valor total da loja (R$ ${valorTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}). Diferença: R$ ${diferenca.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
     }
 
@@ -1814,6 +1807,13 @@ export const relatorioImpressao = async (req, res) => {
         valorTotalLoja,
         valorDinheiroLoja,
         valorCartaoPixLoja,
+        valorDinheiroMaquinas: Number(valorDinheiroMaquinas.toFixed(2)),
+        valorCartaoPixMaquinasBruto: Number(
+          valorCartaoPixMaquinasBruto.toFixed(2),
+        ),
+        valorCartaoPixMaquinasLiquido: Number(
+          valorCartaoPixMaquinasBruto.toFixed(2),
+        ),
         faturamentoBrutoMovimentacoes: Number(
           faturamentoBrutoMovimentacoes.toFixed(2),
         ),
@@ -2095,13 +2095,17 @@ export const calcularLucro = async (lojaId, dataInicio, dataFim) => {
             const valorFicha = parseFloat(m.maquina?.valorFicha || 0);
             const dinheiro = parseFloat(m.quantidade_notas_entrada || 0);
             const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
-            
+
             let valorFichas = fichas * valorFicha;
             // Se é retirada de dinheiro e tem valor conferido no fluxo de caixa, usa esse valor
-            if (m.retiradaDinheiro && m.fluxoCaixa && m.fluxoCaixa.valorRetirado !== null) {
+            if (
+              m.retiradaDinheiro &&
+              m.fluxoCaixa &&
+              m.fluxoCaixa.valorRetirado !== null
+            ) {
               valorFichas = parseFloat(m.fluxoCaixa.valorRetirado);
             }
-            
+
             const receitaMaquina = valorFichas + dinheiro + pix;
             receitaBruta += receitaMaquina;
             const percentual = parseFloat(
