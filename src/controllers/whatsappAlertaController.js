@@ -26,6 +26,7 @@ export const enviarAlertaWhatsApp = async (req, res) => {
       referenciaTipo,
       referenciaId,
       metadata,
+      options,
     } = req.body;
 
     if (!tipo || !mensagem) {
@@ -41,6 +42,7 @@ export const enviarAlertaWhatsApp = async (req, res) => {
       referenciaTipo,
       referenciaId,
       metadata,
+      options,
     });
 
     res.status(201).json(alerta);
