@@ -39,10 +39,24 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
     const { EstoqueLoja } = await import("../models/index.js");
 
     if (!lojaId || !Array.isArray(produtos) || produtos.length === 0) {
+      await t.rollback();
       return res
         .status(400)
         .json({ error: "Loja e Produtos são obrigatórios." });
     }
+
+    // Buscar a loja de destino
+    const lojaDestino = await Loja.findByPk(lojaId, { transaction: t });
+    if (!lojaDestino) {
+      await t.rollback();
+      return res.status(404).json({ error: "Loja não encontrada." });
+    }
+
+    // Buscar loja principal (depósito)
+    const lojaDepositoPrincipal = await Loja.findOne({
+      where: { isDepositoPrincipal: true },
+      transaction: t,
+    });
 
     const movimentacao = await MovimentacaoEstoqueLoja.create(
       {
@@ -68,6 +82,7 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
         { transaction: t },
       );
 
+      // Atualizar estoque da loja de destino
       const [estoque, created] = await EstoqueLoja.findOrCreate({
         where: { lojaId, produtoId: item.produtoId },
         defaults: { quantidade: 0 },
@@ -82,6 +97,47 @@ export const criarMovimentacaoEstoqueLoja = async (req, res) => {
         { quantidade: Math.max(0, novaQtd) },
         { transaction: t },
       );
+
+      // 🔥 LÓGICA NOVA: Se for ENTRADA em loja DIFERENTE do depósito principal, desconta do depósito
+      if (
+        tipo === "entrada" &&
+        lojaDepositoPrincipal &&
+        !lojaDestino.isDepositoPrincipal
+      ) {
+        console.log(
+          `🏭 Descontando ${qtd} unidades do depósito principal (${lojaDepositoPrincipal.nome})`,
+        );
+
+        const [estoqueDeposito, createdDeposito] =
+          await EstoqueLoja.findOrCreate({
+            where: {
+              lojaId: lojaDepositoPrincipal.id,
+              produtoId: item.produtoId,
+            },
+            defaults: { quantidade: 0 },
+            transaction: t,
+          });
+
+        // Descontar do depósito
+        const novaQtdDeposito = Math.max(0, estoqueDeposito.quantidade - qtd);
+
+        if (estoqueDeposito.quantidade < qtd) {
+          console.warn(
+            `⚠️ Estoque insuficiente no depósito. Disponível: ${estoqueDeposito.quantidade}, Solicitado: ${qtd}`,
+          );
+          // Pode optar por bloquear ou apenas avisar
+          // Para não bloquear, continua com o desconto até zero
+        }
+
+        await estoqueDeposito.update(
+          { quantidade: novaQtdDeposito },
+          { transaction: t },
+        );
+
+        console.log(
+          `✅ Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`,
+        );
+      }
     }
 
     await t.commit();

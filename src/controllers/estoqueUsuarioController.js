@@ -730,6 +730,57 @@ export const movimentarEstoqueUsuario = async (req, res) => {
       await MovimentacaoEstoqueUsuario.bulkCreate(registrosHistorico);
     }
 
+    // 🔥 LÓGICA NOVA: Descontar do depósito principal quando houver ENTRADA para usuário
+    const { Loja, EstoqueLoja } = await import("../models/index.js");
+    const lojaDepositoPrincipal = await Loja.findOne({
+      where: { isDepositoPrincipal: true },
+    });
+
+    if (lojaDepositoPrincipal) {
+      for (
+        let index = 0;
+        index < movimentacoesNormalizadas.length;
+        index += 1
+      ) {
+        const item = movimentacoesNormalizadas[index];
+
+        // Se for ENTRADA para usuário, desconta do depósito
+        if (item.tipoMovimentacao === "entrada") {
+          console.log(
+            `🏭 Descontando ${item.quantidade} unidades do depósito principal (usuário: ${usuario.nome})`,
+          );
+
+          const [estoqueDeposito, createdDeposito] =
+            await EstoqueLoja.findOrCreate({
+              where: {
+                lojaId: lojaDepositoPrincipal.id,
+                produtoId: item.produtoId,
+              },
+              defaults: { quantidade: 0 },
+            });
+
+          // Descontar do depósito
+          const novaQtdDeposito = Math.max(
+            0,
+            estoqueDeposito.quantidade - item.quantidade,
+          );
+
+          if (estoqueDeposito.quantidade < item.quantidade) {
+            console.warn(
+              `⚠️ Estoque insuficiente no depósito para produto ${item.produtoId}. Disponível: ${estoqueDeposito.quantidade}, Solicitado: ${item.quantidade}`,
+            );
+            // Continua mesmo com estoque insuficiente (zera o estoque)
+          }
+
+          await estoqueDeposito.update({ quantidade: novaQtdDeposito });
+
+          console.log(
+            `✅ Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`,
+          );
+        }
+      }
+    }
+
     return res.json({
       message: `${movimentacoesProcessadas.length} movimentacao(oes) registrada(s) com sucesso`,
       movimentacoes: movimentacoesProcessadas,

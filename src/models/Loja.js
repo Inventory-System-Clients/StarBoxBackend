@@ -45,6 +45,12 @@ const Loja = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
     },
+    isDepositoPrincipal: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      field: "is_deposito_principal",
+      comment: "Indica se esta loja é o depósito principal que distribui para todas as outras",
+    },
   },
   {
     tableName: "lojas",
