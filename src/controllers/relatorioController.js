@@ -1215,6 +1215,13 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
     const fichas = Number(totais.fichas || 0);
     const produtosSairam = Number(totais.produtosSairam || 0);
     const produtosEntraram = Number(totais.produtosEntraram || 0);
+    const faturamentoBrutoTicket = Number(
+      totais.faturamentoBrutoConsolidado ?? lucroBruto,
+    );
+    const saidasPremio = Number(totais.saidasPremioTotal ?? produtosSairam);
+    const ticketPorPremio = Number(
+      saidasPremio > 0 ? faturamentoBrutoTicket / saidasPremio : 0,
+    );
 
     (dados?.produtosSairam || []).forEach((produto) => {
       const id = String(produto.id ?? produto.codigo ?? produto.nome);
@@ -1252,6 +1259,9 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
       fichas,
       produtosSairam,
       produtosEntraram,
+      faturamentoBrutoTicket,
+      saidasPremio,
+      ticketPorPremio,
     };
   });
 
@@ -1270,6 +1280,8 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
       acc.fichasTotal += loja.fichas;
       acc.produtosSairamTotal += loja.produtosSairam;
       acc.produtosEntraramTotal += loja.produtosEntraram;
+      acc.faturamentoBrutoTicketTotal += loja.faturamentoBrutoTicket;
+      acc.saidasPremioTotal += loja.saidasPremio;
       acc.somaPercentualTaxaPonderado +=
         loja.percentualTaxaCartaoMedia * loja.cartaoPix;
       acc.somaBasePercentualTaxa += loja.cartaoPix;
@@ -1289,6 +1301,8 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
       fichasTotal: 0,
       produtosSairamTotal: 0,
       produtosEntraramTotal: 0,
+      faturamentoBrutoTicketTotal: 0,
+      saidasPremioTotal: 0,
       somaPercentualTaxaPonderado: 0,
       somaBasePercentualTaxa: 0,
     },
@@ -1297,6 +1311,12 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
   totais.percentualTaxaCartaoMediaTotal = Number(
     (totais.somaBasePercentualTaxa > 0
       ? totais.somaPercentualTaxaPonderado / totais.somaBasePercentualTaxa
+      : 0
+    ).toFixed(2),
+  );
+  totais.ticketPorPremioConsolidado = Number(
+    (totais.saidasPremioTotal > 0
+      ? totais.faturamentoBrutoTicketTotal / totais.saidasPremioTotal
       : 0
     ).toFixed(2),
   );
@@ -1327,6 +1347,13 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
     .sort((a, b) => b.custoTotal - a.custoTotal)
     .slice(0, 10);
 
+  const rankingTicketPremioLojas = [...rankingLojasComParticipacao]
+    .filter((a) => Number(a.saidasPremio || 0) > 0)
+    .sort(
+      (a, b) => Number(b.ticketPorPremio || 0) - Number(a.ticketPorPremio || 0),
+    )
+    .slice(0, 10);
+
   const participacaoLojas = [...rankingLojasComParticipacao]
     .sort((a, b) => b.participacaoLucroBruto - a.participacaoLucroBruto)
     .slice(0, 10);
@@ -1353,11 +1380,13 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
       lojaMaiorGasto: rankingGastoLojas[0] || null,
       lojaMaiorParticipacao: participacaoLojas[0] || null,
       produtoMaisSaiu: rankingProdutos[0] || null,
+      lojaMaiorTicketPremio: rankingTicketPremioLojas[0] || null,
     },
     graficos: {
       rankingLucroBrutoLojas,
       rankingLucroLojas,
       rankingGastoLojas,
+      rankingTicketPremioLojas,
       participacaoLojas,
       rankingProdutos,
       pagamento: [
@@ -1431,7 +1460,7 @@ export const relatorioImpressao = async (req, res) => {
           model: Maquina,
           as: "maquina",
           where: { lojaId },
-          attributes: ["id", "codigo", "nome"],
+          attributes: ["id", "codigo", "nome", "valorFicha"],
         },
         {
           model: MovimentacaoProduto,
@@ -1529,11 +1558,13 @@ export const relatorioImpressao = async (req, res) => {
             id: mov.maquina.id,
             codigo: mov.maquina.codigo,
             nome: mov.maquina.nome,
+            valorFicha: mov.maquina.valorFicha,
           },
           fichas: 0,
           totalSairam: 0,
           totalAbastecidas: 0,
           numMovimentacoes: 0,
+          faturamentoBrutoMovimentacoes: 0,
           produtosSairam: {},
           produtosEntraram: {},
         };
@@ -1543,6 +1574,16 @@ export const relatorioImpressao = async (req, res) => {
       dadosPorMaquina[maquinaId].totalSairam += mov.sairam || 0;
       dadosPorMaquina[maquinaId].totalAbastecidas += mov.abastecidas || 0;
       dadosPorMaquina[maquinaId].numMovimentacoes++;
+
+      const valorFichaMaquina = Number(
+        mov.maquina?.valorFicha || loja.valorFichaPadrao || 2.5,
+      );
+      const faturamentoBrutoMov =
+        Number(mov.fichas || 0) * valorFichaMaquina +
+        Number(mov.quantidade_notas_entrada || 0) +
+        Number(mov.valor_entrada_maquininha_pix || 0);
+      dadosPorMaquina[maquinaId].faturamentoBrutoMovimentacoes +=
+        faturamentoBrutoMov;
 
       mov.detalhesProdutos?.forEach((mp) => {
         if (mp.quantidadeSaiu > 0) {
@@ -1579,45 +1620,104 @@ export const relatorioImpressao = async (req, res) => {
     );
 
     // Formatar dados por máquina, incluindo valores de dinheiro/cartão/pix
-    const maquinasDetalhadas = Object.values(dadosPorMaquina).map((m) => ({
-      maquina: m.maquina,
-      totais: {
-        fichas: m.fichas,
-        produtosSairam: m.totalSairam,
-        produtosEntraram: m.totalAbastecidas,
-        movimentacoes: m.numMovimentacoes,
-        dinheiro: valoresPorMaquina[m.maquina.id]?.dinheiro || 0,
-        cartaoPix: valoresPorMaquina[m.maquina.id]?.cartaoPix || 0,
-      },
-      produtosSairam: Object.values(m.produtosSairam)
-        .map((p) => ({
-          id: p.produto.id,
-          nome: p.produto.nome,
-          codigo: p.produto.codigo,
-          emoji: p.produto.emoji,
-          quantidade: p.quantidade,
-          valorUnitario: parseFloat(
-            p.produto.preco || p.produto.custoUnitario || 0,
-          ),
-          preco: parseFloat(p.produto.preco || 0),
-          custoUnitario: parseFloat(p.produto.custoUnitario || 0),
-        }))
-        .sort((a, b) => b.quantidade - a.quantidade),
-      produtosEntraram: Object.values(m.produtosEntraram)
-        .map((p) => ({
-          id: p.produto.id,
-          nome: p.produto.nome,
-          codigo: p.produto.codigo,
-          emoji: p.produto.emoji,
-          quantidade: p.quantidade,
-          valorUnitario: parseFloat(
-            p.produto.preco || p.produto.custoUnitario || 0,
-          ),
-          preco: parseFloat(p.produto.preco || 0),
-          custoUnitario: parseFloat(p.produto.custoUnitario || 0),
-        }))
-        .sort((a, b) => b.quantidade - a.quantidade),
-    }));
+    const maquinasDetalhadas = Object.values(dadosPorMaquina).map((m) => {
+      const dinheiroMaquina = Number(
+        valoresPorMaquina[m.maquina.id]?.dinheiro || 0,
+      );
+      const cartaoPixMaquina = Number(
+        valoresPorMaquina[m.maquina.id]?.cartaoPix || 0,
+      );
+      const faturamentoRegistroMaquina = dinheiroMaquina + cartaoPixMaquina;
+      const faturamentoBrutoMaquina =
+        faturamentoRegistroMaquina > 0
+          ? faturamentoRegistroMaquina
+          : Number(m.faturamentoBrutoMovimentacoes || 0);
+      const ticketPorPremioMaquina =
+        Number(m.totalSairam || 0) > 0
+          ? faturamentoBrutoMaquina / Number(m.totalSairam || 0)
+          : 0;
+
+      return {
+        maquina: m.maquina,
+        totais: {
+          fichas: m.fichas,
+          produtosSairam: m.totalSairam,
+          produtosEntraram: m.totalAbastecidas,
+          movimentacoes: m.numMovimentacoes,
+          dinheiro: dinheiroMaquina,
+          cartaoPix: cartaoPixMaquina,
+          faturamentoBruto: Number(faturamentoBrutoMaquina.toFixed(2)),
+          ticketPorPremio: Number(ticketPorPremioMaquina.toFixed(2)),
+        },
+        produtosSairam: Object.values(m.produtosSairam)
+          .map((p) => ({
+            id: p.produto.id,
+            nome: p.produto.nome,
+            codigo: p.produto.codigo,
+            emoji: p.produto.emoji,
+            quantidade: p.quantidade,
+            valorUnitario: parseFloat(
+              p.produto.preco || p.produto.custoUnitario || 0,
+            ),
+            preco: parseFloat(p.produto.preco || 0),
+            custoUnitario: parseFloat(p.produto.custoUnitario || 0),
+          }))
+          .sort((a, b) => b.quantidade - a.quantidade),
+        produtosEntraram: Object.values(m.produtosEntraram)
+          .map((p) => ({
+            id: p.produto.id,
+            nome: p.produto.nome,
+            codigo: p.produto.codigo,
+            emoji: p.produto.emoji,
+            quantidade: p.quantidade,
+            valorUnitario: parseFloat(
+              p.produto.preco || p.produto.custoUnitario || 0,
+            ),
+            preco: parseFloat(p.produto.preco || 0),
+            custoUnitario: parseFloat(p.produto.custoUnitario || 0),
+          }))
+          .sort((a, b) => b.quantidade - a.quantidade),
+      };
+    });
+
+    const faturamentoBrutoMovimentacoes = movimentacoes.reduce((acc, mov) => {
+      const valorFichaMaquina = Number(
+        mov.maquina?.valorFicha || loja.valorFichaPadrao || 2.5,
+      );
+      return (
+        acc +
+        Number(mov.fichas || 0) * valorFichaMaquina +
+        Number(mov.quantidade_notas_entrada || 0) +
+        Number(mov.valor_entrada_maquininha_pix || 0)
+      );
+    }, 0);
+
+    const faturamentoBrutoMaquinas = maquinasDetalhadas.reduce(
+      (acc, item) => acc + Number(item?.totais?.faturamentoBruto || 0),
+      0,
+    );
+
+    const faturamentoBrutoConsolidado =
+      Number(valorTotalLoja || 0) + Number(faturamentoBrutoMaquinas || 0);
+    const faturamentoBrutoBaseTicket =
+      faturamentoBrutoConsolidado > 0
+        ? faturamentoBrutoConsolidado
+        : faturamentoBrutoMovimentacoes;
+    const ticketPorPremioTotal =
+      Number(totalSairam || 0) > 0
+        ? faturamentoBrutoBaseTicket / Number(totalSairam || 0)
+        : 0;
+
+    const ticketPremioMaquinas = maquinasDetalhadas
+      .map((maquina) => ({
+        maquinaId: maquina.maquina.id,
+        maquinaNome: maquina.maquina.nome,
+        maquinaCodigo: maquina.maquina.codigo,
+        faturamentoBruto: Number(maquina.totais?.faturamentoBruto || 0),
+        produtosSairam: Number(maquina.totais?.produtosSairam || 0),
+        ticketPorPremio: Number(maquina.totais?.ticketPorPremio || 0),
+      }))
+      .sort((a, b) => b.ticketPorPremio - a.ticketPorPremio);
 
     // Alerta: diferença entre valor das fichas (em reais) e valor total da loja
     // Calcular valor médio da ficha das máquinas
@@ -1661,11 +1761,19 @@ export const relatorioImpressao = async (req, res) => {
       totais: {
         fichas: totalFichas,
         produtosSairam: totalSairam,
+        saidasPremioTotal: totalSairam,
         produtosEntraram: totalAbastecidas,
         movimentacoes: movimentacoes.length,
         valorTotalLoja,
         valorDinheiroLoja,
         valorCartaoPixLoja,
+        faturamentoBrutoMovimentacoes: Number(
+          faturamentoBrutoMovimentacoes.toFixed(2),
+        ),
+        faturamentoBrutoConsolidado: Number(
+          faturamentoBrutoBaseTicket.toFixed(2),
+        ),
+        ticketPorPremioTotal: Number(ticketPorPremioTotal.toFixed(2)),
       },
       produtosSairam: produtosSairam.map((p) => ({
         id: p.produto.id,
@@ -1692,6 +1800,13 @@ export const relatorioImpressao = async (req, res) => {
         custoUnitario: parseFloat(p.produto.custoUnitario || 0),
       })),
       maquinas: maquinasDetalhadas,
+      ticketPremio: {
+        faturamentoBruto: Number(faturamentoBrutoBaseTicket.toFixed(2)),
+        produtosSairam: Number(totalSairam || 0),
+        ticketPorPremio: Number(ticketPorPremioTotal.toFixed(2)),
+        formula: "Ticket por Prêmio = Faturamento Bruto / Produtos Saíram",
+      },
+      ticketPremioMaquinas,
       graficoSaidaPorMaquina,
       graficoSaidaPorProduto,
       avisoFichas,
