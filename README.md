@@ -80,6 +80,7 @@ WHATSAPP_PROVIDER=meta
 META_WHATSAPP_PHONE_NUMBER_ID=1040288622496158
 META_WHATSAPP_ACCESS_TOKEN=seu_token_de_acesso
 META_WHATSAPP_API_VERSION=v22.0
+META_WHATSAPP_WEBHOOK_VERIFY_TOKEN=seu_token_de_verificacao
 
 # Se quiser forcar template (ex: hello_world)
 META_WHATSAPP_FORCE_TEMPLATE=true
@@ -90,6 +91,7 @@ META_WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE=en_US
 - Com `WHATSAPP_PROVIDER=meta`, os alertas usam a API oficial da Meta (`/{phone_number_id}/messages`).
 - Com `META_WHATSAPP_FORCE_TEMPLATE=false`, o backend envia mensagem do tipo `text` (corpo dinamico do alerta).
 - Com `META_WHATSAPP_FORCE_TEMPLATE=true`, o backend envia mensagem do tipo `template` usando o template configurado.
+- Webhook Meta: configure callback em `https://SEU_DOMINIO/api/whatsapp-webhook` e use o mesmo valor de `META_WHATSAPP_WEBHOOK_VERIFY_TOKEN` no painel da Meta.
 - Os envios ficam auditados em `whatsapp_alertas` com status `pendente`, `enviado` ou `erro`.
 - Com `ALERT_QUEUE_ENABLED=true`, os envios passam por fila (BullMQ), com retries automáticos e processamento em background.
 - Se a fila estiver desativada ou indisponível, o backend faz fallback para envio síncrono sem quebrar o fluxo.
