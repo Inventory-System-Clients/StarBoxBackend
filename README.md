@@ -51,25 +51,48 @@ Se quiser permitir URLs de preview da Vercel (`*.vercel.app`), use:
 ALLOW_VERCEL_PREVIEWS=true
 ```
 
-### Integração de alertas via Evolution API
+### Integração de alertas WhatsApp (Evolution ou Meta Cloud API)
 
 Para habilitar notificações de WhatsApp centralizadas, configure no `.env`:
 
 ```env
-EVOLUTION_URL=http://localhost:8080
-EVOLUTION_INSTANCE_NAME=bot_alertas
-EVOLUTION_API_KEY=sua_chave_global_da_evolution
+WHATSAPP_PROVIDER=evolution
 WHATSAPP_ALERT_DESTINO=5511999999999
 ALERT_DEDUPLICATION_MINUTES=10
 ALERT_QUEUE_ENABLED=true
 REDIS_URL=redis://localhost:6379
 ```
 
-- O backend envia mensagens pelo endpoint de texto da Evolution configurado em `EVOLUTION_SEND_TEXT_PATH_TEMPLATE`.
+#### Opção 1: Evolution API
+
+```env
+WHATSAPP_PROVIDER=evolution
+EVOLUTION_URL=http://localhost:8080
+EVOLUTION_INSTANCE_NAME=bot_alertas
+EVOLUTION_API_KEY=sua_chave_global_da_evolution
+EVOLUTION_SEND_TEXT_PATH_TEMPLATE=/message/sendText/{instance}
+```
+
+#### Opção 2: Meta WhatsApp Cloud API
+
+```env
+WHATSAPP_PROVIDER=meta
+META_WHATSAPP_PHONE_NUMBER_ID=1040288622496158
+META_WHATSAPP_ACCESS_TOKEN=seu_token_de_acesso
+META_WHATSAPP_API_VERSION=v22.0
+
+# Se quiser forcar template (ex: hello_world)
+META_WHATSAPP_FORCE_TEMPLATE=true
+META_WHATSAPP_DEFAULT_TEMPLATE_NAME=hello_world
+META_WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE=en_US
+```
+
+- Com `WHATSAPP_PROVIDER=meta`, os alertas usam a API oficial da Meta (`/{phone_number_id}/messages`).
+- Com `META_WHATSAPP_FORCE_TEMPLATE=false`, o backend envia mensagem do tipo `text` (corpo dinamico do alerta).
+- Com `META_WHATSAPP_FORCE_TEMPLATE=true`, o backend envia mensagem do tipo `template` usando o template configurado.
 - Os envios ficam auditados em `whatsapp_alertas` com status `pendente`, `enviado` ou `erro`.
 - Com `ALERT_QUEUE_ENABLED=true`, os envios passam por fila (BullMQ), com retries automáticos e processamento em background.
 - Se a fila estiver desativada ou indisponível, o backend faz fallback para envio síncrono sem quebrar o fluxo.
-- Em produção, prefira rodar a Evolution API com PM2 e Redis/PostgreSQL conforme a documentação oficial.
 
 4. Crie o banco de dados no PostgreSQL:
 
