@@ -57,12 +57,15 @@ async function getRoteiroExecucaoComStatus(req, res) {
     );
 
     const lojasOrdenadas = [...roteiro.lojas].sort(
-      (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0)
+      (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0),
     );
 
-    let roteiroFinalizado = true;
+    let roteiroFinalizado = lojasOrdenadas.length > 0;
+    let roteiroTemMaquinas = false;
     const lojas = lojasOrdenadas.map((loja) => {
-      let lojaFinalizada = true;
+      const lojaTemMaquinas = (loja.maquinas?.length || 0) > 0;
+      let lojaFinalizada = lojaTemMaquinas;
+      if (lojaTemMaquinas) roteiroTemMaquinas = true;
       // Movimentações consideradas para esta loja
       const movimentacoesLoja = statusMaquinas.filter((s) => {
         return loja.maquinas.some((m) => m.id === s.maquina_id);
@@ -91,6 +94,11 @@ async function getRoteiroExecucaoComStatus(req, res) {
         })),
       };
     });
+
+    if (!roteiroTemMaquinas) {
+      roteiroFinalizado = false;
+    }
+
     res.json({
       id: roteiro.id,
       nome: roteiro.nome,
@@ -162,11 +170,14 @@ async function getTodosRoteirosComStatus(req, res) {
         statusMaquinasRoteiro.map((s) => s.maquina_id),
       );
       const lojasOrdenadas = [...roteiro.lojas].sort(
-        (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0)
+        (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0),
       );
-      let roteiroFinalizado = true;
+      let roteiroFinalizado = lojasOrdenadas.length > 0;
+      let roteiroTemMaquinas = false;
       const lojas = lojasOrdenadas.map((loja) => {
-        let lojaFinalizada = true;
+        const lojaTemMaquinas = (loja.maquinas?.length || 0) > 0;
+        let lojaFinalizada = lojaTemMaquinas;
+        if (lojaTemMaquinas) roteiroTemMaquinas = true;
         const movimentacoesLoja = statusMaquinasRoteiro.filter((s) => {
           return loja.maquinas.some((m) => m.id === s.maquina_id);
         });
@@ -194,6 +205,11 @@ async function getTodosRoteirosComStatus(req, res) {
           })),
         };
       });
+
+      if (!roteiroTemMaquinas) {
+        roteiroFinalizado = false;
+      }
+
       return {
         id: roteiro.id,
         nome: roteiro.nome,
