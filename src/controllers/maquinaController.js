@@ -50,22 +50,41 @@ const calcularContadoresProjetados = (historico) => {
 export const obterUltimoProduto = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Busca a última movimentação com os produtos incluídos via associação
     const ultimaMovimentacao = await Movimentacao.findOne({
       where: { maquinaId: id },
-      attributes: ["id"],
       order: [
         ["dataColeta", "DESC"],
         ["createdAt", "DESC"],
       ],
+      include: [
+        {
+          model: MovimentacaoProduto,
+          as: "detalhesProdutos",
+          attributes: ["produtoId"],
+          required: false,
+        },
+      ],
     });
+
+    console.log("[obterUltimoProduto] maquinaId:", id);
+    console.log(
+      "[obterUltimoProduto] ultimaMovimentacao id:",
+      ultimaMovimentacao?.id,
+    );
+    console.log(
+      "[obterUltimoProduto] detalhesProdutos:",
+      JSON.stringify(ultimaMovimentacao?.detalhesProdutos),
+    );
+
     if (!ultimaMovimentacao) {
       return res.json({ produtoId: null });
     }
-    const detalhe = await MovimentacaoProduto.findOne({
-      where: { movimentacaoId: ultimaMovimentacao.id },
-      attributes: ["produtoId"],
-    });
-    return res.json({ produtoId: detalhe?.produtoId || null });
+
+    const produtoId =
+      ultimaMovimentacao.detalhesProdutos?.[0]?.produtoId || null;
+    return res.json({ produtoId });
   } catch (error) {
     console.error("Erro ao obter último produto da máquina:", error);
     return res.status(500).json({ error: "Erro ao obter último produto" });
