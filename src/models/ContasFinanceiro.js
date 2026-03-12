@@ -11,12 +11,14 @@ const ContasFinanceiro = sequelize.define(
       primaryKey: true,
     },
     name: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(150),
       allowNull: false,
+      comment: "Nome da conta/despesa",
     },
     status: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(50),
       allowNull: false,
+      comment: "Status: pending, paid, late",
     },
     value: {
       type: DataTypes.DECIMAL(12, 2),
@@ -27,20 +29,22 @@ const ContasFinanceiro = sequelize.define(
       allowNull: false,
     },
     category: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(100),
+      comment: "Categoria da conta",
     },
     city: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(100),
     },
     bill_type: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(50),
       allowNull: false,
+      comment: "Tipo: company, owner, etc",
     },
     observations: {
       type: DataTypes.TEXT,
     },
     payment_method: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(50),
       defaultValue: "boleto",
       comment: "Método de pagamento: boleto, pix ou email",
     },
