@@ -872,7 +872,7 @@ export const obterMovimentacao = async (req, res) => {
   }
 };
 
-// Atualizar movimentação (apenas observações e detalhes menores)
+// Atualizar movimentação (permite editar campos principais)
 export const atualizarMovimentacao = async (req, res) => {
   try {
     const movimentacao = await Movimentacao.findByPk(req.params.id);
@@ -895,11 +895,15 @@ export const atualizarMovimentacao = async (req, res) => {
       observacoes,
       tipoOcorrencia,
       fichas,
+      totalPre,
+      sairam,
       abastecidas,
       contadorIn,
       contadorOut,
+      contadorMaquina,
       quantidade_notas_entrada,
       valor_entrada_maquininha_pix,
+      dataColeta,
     } = req.body;
 
     // Preparar dados para atualização
@@ -908,6 +912,10 @@ export const atualizarMovimentacao = async (req, res) => {
       tipoOcorrencia: tipoOcorrencia ?? movimentacao.tipoOcorrencia,
       fichas:
         fichas !== undefined ? parseInt(fichas) || 0 : movimentacao.fichas,
+      totalPre:
+        totalPre !== undefined ? parseInt(totalPre) || 0 : movimentacao.totalPre,
+      sairam:
+        sairam !== undefined ? parseInt(sairam) || 0 : movimentacao.sairam,
       abastecidas:
         abastecidas !== undefined
           ? parseInt(abastecidas) || 0
@@ -920,15 +928,37 @@ export const atualizarMovimentacao = async (req, res) => {
         contadorOut !== undefined
           ? parseInt(contadorOut) || null
           : movimentacao.contadorOut,
+      contadorMaquina:
+        contadorMaquina !== undefined
+          ? parseInt(contadorMaquina) || null
+          : movimentacao.contadorMaquina,
       quantidade_notas_entrada:
         quantidade_notas_entrada !== undefined
-          ? parseInt(quantidade_notas_entrada) || null
+          ? parseFloat(quantidade_notas_entrada) || null
           : movimentacao.quantidade_notas_entrada,
       valor_entrada_maquininha_pix:
         valor_entrada_maquininha_pix !== undefined
           ? parseFloat(valor_entrada_maquininha_pix) || null
           : movimentacao.valor_entrada_maquininha_pix,
+      dataColeta:
+        dataColeta !== undefined
+          ? new Date(dataColeta)
+          : movimentacao.dataColeta,
     };
+
+    // Recalcular totalPos baseado nos novos valores
+    // Para movimentações normais (não retirada de estoque)
+    if (!movimentacao.retiradaEstoque) {
+      updateData.totalPos = updateData.totalPre + updateData.abastecidas;
+    } else {
+      // Para retirada de estoque
+      updateData.totalPos = updateData.totalPre - updateData.sairam + updateData.abastecidas;
+    }
+
+    // Se sairam > 0, recalcular média fichas/prêmio
+    if (updateData.sairam > 0) {
+      updateData.mediaFichasPremio = (updateData.fichas / updateData.sairam).toFixed(2);
+    }
 
     // Se fichas, notas ou digital foram atualizados, recalcular o valorFaturado
     if (
@@ -951,7 +981,34 @@ export const atualizarMovimentacao = async (req, res) => {
 
     await movimentacao.update(updateData);
 
-    res.json(movimentacao);
+    // Retornar movimentação atualizada com dados completos
+    const movimentacaoAtualizada = await Movimentacao.findByPk(req.params.id, {
+      include: [
+        {
+          model: Maquina,
+          as: "maquina",
+          attributes: ["id", "codigo", "nome", "lojaId"],
+        },
+        {
+          model: Usuario,
+          as: "usuario",
+          attributes: ["id", "nome", "email"],
+        },
+        {
+          model: MovimentacaoProduto,
+          as: "detalhesProdutos",
+          include: [
+            {
+              model: Produto,
+              as: "produto",
+              attributes: ["id", "nome"],
+            },
+          ],
+        },
+      ],
+    });
+
+    res.json(movimentacaoAtualizada);
   } catch (error) {
     console.error("Erro ao atualizar movimentação:", error);
     res.status(500).json({ error: "Erro ao atualizar movimentação" });
