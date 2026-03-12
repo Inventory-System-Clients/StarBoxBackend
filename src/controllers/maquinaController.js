@@ -1,4 +1,9 @@
-import { Maquina, Loja, Movimentacao } from "../models/index.js";
+import {
+  Maquina,
+  Loja,
+  Movimentacao,
+  MovimentacaoProduto,
+} from "../models/index.js";
 import { Op } from "sequelize";
 
 const possuiNumero = (valor) =>
@@ -42,6 +47,33 @@ const calcularContadoresProjetados = (historico) => {
   };
 };
 // Calcula quantidade atual e sugestão de abastecimento
+export const obterUltimoProduto = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const ultimaMovimentacao = await Movimentacao.findOne({
+      where: { maquinaId: id },
+      order: [
+        ["dataColeta", "DESC"],
+        ["createdAt", "DESC"],
+      ],
+      include: [
+        {
+          model: MovimentacaoProduto,
+          as: "detalhesProdutos",
+          attributes: ["produtoId"],
+          limit: 1,
+        },
+      ],
+    });
+    const produtoId =
+      ultimaMovimentacao?.detalhesProdutos?.[0]?.produtoId || null;
+    return res.json({ produtoId });
+  } catch (error) {
+    console.error("Erro ao obter último produto da máquina:", error);
+    return res.status(500).json({ error: "Erro ao obter último produto" });
+  }
+};
+
 export const calcularQuantidadeAtual = async (req, res) => {
   try {
     const { maquinaId, contadorIn, contadorOut } = req.query;
@@ -350,9 +382,12 @@ export const atualizarMaquina = async (req, res) => {
 
     // Se nome vier vazio, usar o código (atual ou novo) como nome
     const codigoAtualizado = codigo ?? maquina.codigo;
-    const nomeAtualizado = nome !== undefined 
-      ? (nome && nome.trim() ? nome.trim() : codigoAtualizado)
-      : maquina.nome;
+    const nomeAtualizado =
+      nome !== undefined
+        ? nome && nome.trim()
+          ? nome.trim()
+          : codigoAtualizado
+        : maquina.nome;
 
     await maquina.update({
       codigo: codigoAtualizado,
