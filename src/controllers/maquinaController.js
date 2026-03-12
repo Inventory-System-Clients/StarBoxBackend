@@ -271,9 +271,12 @@ export const criarMaquina = async (req, res) => {
       return res.status(400).json({ error: "Código de máquina já existe" });
     }
 
+    // Se nome não foi informado, usar o código como nome
+    const nomeDefinitivo = nome && nome.trim() ? nome.trim() : codigo;
+
     const maquina = await Maquina.create({
       codigo,
-      nome,
+      nome: nomeDefinitivo,
       tipo,
       lojaId,
       capacidadePadrao: capacidadePadrao || 100,
@@ -345,9 +348,15 @@ export const atualizarMaquina = async (req, res) => {
       });
     }
 
+    // Se nome vier vazio, usar o código (atual ou novo) como nome
+    const codigoAtualizado = codigo ?? maquina.codigo;
+    const nomeAtualizado = nome !== undefined 
+      ? (nome && nome.trim() ? nome.trim() : codigoAtualizado)
+      : maquina.nome;
+
     await maquina.update({
-      codigo: codigo ?? maquina.codigo,
-      nome: nome ?? maquina.nome,
+      codigo: codigoAtualizado,
+      nome: nomeAtualizado,
       tipo: tipo ?? maquina.tipo,
       lojaId: lojaId ?? maquina.lojaId,
       capacidadePadrao: capacidadePadrao ?? maquina.capacidadePadrao,

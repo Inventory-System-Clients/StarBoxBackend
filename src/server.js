@@ -209,6 +209,42 @@ const startServer = async () => {
       );
     }
 
+    // Migration: Aumentar tamanho dos campos de contas_financeiro
+    try {
+      await sequelize.query(`
+        ALTER TABLE contas_financeiro 
+        ALTER COLUMN name TYPE VARCHAR(150);
+      `);
+      await sequelize.query(`
+        ALTER TABLE contas_financeiro 
+        ALTER COLUMN category TYPE VARCHAR(100);
+      `);
+      await sequelize.query(`
+        ALTER TABLE contas_financeiro 
+        ALTER COLUMN city TYPE VARCHAR(100);
+      `);
+      await sequelize.query(`
+        ALTER TABLE contas_financeiro 
+        ALTER COLUMN status TYPE VARCHAR(50);
+      `);
+      await sequelize.query(`
+        ALTER TABLE contas_financeiro 
+        ALTER COLUMN bill_type TYPE VARCHAR(50);
+      `);
+      await sequelize.query(`
+        ALTER TABLE contas_financeiro 
+        ALTER COLUMN payment_method TYPE VARCHAR(50);
+      `);
+      console.log(
+        "✅ Migration: Campos de contas_financeiro aumentados (name:150, category:100, city:100)",
+      );
+    } catch (migErr) {
+      console.warn(
+        "⚠️ Migration inline (contas_financeiro campos):",
+        migErr.message,
+      );
+    }
+
     // Criar admin padrão se não existir
     const { Usuario } = await import("./models/index.js");
     const adminEmail = process.env.ADMIN_EMAIL || "admin@agarramais.com";
