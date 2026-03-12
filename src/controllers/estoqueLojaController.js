@@ -100,6 +100,11 @@ export const atualizarEstoqueLoja = async (req, res) => {
       return res.status(404).json({ error: "Produto não encontrado" });
     }
 
+    // Buscar depósito principal
+    const lojaDepositoPrincipal = await Loja.findOne({
+      where: { isDepositoPrincipal: true },
+    });
+
     // Buscar ou criar registro de estoque
     const [estoque, created] = await EstoqueLoja.findOrCreate({
       where: { lojaId, produtoId },
@@ -117,6 +122,8 @@ export const atualizarEstoqueLoja = async (req, res) => {
 
     if (!created) {
       const quantidadeAnterior = estoque.quantidade;
+      const diferenca = quantidade - quantidadeAnterior;
+      
       // Atualizar se já existe
       estoque.quantidade = quantidade;
       if (estoqueMinimo !== undefined) {
@@ -127,13 +134,87 @@ export const atualizarEstoqueLoja = async (req, res) => {
       console.log("✅ [atualizarEstoqueLoja] Estoque atualizado:", {
         quantidadeAnterior,
         quantidadeNova: quantidade,
-        diferenca: quantidade - quantidadeAnterior,
+        diferenca,
       });
+
+      // 🔥 LÓGICA: Se aumentou estoque em loja NÃO principal, desconta do depósito
+      if (
+        diferenca > 0 &&
+        lojaDepositoPrincipal &&
+        !loja.isDepositoPrincipal &&
+        lojaDepositoPrincipal.id !== loja.id
+      ) {
+        console.log(`🏭 [DESCONTO DEPÓSITO] Produto ID: ${produtoId}`);
+        console.log(`   - Loja: ${loja.nome} (não é depósito)`);
+        console.log(`   - Quantidade a descontar: ${diferenca}`);
+
+        const [estoqueDeposito] = await EstoqueLoja.findOrCreate({
+          where: {
+            lojaId: lojaDepositoPrincipal.id,
+            produtoId,
+          },
+          defaults: { quantidade: 0 },
+        });
+
+        console.log(`   - Estoque atual no depósito: ${estoqueDeposito.quantidade}`);
+
+        const novaQtdDeposito = Math.max(0, estoqueDeposito.quantidade - diferenca);
+
+        if (estoqueDeposito.quantidade < diferenca) {
+          console.warn(`⚠️ [AVISO] Estoque insuficiente no depósito!`);
+          console.warn(`   - Disponível: ${estoqueDeposito.quantidade}`);
+          console.warn(`   - Solicitado: ${diferenca}`);
+          console.warn(`   - Operação continuará, mas estoque ficará zerado`);
+        }
+
+        await estoqueDeposito.update({ quantidade: novaQtdDeposito });
+
+        console.log(
+          `✅ [SUCESSO] Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`,
+        );
+      }
     } else {
       console.log("✨ [atualizarEstoqueLoja] Novo estoque criado:", {
         quantidade,
         estoqueMinimo,
       });
+
+      // 🔥 LÓGICA: Se criou estoque em loja NÃO principal, desconta do depósito
+      if (
+        quantidade > 0 &&
+        lojaDepositoPrincipal &&
+        !loja.isDepositoPrincipal &&
+        lojaDepositoPrincipal.id !== loja.id
+      ) {
+        console.log(`🏭 [DESCONTO DEPÓSITO - NOVO] Produto ID: ${produtoId}`);
+        console.log(`   - Loja: ${loja.nome} (não é depósito)`);
+        console.log(`   - Quantidade a descontar: ${quantidade}`);
+
+        const [estoqueDeposito] = await EstoqueLoja.findOrCreate({
+          where: {
+            lojaId: lojaDepositoPrincipal.id,
+            produtoId,
+          },
+          defaults: { quantidade: 0 },
+        });
+
+        console.log(`   - Estoque atual no depósito: ${estoqueDeposito.quantidade}`);
+
+        const novaQtdDeposito = Math.max(0, estoqueDeposito.quantidade - quantidade);
+
+        if (estoqueDeposito.quantidade < quantidade) {
+          console.warn(`⚠️ [AVISO] Estoque insuficiente no depósito!`);
+          console.warn(`   - Disponível: ${estoqueDeposito.quantidade}`);
+          console.warn(`   - Solicitado: ${quantidade}`);
+          console.warn(`   - Operação continuará, mas estoque ficará zerado`);
+        }
+
+        await estoqueDeposito.update({ quantidade: novaQtdDeposito });
+
+        console.log(
+          `✅ [SUCESSO] Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`,
+        );
+      }
     }
 
     // Retornar com dados do produto
@@ -222,6 +303,11 @@ export const criarOuAtualizarProdutoEstoque = async (req, res) => {
       return res.status(404).json({ error: "Produto não encontrado" });
     }
 
+    // Buscar depósito principal
+    const lojaDepositoPrincipal = await Loja.findOne({
+      where: { isDepositoPrincipal: true },
+    });
+
     // Buscar ou criar registro de estoque
     const [estoque, created] = await EstoqueLoja.findOrCreate({
       where: { lojaId, produtoId },
@@ -239,6 +325,8 @@ export const criarOuAtualizarProdutoEstoque = async (req, res) => {
 
     if (!created) {
       const quantidadeAnterior = estoque.quantidade;
+      const diferenca = quantidade - quantidadeAnterior;
+      
       // Atualizar se já existe
       estoque.quantidade = quantidade;
       if (estoqueMinimo !== undefined) {
@@ -249,13 +337,87 @@ export const criarOuAtualizarProdutoEstoque = async (req, res) => {
       console.log("✅ [criarOuAtualizarProdutoEstoque] Estoque atualizado:", {
         quantidadeAnterior,
         quantidadeNova: quantidade,
-        diferenca: quantidade - quantidadeAnterior,
+        diferenca,
       });
+
+      // 🔥 LÓGICA: Se aumentou estoque em loja NÃO principal, desconta do depósito
+      if (
+        diferenca > 0 &&
+        lojaDepositoPrincipal &&
+        !loja.isDepositoPrincipal &&
+        lojaDepositoPrincipal.id !== loja.id
+      ) {
+        console.log(`🏭 [DESCONTO DEPÓSITO] Produto ID: ${produtoId}`);
+        console.log(`   - Loja: ${loja.nome} (não é depósito)`);
+        console.log(`   - Quantidade a descontar: ${diferenca}`);
+
+        const [estoqueDeposito] = await EstoqueLoja.findOrCreate({
+          where: {
+            lojaId: lojaDepositoPrincipal.id,
+            produtoId,
+          },
+          defaults: { quantidade: 0 },
+        });
+
+        console.log(`   - Estoque atual no depósito: ${estoqueDeposito.quantidade}`);
+
+        const novaQtdDeposito = Math.max(0, estoqueDeposito.quantidade - diferenca);
+
+        if (estoqueDeposito.quantidade < diferenca) {
+          console.warn(`⚠️ [AVISO] Estoque insuficiente no depósito!`);
+          console.warn(`   - Disponível: ${estoqueDeposito.quantidade}`);
+          console.warn(`   - Solicitado: ${diferenca}`);
+          console.warn(`   - Operação continuará, mas estoque ficará zerado`);
+        }
+
+        await estoqueDeposito.update({ quantidade: novaQtdDeposito });
+
+        console.log(
+          `✅ [SUCESSO] Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`,
+        );
+      }
     } else {
       console.log("✨ [criarOuAtualizarProdutoEstoque] Novo estoque criado:", {
         quantidade,
         estoqueMinimo,
       });
+
+      // 🔥 LÓGICA: Se criou estoque em loja NÃO principal, desconta do depósito
+      if (
+        quantidade > 0 &&
+        lojaDepositoPrincipal &&
+        !loja.isDepositoPrincipal &&
+        lojaDepositoPrincipal.id !== loja.id
+      ) {
+        console.log(`🏭 [DESCONTO DEPÓSITO - NOVO] Produto ID: ${produtoId}`);
+        console.log(`   - Loja: ${loja.nome} (não é depósito)`);
+        console.log(`   - Quantidade a descontar: ${quantidade}`);
+
+        const [estoqueDeposito] = await EstoqueLoja.findOrCreate({
+          where: {
+            lojaId: lojaDepositoPrincipal.id,
+            produtoId,
+          },
+          defaults: { quantidade: 0 },
+        });
+
+        console.log(`   - Estoque atual no depósito: ${estoqueDeposito.quantidade}`);
+
+        const novaQtdDeposito = Math.max(0, estoqueDeposito.quantidade - quantidade);
+
+        if (estoqueDeposito.quantidade < quantidade) {
+          console.warn(`⚠️ [AVISO] Estoque insuficiente no depósito!`);
+          console.warn(`   - Disponível: ${estoqueDeposito.quantidade}`);
+          console.warn(`   - Solicitado: ${quantidade}`);
+          console.warn(`   - Operação continuará, mas estoque ficará zerado`);
+        }
+
+        await estoqueDeposito.update({ quantidade: novaQtdDeposito });
+
+        console.log(
+          `✅ [SUCESSO] Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`,
+        );
+      }
     }
 
     // Retornar com dados do produto
@@ -315,6 +477,11 @@ export const atualizarVariosEstoques = async (req, res) => {
       return res.status(404).json({ error: "Loja não encontrada" });
     }
 
+    // Buscar depósito principal
+    const lojaDepositoPrincipal = await Loja.findOne({
+      where: { isDepositoPrincipal: true },
+    });
+
     const resultados = [];
     const erros = [];
 
@@ -344,18 +511,85 @@ export const atualizarVariosEstoques = async (req, res) => {
         });
 
         if (!created) {
+          const quantidadeAnterior = estoque.quantidade;
+          const diferenca = quantidade - quantidadeAnterior;
+          
           estoque.quantidade = quantidade;
           if (estoqueMinimo !== undefined) {
             estoque.estoqueMinimo = estoqueMinimo;
           }
           await estoque.save();
-        }
 
-        console.log(`Estoque ${created ? "criado" : "atualizado"}:`, {
-          produtoId,
-          quantidade: estoque.quantidade,
-          estoqueMinimo: estoque.estoqueMinimo,
-        });
+          console.log(`Estoque atualizado:`, {
+            produtoId,
+            quantidadeAnterior,
+            quantidade: estoque.quantidade,
+            diferenca,
+            estoqueMinimo: estoque.estoqueMinimo,
+          });
+
+          // 🔥 LÓGICA: Se aumentou estoque em loja NÃO principal, desconta do depósito
+          if (
+            diferenca > 0 &&
+            lojaDepositoPrincipal &&
+            !loja.isDepositoPrincipal &&
+            lojaDepositoPrincipal.id !== loja.id
+          ) {
+            console.log(`🏭 [DESCONTO DEPÓSITO] Produto ID: ${produtoId}`);
+            console.log(`   - Quantidade a descontar: ${diferenca}`);
+
+            const [estoqueDeposito] = await EstoqueLoja.findOrCreate({
+              where: {
+                lojaId: lojaDepositoPrincipal.id,
+                produtoId,
+              },
+              defaults: { quantidade: 0 },
+            });
+
+            const novaQtdDeposito = Math.max(0, estoqueDeposito.quantidade - diferenca);
+
+            if (estoqueDeposito.quantidade < diferenca) {
+              console.warn(`⚠️ Estoque insuficiente no depósito para produto ${produtoId}!`);
+            }
+
+            await estoqueDeposito.update({ quantidade: novaQtdDeposito });
+            console.log(`✅ Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`);
+          }
+        } else {
+          console.log(`Estoque criado:`, {
+            produtoId,
+            quantidade: estoque.quantidade,
+            estoqueMinimo: estoque.estoqueMinimo,
+          });
+
+          // 🔥 LÓGICA: Se criou estoque em loja NÃO principal, desconta do depósito
+          if (
+            quantidade > 0 &&
+            lojaDepositoPrincipal &&
+            !loja.isDepositoPrincipal &&
+            lojaDepositoPrincipal.id !== loja.id
+          ) {
+            console.log(`🏭 [DESCONTO DEPÓSITO - NOVO] Produto ID: ${produtoId}`);
+            console.log(`   - Quantidade a descontar: ${quantidade}`);
+
+            const [estoqueDeposito] = await EstoqueLoja.findOrCreate({
+              where: {
+                lojaId: lojaDepositoPrincipal.id,
+                produtoId,
+              },
+              defaults: { quantidade: 0 },
+            });
+
+            const novaQtdDeposito = Math.max(0, estoqueDeposito.quantidade - quantidade);
+
+            if (estoqueDeposito.quantidade < quantidade) {
+              console.warn(`⚠️ Estoque insuficiente no depósito para produto ${produtoId}!`);
+            }
+
+            await estoqueDeposito.update({ quantidade: novaQtdDeposito });
+            console.log(`✅ Estoque depósito atualizado: ${estoqueDeposito.quantidade} → ${novaQtdDeposito}`);
+          }
+        }
 
         resultados.push(estoque);
       } catch (itemError) {
