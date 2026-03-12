@@ -49,6 +49,7 @@ import GastoFixoLoja from "./GastoFixoLoja.js";
 import RoteiroLoja from "./RoteiroLoja.js";
 import LogOrdemRoteiro from "./LogOrdemRoteiro.js";
 import FluxoCaixa from "./FluxoCaixa.js";
+import ManutencaoWhatsAppPrompt from "./ManutencaoWhatsAppPrompt.js";
 Roteiro.associate({ Usuario, Loja, RoteiroLoja });
 // Movimentação de Veículo -> Veículo e Usuário
 MovimentacaoVeiculo.belongsTo(Veiculo, {
@@ -311,11 +312,23 @@ LogOrdemRoteiro.belongsTo(Loja, {
 LogOrdemRoteiro.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 
 // FluxoCaixa
-FluxoCaixa.belongsTo(Movimentacao, { foreignKey: "movimentacaoId", as: "movimentacao" });
-Movimentacao.hasOne(FluxoCaixa, { foreignKey: "movimentacaoId", as: "fluxoCaixa" });
+FluxoCaixa.belongsTo(Movimentacao, {
+  foreignKey: "movimentacaoId",
+  as: "movimentacao",
+});
+Movimentacao.hasOne(FluxoCaixa, {
+  foreignKey: "movimentacaoId",
+  as: "fluxoCaixa",
+});
 
-FluxoCaixa.belongsTo(Usuario, { foreignKey: "conferidoPor", as: "conferidoPorUsuario" });
-Usuario.hasMany(FluxoCaixa, { foreignKey: "conferidoPor", as: "conferenciasCaixa" });
+FluxoCaixa.belongsTo(Usuario, {
+  foreignKey: "conferidoPor",
+  as: "conferidoPorUsuario",
+});
+Usuario.hasMany(FluxoCaixa, {
+  foreignKey: "conferidoPor",
+  as: "conferenciasCaixa",
+});
 
 export {
   CarrinhoPeca,
@@ -348,4 +361,5 @@ export {
   RoteiroLoja,
   LogOrdemRoteiro,
   FluxoCaixa,
+  ManutencaoWhatsAppPrompt,
 };

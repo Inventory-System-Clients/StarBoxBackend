@@ -7,6 +7,7 @@ export const criarEEnviarAlertaWhatsApp = async ({
   referenciaTipo,
   referenciaId,
   metadata,
+  options,
 }) => {
   return AlertManager.enviarCustom({
     tipo,
@@ -15,6 +16,7 @@ export const criarEEnviarAlertaWhatsApp = async ({
     referenciaTipo,
     referenciaId,
     metadata,
+    options,
   });
 };
 
