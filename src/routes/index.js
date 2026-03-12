@@ -25,6 +25,7 @@ import securityRoutes from "./security.routes.js";
 import manutencaoRoutes from "./manutencao.routes.js";
 import whatsappAlertaRoutes from "./whatsappAlerta.routes.js";
 import whatsappWebhookRoutes from "./whatsappWebhook.routes.js";
+import manutencaoWhatsAppPromptRoutes from "./manutencaoWhatsAppPrompt.routes.js";
 import dashboardRoutes from "./dashboard.routes.js";
 import gastosFixosLojaRoutes from "./gastosFixosLoja.routes.js";
 import fluxoCaixaRoutes from "./fluxoCaixa.routes.js";
@@ -59,6 +60,7 @@ router.use("/status-diario", statusDiarioRoutes);
 router.use("/roteiro-status", roteiroStatusRoutes);
 router.use("/whatsapp-alertas", whatsappAlertaRoutes);
 router.use("/whatsapp-webhook", whatsappWebhookRoutes);
+router.use("/manutencao-whatsapp-prompts", manutencaoWhatsAppPromptRoutes);
 
 // Nova rota para a aba de financeiro
 router.use("/financeiro", financeiroRoutes);
