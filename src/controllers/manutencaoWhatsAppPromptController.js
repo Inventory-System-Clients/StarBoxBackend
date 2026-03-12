@@ -22,7 +22,7 @@ const criarLinkWhatsApp = (telefone, mensagem) => {
   if (telefone) {
     return `https://wa.me/${telefone}?text=${texto}`;
   }
-  return `https://web.whatsapp.com/send?text=${texto}`;
+  return `https://wa.me/?text=${texto}`;
 };
 
 const montarMensagemManutencao = ({
