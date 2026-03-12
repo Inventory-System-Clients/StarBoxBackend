@@ -52,22 +52,20 @@ export const obterUltimoProduto = async (req, res) => {
     const { id } = req.params;
     const ultimaMovimentacao = await Movimentacao.findOne({
       where: { maquinaId: id },
+      attributes: ["id"],
       order: [
         ["dataColeta", "DESC"],
         ["createdAt", "DESC"],
       ],
-      include: [
-        {
-          model: MovimentacaoProduto,
-          as: "detalhesProdutos",
-          attributes: ["produtoId"],
-          limit: 1,
-        },
-      ],
     });
-    const produtoId =
-      ultimaMovimentacao?.detalhesProdutos?.[0]?.produtoId || null;
-    return res.json({ produtoId });
+    if (!ultimaMovimentacao) {
+      return res.json({ produtoId: null });
+    }
+    const detalhe = await MovimentacaoProduto.findOne({
+      where: { movimentacaoId: ultimaMovimentacao.id },
+      attributes: ["produtoId"],
+    });
+    return res.json({ produtoId: detalhe?.produtoId || null });
   } catch (error) {
     console.error("Erro ao obter último produto da máquina:", error);
     return res.status(500).json({ error: "Erro ao obter último produto" });
