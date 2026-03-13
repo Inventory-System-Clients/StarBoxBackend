@@ -152,21 +152,14 @@ export const calcularQuantidadeAtual = async (req, res) => {
       contadorOutAtual - contadorOutUltimaMovimentacao,
     );
 
-    const quantidadeAtualPorContadores =
-      totalPosUltimaMovimentacao - quantidadeDeveriaTerSaido;
-    const totalPreEsperado = Math.min(
-      capacidade,
-      Math.max(0, quantidadeAtualPorContadores),
-    );
-    const quantidadeAtual = totalPreEsperado;
-    const sugestaoAbastecimentoBruta = Math.max(
+    const quantidadeAtualPorContadores = Math.max(
       0,
-      capacidade - quantidadeAtual,
+      totalPosUltimaMovimentacao - quantidadeDeveriaTerSaido,
     );
-    const sugestaoAbastecimento = Math.min(
-      sugestaoAbastecimentoBruta,
-      quantidadeAtual,
-    );
+    const totalPreEsperado = quantidadeAtualPorContadores;
+    const quantidadeAtual = totalPreEsperado;
+    const sugestaoAbastecimento =
+      capacidade > 0 ? Math.max(0, capacidade - quantidadeAtual) : 0;
     const saidaCalculada = quantidadeDeveriaTerSaido;
 
     res.json({
