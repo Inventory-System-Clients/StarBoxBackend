@@ -419,7 +419,10 @@ export const registrarMovimentacao = async (req, res) => {
         movimentacaoId: movimentacao.id,
         conferencia: "pendente",
       });
-      console.log("✅ [registrarMovimentacao] Registro de FluxoCaixa criado para movimentação:", movimentacao.id);
+      console.log(
+        "✅ [registrarMovimentacao] Registro de FluxoCaixa criado para movimentação:",
+        movimentacao.id,
+      );
     }
 
     // Registrar peças usadas, se houver
@@ -741,11 +744,17 @@ export const registrarMovimentacao = async (req, res) => {
 // Listar movimentações com filtros
 export const listarMovimentacoes = async (req, res) => {
   try {
-    const { lojaId, maquinaId, limite = 100 } = req.query;
+    const {
+      lojaId,
+      maquinaId,
+      limite = 100,
+      apenasJustificativasNovas,
+    } = req.query;
     const where = {};
     if (maquinaId) where.maquinaId = maquinaId;
-    // Filtrar apenas justificativas novas
-    where.status_justificativa = "nova";
+    if (apenasJustificativasNovas === "true") {
+      where.status_justificativa = "nova";
+    }
     const include = [
       {
         model: Maquina,
@@ -913,7 +922,9 @@ export const atualizarMovimentacao = async (req, res) => {
       fichas:
         fichas !== undefined ? parseInt(fichas) || 0 : movimentacao.fichas,
       totalPre:
-        totalPre !== undefined ? parseInt(totalPre) || 0 : movimentacao.totalPre,
+        totalPre !== undefined
+          ? parseInt(totalPre) || 0
+          : movimentacao.totalPre,
       sairam:
         sairam !== undefined ? parseInt(sairam) || 0 : movimentacao.sairam,
       abastecidas:
@@ -952,12 +963,15 @@ export const atualizarMovimentacao = async (req, res) => {
       updateData.totalPos = updateData.totalPre + updateData.abastecidas;
     } else {
       // Para retirada de estoque
-      updateData.totalPos = updateData.totalPre - updateData.sairam + updateData.abastecidas;
+      updateData.totalPos =
+        updateData.totalPre - updateData.sairam + updateData.abastecidas;
     }
 
     // Se sairam > 0, recalcular média fichas/prêmio
     if (updateData.sairam > 0) {
-      updateData.mediaFichasPremio = (updateData.fichas / updateData.sairam).toFixed(2);
+      updateData.mediaFichasPremio = (
+        updateData.fichas / updateData.sairam
+      ).toFixed(2);
     }
 
     // Se fichas, notas ou digital foram atualizados, recalcular o valorFaturado
