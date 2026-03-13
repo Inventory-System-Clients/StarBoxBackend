@@ -102,6 +102,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
     res.json({
       id: roteiro.id,
       nome: roteiro.nome,
+      observacao: roteiro.observacao,
       status:
         finalizacaoManual || roteiroFinalizado ? "finalizado" : "pendente",
       lojas,
@@ -213,6 +214,7 @@ async function getTodosRoteirosComStatus(req, res) {
       return {
         id: roteiro.id,
         nome: roteiro.nome,
+        observacao: roteiro.observacao,
         funcionarioId: roteiro.funcionarioId,
         funcionarioNome: roteiro.funcionarioNome,
         diasSemana: roteiro.diasSemana ?? [],

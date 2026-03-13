@@ -12,8 +12,13 @@ const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
 export const criarRoteiro = async (req, res) => {
   try {
-    const { nome, diasSemana } = req.body;
+    const { nome, diasSemana, observacao } = req.body;
     if (!nome) return res.status(400).json({ error: "Nome é obrigatório" });
+    if (observacao !== undefined && typeof observacao !== "string") {
+      return res
+        .status(400)
+        .json({ error: "observacao deve ser um texto" });
+    }
     if (diasSemana !== undefined) {
       if (!Array.isArray(diasSemana))
         return res.status(400).json({ error: "diasSemana deve ser um array" });
@@ -23,7 +28,11 @@ export const criarRoteiro = async (req, res) => {
           error: `Dias inválidos: ${invalidos.join(", ")}. Use: ${DIAS_VALIDOS.join(", ")}`,
         });
     }
-    const roteiro = await Roteiro.create({ nome, diasSemana: diasSemana ?? [] });
+    const roteiro = await Roteiro.create({
+      nome,
+      diasSemana: diasSemana ?? [],
+      observacao: observacao?.trim() || null,
+    });
     res.status(201).json(roteiro);
   } catch (error) {
     res.status(500).json({ error: "Erro ao criar roteiro" });
@@ -53,6 +62,12 @@ export const atualizarDiasSemana = async (req, res) => {
     }
 
     if (outrosCampos.nome !== undefined) updateData.nome = outrosCampos.nome;
+    if (outrosCampos.observacao !== undefined) {
+      if (typeof outrosCampos.observacao !== "string") {
+        return res.status(400).json({ error: "observacao deve ser um texto" });
+      }
+      updateData.observacao = outrosCampos.observacao.trim() || null;
+    }
 
     if (Object.keys(updateData).length === 0)
       return res.status(400).json({ error: "Nenhum campo válido para atualizar" });

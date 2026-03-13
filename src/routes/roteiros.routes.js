@@ -351,7 +351,7 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
   }
 });
 
-// Atualizar campos do roteiro (diasSemana, nome, funcionarioId, funcionarioNome)
+// Atualizar campos do roteiro (diasSemana, nome, observacao, funcionarioId, funcionarioNome)
 router.patch("/:id", async (req, res) => {
   try {
     const roteiro = await Roteiro.findByPk(req.params.id);
@@ -361,6 +361,7 @@ router.patch("/:id", async (req, res) => {
     const camposPermitidos = [
       "diasSemana",
       "nome",
+      "observacao",
       "funcionarioId",
       "funcionarioNome",
     ];
@@ -368,6 +369,13 @@ router.patch("/:id", async (req, res) => {
     camposPermitidos.forEach((c) => {
       if (req.body[c] !== undefined) update[c] = req.body[c];
     });
+
+    if (update.observacao !== undefined) {
+      if (typeof update.observacao !== "string") {
+        return res.status(400).json({ error: "observacao deve ser um texto" });
+      }
+      update.observacao = update.observacao.trim() || null;
+    }
 
     await roteiro.update(update);
     res.json(roteiro);

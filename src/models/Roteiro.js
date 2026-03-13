@@ -6,6 +6,11 @@ const Roteiro = sequelize.define("Roteiro", {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  observacao: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    field: "observacao",
+  },
   funcionarioId: {
     type: DataTypes.UUID,
     allowNull: true,
