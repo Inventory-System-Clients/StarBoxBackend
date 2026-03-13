@@ -4,6 +4,8 @@ import {
   Loja,
   Maquina,
   RoteiroFinalizacaoDiaria,
+  GastoRoteiro,
+  Usuario,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
@@ -99,10 +101,54 @@ async function getRoteiroExecucaoComStatus(req, res) {
       roteiroFinalizado = false;
     }
 
+    const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
+    const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
+    const gastosHoje = await GastoRoteiro.findAll({
+      where: {
+        roteiroId: roteiro.id,
+        dataHora: {
+          [Op.between]: [inicioDia, fimDia],
+        },
+      },
+      include: [
+        {
+          model: Usuario,
+          as: "usuario",
+          attributes: ["id", "nome"],
+        },
+      ],
+      order: [["dataHora", "DESC"]],
+    });
+
+    const totalGastoHoje = gastosHoje.reduce(
+      (acc, gasto) => acc + Number.parseFloat(gasto.valor || 0),
+      0,
+    );
+    const orcamentoDiario = Number.parseFloat(roteiro.orcamentoDiario || 2000);
+    const saldoGastoHoje = Number.parseFloat(
+      (orcamentoDiario - totalGastoHoje).toFixed(2),
+    );
+
     res.json({
       id: roteiro.id,
       nome: roteiro.nome,
       observacao: roteiro.observacao,
+      orcamentoDiario,
+      totalGastoHoje: Number.parseFloat(totalGastoHoje.toFixed(2)),
+      saldoGastoHoje,
+      gastosHoje: gastosHoje.map((gasto) => ({
+        id: gasto.id,
+        categoria: gasto.categoria,
+        valor: Number.parseFloat(gasto.valor || 0),
+        observacao: gasto.observacao,
+        dataHora: gasto.dataHora,
+        usuario: gasto.usuario
+          ? {
+              id: gasto.usuario.id,
+              nome: gasto.usuario.nome,
+            }
+          : null,
+      })),
       status:
         finalizacaoManual || roteiroFinalizado ? "finalizado" : "pendente",
       lojas,
@@ -215,6 +261,7 @@ async function getTodosRoteirosComStatus(req, res) {
         id: roteiro.id,
         nome: roteiro.nome,
         observacao: roteiro.observacao,
+        orcamentoDiario: Number.parseFloat(roteiro.orcamentoDiario || 2000),
         funcionarioId: roteiro.funcionarioId,
         funcionarioNome: roteiro.funcionarioNome,
         diasSemana: roteiro.diasSemana ?? [],

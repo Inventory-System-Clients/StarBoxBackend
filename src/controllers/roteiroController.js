@@ -10,14 +10,30 @@ import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js
 
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
+const parseValorMonetario = (valor) => {
+  if (typeof valor === "number") return valor;
+  if (typeof valor === "string") {
+    return Number.parseFloat(valor.replace(",", ".").trim());
+  }
+  return Number.NaN;
+};
+
 export const criarRoteiro = async (req, res) => {
   try {
-    const { nome, diasSemana, observacao } = req.body;
+    const { nome, diasSemana, observacao, orcamentoDiario } = req.body;
     if (!nome) return res.status(400).json({ error: "Nome é obrigatório" });
     if (observacao !== undefined && typeof observacao !== "string") {
       return res
         .status(400)
         .json({ error: "observacao deve ser um texto" });
+    }
+    if (orcamentoDiario !== undefined) {
+      const valorOrcamento = parseValorMonetario(orcamentoDiario);
+      if (!Number.isFinite(valorOrcamento) || valorOrcamento <= 0) {
+        return res
+          .status(400)
+          .json({ error: "orcamentoDiario deve ser um número maior que zero" });
+      }
     }
     if (diasSemana !== undefined) {
       if (!Array.isArray(diasSemana))
@@ -32,6 +48,9 @@ export const criarRoteiro = async (req, res) => {
       nome,
       diasSemana: diasSemana ?? [],
       observacao: observacao?.trim() || null,
+      ...(orcamentoDiario !== undefined
+        ? { orcamentoDiario: Number.parseFloat(parseValorMonetario(orcamentoDiario).toFixed(2)) }
+        : {}),
     });
     res.status(201).json(roteiro);
   } catch (error) {
@@ -67,6 +86,16 @@ export const atualizarDiasSemana = async (req, res) => {
         return res.status(400).json({ error: "observacao deve ser um texto" });
       }
       updateData.observacao = outrosCampos.observacao.trim() || null;
+    }
+
+    if (outrosCampos.orcamentoDiario !== undefined) {
+      const valorOrcamento = parseValorMonetario(outrosCampos.orcamentoDiario);
+      if (!Number.isFinite(valorOrcamento) || valorOrcamento <= 0) {
+        return res
+          .status(400)
+          .json({ error: "orcamentoDiario deve ser um número maior que zero" });
+      }
+      updateData.orcamentoDiario = Number.parseFloat(valorOrcamento.toFixed(2));
     }
 
     if (Object.keys(updateData).length === 0)

@@ -16,6 +16,11 @@ import {
   criarRoteiro,
   atualizarDiasSemana,
 } from "../controllers/roteiroController.js";
+import {
+  listarGastosRoteiro,
+  registrarGastoRoteiro,
+  atualizarOrcamentoDiarioRoteiro,
+} from "../controllers/gastoRoteiroController.js";
 import { Op, literal } from "sequelize";
 
 const router = express.Router();
@@ -78,6 +83,18 @@ router.post("/:id/iniciar", async (req, res) => {
     res.status(500).json({ error: "Erro ao iniciar roteiro" });
   }
 });
+
+// Gastos diários no roteiro (execução)
+router.get("/:id/gastos", autenticar, listarGastosRoteiro);
+router.post("/:id/gastos", autenticar, registrarGastoRoteiro);
+
+// Orçamento diário do roteiro (apenas ADMIN)
+router.patch(
+  "/:id/orcamento-diario",
+  autenticar,
+  autorizar("ADMIN"),
+  atualizarOrcamentoDiarioRoteiro,
+);
 
 router.post("/:id/finalizar", autenticar, finalizarRoteiro);
 

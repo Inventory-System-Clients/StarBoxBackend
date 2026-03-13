@@ -11,6 +11,12 @@ const Roteiro = sequelize.define("Roteiro", {
     allowNull: true,
     field: "observacao",
   },
+  orcamentoDiario: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 2000,
+    field: "orcamento_diario",
+  },
   funcionarioId: {
     type: DataTypes.UUID,
     allowNull: true,
