@@ -36,6 +36,10 @@ const serializarGasto = (gasto) => ({
   usuarioId: gasto.usuarioId,
   categoria: gasto.categoria,
   valor: Number.parseFloat(gasto.valor || 0),
+  quilometragem:
+    gasto.quilometragem !== null && gasto.quilometragem !== undefined
+      ? Number.parseInt(gasto.quilometragem, 10)
+      : null,
   observacao: gasto.observacao,
   dataHora: gasto.dataHora,
   usuario: gasto.usuario
@@ -86,7 +90,9 @@ export const listarGastosRoteiro = async (req, res) => {
     }
 
     if (!validarPermissaoLancamento(roteiro, req.usuario)) {
-      return res.status(403).json({ error: "Sem permissão para ver gastos deste roteiro" });
+      return res
+        .status(403)
+        .json({ error: "Sem permissão para ver gastos deste roteiro" });
     }
 
     const gastos = await GastoRoteiro.findAll({
@@ -111,7 +117,9 @@ export const listarGastosRoteiro = async (req, res) => {
       0,
     );
     const orcamentoDiario = Number.parseFloat(roteiro.orcamentoDiario || 2000);
-    const saldoDisponivel = Number.parseFloat((orcamentoDiario - totalGasto).toFixed(2));
+    const saldoDisponivel = Number.parseFloat(
+      (orcamentoDiario - totalGasto).toFixed(2),
+    );
 
     return res.json({
       roteiro: {
@@ -134,7 +142,7 @@ export const listarGastosRoteiro = async (req, res) => {
 export const registrarGastoRoteiro = async (req, res) => {
   try {
     const roteiroId = req.params.id;
-    const { categoria, valor, observacao } = req.body;
+    const { categoria, valor, observacao, quilometragem } = req.body;
 
     const roteiro = await Roteiro.findByPk(roteiroId);
     if (!roteiro) {
@@ -142,7 +150,9 @@ export const registrarGastoRoteiro = async (req, res) => {
     }
 
     if (!validarPermissaoLancamento(roteiro, req.usuario)) {
-      return res.status(403).json({ error: "Sem permissão para lançar gasto neste roteiro" });
+      return res
+        .status(403)
+        .json({ error: "Sem permissão para lançar gasto neste roteiro" });
     }
 
     const categoriaNormalizada = String(categoria || "")
@@ -157,7 +167,24 @@ export const registrarGastoRoteiro = async (req, res) => {
 
     const valorNumerico = parseValor(valor);
     if (!Number.isFinite(valorNumerico) || valorNumerico <= 0) {
-      return res.status(400).json({ error: "Valor do gasto deve ser maior que zero" });
+      return res
+        .status(400)
+        .json({ error: "Valor do gasto deve ser maior que zero" });
+    }
+
+    let quilometragemNumerica = null;
+    if (categoriaNormalizada === "abastecimento") {
+      const quilometragemConvertida = Number.parseInt(quilometragem, 10);
+      if (
+        !Number.isInteger(quilometragemConvertida) ||
+        quilometragemConvertida < 0
+      ) {
+        return res.status(400).json({
+          error:
+            "Informe um KM válido para abastecimento (número inteiro maior ou igual a zero)",
+        });
+      }
+      quilometragemNumerica = quilometragemConvertida;
     }
 
     if (observacao !== undefined && typeof observacao !== "string") {
@@ -189,6 +216,7 @@ export const registrarGastoRoteiro = async (req, res) => {
       usuarioId: req.usuario.id,
       categoria: categoriaNormalizada,
       valor: Number.parseFloat(valorNumerico.toFixed(2)),
+      quilometragem: quilometragemNumerica,
       observacao: observacao?.trim() || null,
       dataHora: new Date(),
     });
@@ -204,7 +232,9 @@ export const registrarGastoRoteiro = async (req, res) => {
     });
 
     const totalGastoApos = Number.parseFloat(
-      (totalGastoAtual + Number.parseFloat(valorNumerico.toFixed(2))).toFixed(2),
+      (totalGastoAtual + Number.parseFloat(valorNumerico.toFixed(2))).toFixed(
+        2,
+      ),
     );
 
     return res.status(201).json({
@@ -214,12 +244,16 @@ export const registrarGastoRoteiro = async (req, res) => {
         data: faixaHoje.data,
         orcamentoDiario,
         totalGasto: totalGastoApos,
-        saldoDisponivel: Number.parseFloat((orcamentoDiario - totalGastoApos).toFixed(2)),
+        saldoDisponivel: Number.parseFloat(
+          (orcamentoDiario - totalGastoApos).toFixed(2),
+        ),
       },
     });
   } catch (error) {
     console.error("Erro ao registrar gasto do roteiro:", error);
-    return res.status(500).json({ error: "Erro ao registrar gasto do roteiro" });
+    return res
+      .status(500)
+      .json({ error: "Erro ao registrar gasto do roteiro" });
   }
 };
 
@@ -254,7 +288,9 @@ export const atualizarOrcamentoDiarioRoteiro = async (req, res) => {
     });
   } catch (error) {
     console.error("Erro ao atualizar orçamento diário do roteiro:", error);
-    return res.status(500).json({ error: "Erro ao atualizar orçamento diário" });
+    return res
+      .status(500)
+      .json({ error: "Erro ao atualizar orçamento diário" });
   }
 };
 
@@ -280,9 +316,7 @@ export const listarGastosRoteirosDashboard = async (req, res) => {
       const inicio = dataInicio
         ? new Date(`${dataInicio}T00:00:00.000Z`)
         : new Date("1970-01-01T00:00:00.000Z");
-      const fim = dataFim
-        ? new Date(`${dataFim}T23:59:59.999Z`)
-        : new Date();
+      const fim = dataFim ? new Date(`${dataFim}T23:59:59.999Z`) : new Date();
 
       if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) {
         return res.status(400).json({

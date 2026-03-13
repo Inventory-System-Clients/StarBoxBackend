@@ -44,6 +44,13 @@ const GastoRoteiro = sequelize.define(
         min: 0.01,
       },
     },
+    quilometragem: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      validate: {
+        min: 0,
+      },
+    },
     observacao: {
       type: DataTypes.TEXT,
       allowNull: true,

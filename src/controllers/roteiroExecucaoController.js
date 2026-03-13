@@ -140,6 +140,10 @@ async function getRoteiroExecucaoComStatus(req, res) {
         id: gasto.id,
         categoria: gasto.categoria,
         valor: Number.parseFloat(gasto.valor || 0),
+        quilometragem:
+          gasto.quilometragem !== null && gasto.quilometragem !== undefined
+            ? Number.parseInt(gasto.quilometragem, 10)
+            : null,
         observacao: gasto.observacao,
         dataHora: gasto.dataHora,
         usuario: gasto.usuario
