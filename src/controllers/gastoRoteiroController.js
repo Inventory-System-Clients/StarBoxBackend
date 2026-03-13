@@ -181,7 +181,7 @@ export const registrarGastoRoteiro = async (req, res) => {
       ) {
         return res.status(400).json({
           error:
-            "Informe um KM válido para abastecimento (número inteiro maior ou igual a zero)",
+            "KM é obrigatório para abastecimento e deve ser um número inteiro maior ou igual a zero",
         });
       }
       quilometragemNumerica = quilometragemConvertida;
