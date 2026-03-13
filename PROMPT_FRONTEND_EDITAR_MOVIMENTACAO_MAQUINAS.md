@@ -56,7 +56,7 @@ Implementar no frontend a funcionalidade de **editar movimentações de máquina
 
 ### 1. Listar Movimentações
 ```
-GET /api/movimentacoes?lojaId={lojaId}
+GET /api/movimentacoes?maquinaId={maquinaId}
 ```
 
 **Resposta:** Array de movimentações com todos os campos, incluindo:

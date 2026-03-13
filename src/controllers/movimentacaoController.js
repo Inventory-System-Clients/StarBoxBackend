@@ -741,9 +741,9 @@ export const registrarMovimentacao = async (req, res) => {
 // Listar movimentações com filtros
 export const listarMovimentacoes = async (req, res) => {
   try {
-    const { lojaId, limite = 100 } = req.query;
+    const { lojaId, maquinaId, limite = 100 } = req.query;
     const where = {};
-    if (lojaId) where.lojaId = lojaId;
+    if (maquinaId) where.maquinaId = maquinaId;
     // Filtrar apenas justificativas novas
     where.status_justificativa = "nova";
     const include = [
