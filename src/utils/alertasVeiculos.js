@@ -17,9 +17,6 @@ export async function gerarAlertasVeiculos() {
         veiculo: v.nome,
         nivel: "warning",
       });
-        veiculo: v.nome,
-        nivel: "warning",
-      });
     }
     // Limpeza
     if (v.nivelLimpeza && v.nivelLimpeza === "precisa limpar") {
