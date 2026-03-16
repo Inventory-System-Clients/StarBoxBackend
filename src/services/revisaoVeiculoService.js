@@ -86,9 +86,8 @@ export const verificarRevisaoPendente = async (veiculoId) => {
       },
     });
 
-    // Atualizar próxima revisão do veículo
+    // Apenas ativa o alerta visual, NÃO atualiza proximaRevisaoKm automaticamente
     await veiculo.update({
-      proximaRevisaoKm: novaProximaRevisao,
       alertaRevisaoPendente: true, // Ativar alerta visual
     });
 
