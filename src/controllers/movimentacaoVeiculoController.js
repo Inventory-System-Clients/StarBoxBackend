@@ -73,6 +73,53 @@ export const registrarMovimentacaoVeiculo = async (req, res) => {
     if (!veiculoId || !tipo || !usuarioId) {
       return res.status(400).json({ error: "Dados obrigatórios ausentes." });
     }
+
+    const veiculo = await Veiculo.findByPk(veiculoId);
+    if (!veiculo) {
+      return res.status(404).json({ error: "Veículo não encontrado" });
+    }
+
+    let kmNumerico = null;
+    if (km !== null && km !== undefined && String(km).trim() !== "") {
+      const kmConvertido = Number.parseInt(km, 10);
+      if (!Number.isInteger(kmConvertido) || kmConvertido < 0) {
+        return res.status(400).json({
+          error: "KM deve ser um número inteiro maior ou igual a zero.",
+        });
+      }
+      kmNumerico = kmConvertido;
+    }
+
+    if (kmNumerico !== null) {
+      const ultimaMovimentacaoComKm = await MovimentacaoVeiculo.findOne({
+        where: {
+          veiculoId,
+          km: {
+            [Op.ne]: null,
+          },
+        },
+        order: [["dataHora", "DESC"]],
+      });
+
+      const kmAtualVeiculo = Number.parseInt(veiculo.km, 10);
+      const kmUltimaMovimentacao = Number.parseInt(
+        ultimaMovimentacaoComKm?.km,
+        10,
+      );
+
+      const kmReferencia = Math.max(
+        Number.isInteger(kmAtualVeiculo) ? kmAtualVeiculo : 0,
+        Number.isInteger(kmUltimaMovimentacao) ? kmUltimaMovimentacao : 0,
+      );
+
+      if (kmNumerico < kmReferencia) {
+        return res.status(400).json({
+          error: `O KM informado (${kmNumerico}) não pode ser menor que o KM anterior (${kmReferencia}).`,
+          kmReferencia,
+        });
+      }
+    }
+
     const movimentacao = await MovimentacaoVeiculo.create({
       veiculoId,
       usuarioId,
@@ -83,24 +130,21 @@ export const registrarMovimentacaoVeiculo = async (req, res) => {
       estado,
       modo,
       obs,
-      km,
+      km: kmNumerico,
       litros: litros != null ? Number(litros) : null,
       roteiroId: roteiroId ?? null,
     });
 
     // Se informou km, verificar se precisa de revisão
-    if (km) {
+    if (kmNumerico !== null) {
       await verificarRevisaoPendente(veiculoId);
     }
 
     // Se abastecimento: atualizar km e nivelCombustivel do veículo
     if (tipo === "abastecimento") {
       const atualizacoes = {};
-      if (km != null) {
-        const veiculo = await Veiculo.findByPk(veiculoId);
-        if (veiculo && Number(km) > veiculo.km) {
-          atualizacoes.km = Number(km);
-        }
+      if (kmNumerico !== null && kmNumerico > Number(veiculo.km || 0)) {
+        atualizacoes.km = kmNumerico;
       }
       if (gasolina) {
         atualizacoes.nivelCombustivel = gasolina;

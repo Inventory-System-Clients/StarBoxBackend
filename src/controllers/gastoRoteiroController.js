@@ -1,5 +1,13 @@
 import { Op } from "sequelize";
-import { GastoRoteiro, Roteiro, Usuario } from "../models/index.js";
+import {
+  GastoRoteiro,
+  MovimentacaoVeiculo,
+  Roteiro,
+  Usuario,
+  Veiculo,
+} from "../models/index.js";
+import { sequelize } from "../database/connection.js";
+import { verificarRevisaoPendente } from "../services/revisaoVeiculoService.js";
 
 const CATEGORIAS_GASTO = [
   "transporte",
@@ -10,6 +18,15 @@ const CATEGORIAS_GASTO = [
 ];
 
 const parseValor = (valor) => {
+  if (typeof valor === "number") return valor;
+  if (typeof valor === "string") {
+    const normalizado = valor.replace(",", ".").trim();
+    return Number.parseFloat(normalizado);
+  }
+  return Number.NaN;
+};
+
+const parseLitros = (valor) => {
   if (typeof valor === "number") return valor;
   if (typeof valor === "string") {
     const normalizado = valor.replace(",", ".").trim();
@@ -73,6 +90,36 @@ const calcularTotalDia = async (roteiroId, inicio, fim) => {
   });
 
   return Number.parseFloat(total || 0);
+};
+
+const obterReferenciaKmVeiculo = async (veiculoId, transaction) => {
+  const veiculo = await Veiculo.findByPk(veiculoId, { transaction });
+  if (!veiculo) {
+    const erro = new Error("Veículo do roteiro não encontrado");
+    erro.statusCode = 404;
+    throw erro;
+  }
+
+  const ultimaMovimentacaoComKm = await MovimentacaoVeiculo.findOne({
+    where: {
+      veiculoId,
+      km: {
+        [Op.ne]: null,
+      },
+    },
+    order: [["dataHora", "DESC"]],
+    transaction,
+  });
+
+  const kmAtualVeiculo = Number.parseInt(veiculo.km, 10);
+  const kmUltimaMovimentacao = Number.parseInt(ultimaMovimentacaoComKm?.km, 10);
+
+  const kmReferencia = Math.max(
+    Number.isInteger(kmAtualVeiculo) ? kmAtualVeiculo : 0,
+    Number.isInteger(kmUltimaMovimentacao) ? kmUltimaMovimentacao : 0,
+  );
+
+  return { veiculo, kmReferencia };
 };
 
 export const listarGastosRoteiro = async (req, res) => {
@@ -142,7 +189,14 @@ export const listarGastosRoteiro = async (req, res) => {
 export const registrarGastoRoteiro = async (req, res) => {
   try {
     const roteiroId = req.params.id;
-    const { categoria, valor, observacao, quilometragem } = req.body;
+    const {
+      categoria,
+      valor,
+      observacao,
+      quilometragem,
+      litros,
+      nivelCombustivel,
+    } = req.body;
 
     const roteiro = await Roteiro.findByPk(roteiroId);
     if (!roteiro) {
@@ -173,7 +227,15 @@ export const registrarGastoRoteiro = async (req, res) => {
     }
 
     let quilometragemNumerica = null;
+    let litrosNumericos = null;
     if (categoriaNormalizada === "abastecimento") {
+      if (!roteiro.veiculoId) {
+        return res.status(400).json({
+          error:
+            "Este roteiro não possui veículo associado. Vincule um veículo antes de lançar abastecimento.",
+        });
+      }
+
       const quilometragemConvertida = Number.parseInt(quilometragem, 10);
       if (
         !Number.isInteger(quilometragemConvertida) ||
@@ -185,6 +247,15 @@ export const registrarGastoRoteiro = async (req, res) => {
         });
       }
       quilometragemNumerica = quilometragemConvertida;
+
+      const litrosConvertidos = parseLitros(litros);
+      if (!Number.isFinite(litrosConvertidos) || litrosConvertidos <= 0) {
+        return res.status(400).json({
+          error:
+            "Litros abastecidos é obrigatório para abastecimento e deve ser maior que zero",
+        });
+      }
+      litrosNumericos = Number.parseFloat(litrosConvertidos.toFixed(2));
     }
 
     if (observacao !== undefined && typeof observacao !== "string") {
@@ -211,15 +282,78 @@ export const registrarGastoRoteiro = async (req, res) => {
       });
     }
 
-    const gasto = await GastoRoteiro.create({
-      roteiroId,
-      usuarioId: req.usuario.id,
-      categoria: categoriaNormalizada,
-      valor: Number.parseFloat(valorNumerico.toFixed(2)),
-      quilometragem: quilometragemNumerica,
-      observacao: observacao?.trim() || null,
-      dataHora: new Date(),
+    const dataLancamento = new Date();
+    let gasto;
+    let movimentacaoVeiculo = null;
+
+    await sequelize.transaction(async (transaction) => {
+      gasto = await GastoRoteiro.create(
+        {
+          roteiroId,
+          usuarioId: req.usuario.id,
+          categoria: categoriaNormalizada,
+          valor: Number.parseFloat(valorNumerico.toFixed(2)),
+          quilometragem: quilometragemNumerica,
+          observacao: observacao?.trim() || null,
+          dataHora: dataLancamento,
+        },
+        { transaction },
+      );
+
+      if (categoriaNormalizada !== "abastecimento") {
+        return;
+      }
+
+      const { veiculo, kmReferencia } = await obterReferenciaKmVeiculo(
+        roteiro.veiculoId,
+        transaction,
+      );
+
+      if (quilometragemNumerica < kmReferencia) {
+        const erroKm = new Error(
+          `O KM informado (${quilometragemNumerica}) não pode ser menor que o KM anterior (${kmReferencia}).`,
+        );
+        erroKm.statusCode = 400;
+        throw erroKm;
+      }
+
+      movimentacaoVeiculo = await MovimentacaoVeiculo.create(
+        {
+          veiculoId: roteiro.veiculoId,
+          usuarioId: req.usuario.id,
+          tipo: "abastecimento",
+          dataHora: dataLancamento,
+          gasolina:
+            typeof nivelCombustivel === "string" && nivelCombustivel.trim()
+              ? nivelCombustivel.trim()
+              : null,
+          km: quilometragemNumerica,
+          litros: litrosNumericos,
+          obs: observacao?.trim() || null,
+          roteiroId: roteiro.id,
+        },
+        { transaction },
+      );
+
+      const atualizacoesVeiculo = {};
+      if (quilometragemNumerica > Number(veiculo.km || 0)) {
+        atualizacoesVeiculo.km = quilometragemNumerica;
+      }
+      if (
+        typeof nivelCombustivel === "string" &&
+        nivelCombustivel.trim().length > 0
+      ) {
+        atualizacoesVeiculo.nivelCombustivel = nivelCombustivel.trim();
+      }
+
+      if (Object.keys(atualizacoesVeiculo).length > 0) {
+        await veiculo.update(atualizacoesVeiculo, { transaction });
+      }
     });
+
+    if (categoriaNormalizada === "abastecimento" && roteiro.veiculoId) {
+      await verificarRevisaoPendente(roteiro.veiculoId);
+    }
 
     const gastoCompleto = await GastoRoteiro.findByPk(gasto.id, {
       include: [
@@ -240,6 +374,7 @@ export const registrarGastoRoteiro = async (req, res) => {
     return res.status(201).json({
       message: "Gasto diário registrado com sucesso",
       gasto: serializarGasto(gastoCompleto),
+      movimentacaoVeiculoId: movimentacaoVeiculo?.id || null,
       resumoDia: {
         data: faixaHoje.data,
         orcamentoDiario,
@@ -250,6 +385,9 @@ export const registrarGastoRoteiro = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({ error: error.message });
+    }
     console.error("Erro ao registrar gasto do roteiro:", error);
     return res
       .status(500)
