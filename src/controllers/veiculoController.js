@@ -1,6 +1,28 @@
 import Veiculo from "../models/Veiculo.js";
 import { verificarRevisaoPendente } from "../services/revisaoVeiculoService.js";
 
+const INTERVALO_REVISAO_PADRAO_KM = 10000;
+
+const normalizarKmNaoNegativo = (valor, fallback = 0) => {
+  const numero = Number.parseInt(valor, 10);
+  if (!Number.isFinite(numero) || numero < 0) return fallback;
+  return numero;
+};
+
+const normalizarIntervaloRevisaoKm = (valor) => {
+  const numero = Number.parseInt(valor, 10);
+  if (!Number.isFinite(numero) || numero <= 0) {
+    return INTERVALO_REVISAO_PADRAO_KM;
+  }
+  return numero;
+};
+
+const calcularProximaRevisaoKm = (kmAtual, intervaloRevisaoKm) => {
+  const kmSeguro = normalizarKmNaoNegativo(kmAtual, 0);
+  const intervaloSeguro = normalizarIntervaloRevisaoKm(intervaloRevisaoKm);
+  return (Math.floor(kmSeguro / intervaloSeguro) + 1) * intervaloSeguro;
+};
+
 const veiculoController = {
   async listar(req, res) {
     try {
@@ -30,11 +52,13 @@ const veiculoController = {
         modo,
         nivelCombustivel,
         nivelLimpeza,
+        intervaloRevisaoKm,
       } = req.body;
       
       // Inicializar campos de revisão
-      const kmInicial = km || 0;
-      const proximaRevisao = Math.ceil(kmInicial / 10000) * 10000 + 10000;
+      const kmInicial = normalizarKmNaoNegativo(km, 0);
+      const intervaloRevisao = normalizarIntervaloRevisaoKm(intervaloRevisaoKm);
+      const proximaRevisao = calcularProximaRevisaoKm(kmInicial, intervaloRevisao);
       
       const veiculo = await Veiculo.create({
         tipo,
@@ -50,6 +74,7 @@ const veiculoController = {
         nivelLimpeza,
         kmInicialCadastro: kmInicial,
         proximaRevisaoKm: proximaRevisao,
+        intervaloRevisaoKm: intervaloRevisao,
       });
       
       res.status(201).json(veiculo);
@@ -75,6 +100,7 @@ const veiculoController = {
         modo,
         nivelCombustivel,
         nivelLimpeza,
+        intervaloRevisaoKm,
       } = req.body;
       
       const veiculo = await Veiculo.findByPk(id);
@@ -82,8 +108,9 @@ const veiculoController = {
         return res.status(404).json({ error: "Veículo não encontrado" });
       
       const kmAnterior = veiculo.km;
-      
-      await veiculo.update({
+      const intervaloAnterior = veiculo.intervaloRevisaoKm;
+
+      const dadosAtualizacao = {
         tipo,
         nome,
         modelo,
@@ -95,10 +122,31 @@ const veiculoController = {
         modo,
         nivelCombustivel,
         nivelLimpeza,
-      });
+      };
+
+      if (intervaloRevisaoKm !== undefined) {
+        dadosAtualizacao.intervaloRevisaoKm =
+          normalizarIntervaloRevisaoKm(intervaloRevisaoKm);
+      }
+      
+      await veiculo.update(dadosAtualizacao);
+
+      const kmMudou = km !== undefined && km !== kmAnterior;
+      const intervaloMudou =
+        intervaloRevisaoKm !== undefined &&
+        veiculo.intervaloRevisaoKm !== intervaloAnterior;
+
+      if (kmMudou || intervaloMudou) {
+        const proximaRevisaoKm = calcularProximaRevisaoKm(
+          veiculo.km,
+          veiculo.intervaloRevisaoKm,
+        );
+
+        await veiculo.update({ proximaRevisaoKm });
+      }
       
       // Se o km foi atualizado, verificar se precisa de revisão
-      if (km !== undefined && km !== kmAnterior) {
+      if (kmMudou || intervaloMudou) {
         await verificarRevisaoPendente(id);
       }
       
@@ -107,6 +155,53 @@ const veiculoController = {
       res
         .status(400)
         .json({ error: "Erro ao atualizar veículo", details: err.message });
+    }
+  },
+
+  async atualizarIntervaloRevisao(req, res) {
+    try {
+      const { id } = req.params;
+      const { intervaloRevisaoKm } = req.body;
+
+      if (intervaloRevisaoKm === undefined || intervaloRevisaoKm === null) {
+        return res
+          .status(400)
+          .json({ error: "intervaloRevisaoKm é obrigatório" });
+      }
+
+      const intervaloNormalizado = Number.parseInt(intervaloRevisaoKm, 10);
+      if (!Number.isFinite(intervaloNormalizado) || intervaloNormalizado <= 0) {
+        return res
+          .status(400)
+          .json({ error: "intervaloRevisaoKm deve ser um número inteiro maior que zero" });
+      }
+
+      const veiculo = await Veiculo.findByPk(id);
+      if (!veiculo) {
+        return res.status(404).json({ error: "Veículo não encontrado" });
+      }
+
+      const proximaRevisaoKm = calcularProximaRevisaoKm(
+        veiculo.km,
+        intervaloNormalizado,
+      );
+
+      await veiculo.update({
+        intervaloRevisaoKm: intervaloNormalizado,
+        proximaRevisaoKm,
+      });
+
+      await verificarRevisaoPendente(id);
+
+      return res.json({
+        message: "Intervalo de revisão atualizado com sucesso",
+        veiculo,
+      });
+    } catch (err) {
+      return res.status(400).json({
+        error: "Erro ao atualizar intervalo de revisão",
+        details: err.message,
+      });
     }
   },
 

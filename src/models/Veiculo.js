@@ -70,6 +70,12 @@ const Veiculo = sequelize.define(
       allowNull: true,
       field: "proxima_revisao_km",
     },
+    intervaloRevisaoKm: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 10000,
+      field: "intervalo_revisao_km",
+    },
     ultimaRevisaoKm: {
       type: DataTypes.INTEGER,
       allowNull: true,

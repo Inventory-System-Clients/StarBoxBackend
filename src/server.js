@@ -245,6 +245,35 @@ const startServer = async () => {
       );
     }
 
+    // Migration: Configuração de intervalo de revisão por veículo
+    try {
+      await sequelize.query(`
+        ALTER TABLE veiculos
+        ADD COLUMN IF NOT EXISTS intervalo_revisao_km INTEGER DEFAULT 10000;
+      `);
+
+      await sequelize.query(`
+        UPDATE veiculos
+        SET intervalo_revisao_km = 10000
+        WHERE intervalo_revisao_km IS NULL OR intervalo_revisao_km <= 0;
+      `);
+
+      await sequelize.query(`
+        UPDATE veiculos
+        SET proxima_revisao_km = ((km / intervalo_revisao_km) + 1) * intervalo_revisao_km
+        WHERE proxima_revisao_km IS NULL;
+      `);
+
+      console.log(
+        "✅ Migration: intervalo_revisao_km adicionado em veiculos com valor padrão 10000",
+      );
+    } catch (migErr) {
+      console.warn(
+        "⚠️ Migration inline (intervalo_revisao_km):",
+        migErr.message,
+      );
+    }
+
     // Criar admin padrão se não existir
     const { Usuario } = await import("./models/index.js");
     const adminEmail = process.env.ADMIN_EMAIL || "admin@agarramais.com";
