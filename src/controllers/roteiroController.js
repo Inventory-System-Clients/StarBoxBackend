@@ -4,6 +4,7 @@ import {
   Usuario,
   Maquina,
   RoteiroFinalizacaoDiaria,
+  Veiculo,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
@@ -20,7 +21,8 @@ const parseValorMonetario = (valor) => {
 
 export const criarRoteiro = async (req, res) => {
   try {
-    const { nome, diasSemana, observacao, orcamentoDiario } = req.body;
+    const { nome, diasSemana, observacao, orcamentoDiario, veiculoId } =
+      req.body;
     if (!nome) return res.status(400).json({ error: "Nome é obrigatório" });
     if (observacao !== undefined && typeof observacao !== "string") {
       return res
@@ -44,10 +46,18 @@ export const criarRoteiro = async (req, res) => {
           error: `Dias inválidos: ${invalidos.join(", ")}. Use: ${DIAS_VALIDOS.join(", ")}`,
         });
     }
+
+    const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId ?? null;
+    if (veiculoIdNormalizado) {
+      const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
+      if (!veiculo)
+        return res.status(404).json({ error: "Veículo não encontrado" });
+    }
     const roteiro = await Roteiro.create({
       nome,
       diasSemana: diasSemana ?? [],
       observacao: observacao?.trim() || null,
+      veiculoId: veiculoIdNormalizado,
       ...(orcamentoDiario !== undefined
         ? { orcamentoDiario: Number.parseFloat(parseValorMonetario(orcamentoDiario).toFixed(2)) }
         : {}),
@@ -98,6 +108,19 @@ export const atualizarDiasSemana = async (req, res) => {
       updateData.orcamentoDiario = Number.parseFloat(valorOrcamento.toFixed(2));
     }
 
+    if (outrosCampos.veiculoId !== undefined) {
+      const veiculoIdNormalizado =
+        outrosCampos.veiculoId === "" ? null : outrosCampos.veiculoId;
+      if (veiculoIdNormalizado) {
+        const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
+        if (!veiculo)
+          return res
+            .status(404)
+            .json({ error: "Veículo não encontrado" });
+      }
+      updateData.veiculoId = veiculoIdNormalizado;
+    }
+
     if (Object.keys(updateData).length === 0)
       return res.status(400).json({ error: "Nenhum campo válido para atualizar" });
 
@@ -114,6 +137,11 @@ export const listarRoteiros = async (req, res) => {
     const roteiros = await Roteiro.findAll({
       include: [
         { model: Usuario, as: "funcionario", attributes: ["id", "nome"] },
+        {
+          model: Veiculo,
+          as: "veiculo",
+          attributes: ["id", "nome", "modelo", "tipo", "emoji"],
+        },
         { model: Loja, as: "lojas", attributes: ["id", "nome"] },
       ],
     });
@@ -125,11 +153,24 @@ export const listarRoteiros = async (req, res) => {
 
 export const iniciarRoteiro = async (req, res) => {
   try {
-    const { funcionarioId, funcionarioNome } = req.body;
+    const { funcionarioId, funcionarioNome, veiculoId } = req.body;
     const roteiro = await Roteiro.findByPk(req.params.id);
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
-    await roteiro.update({ funcionarioId, funcionarioNome });
+
+    const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId;
+    if (veiculoIdNormalizado) {
+      const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
+      if (!veiculo)
+        return res.status(404).json({ error: "Veículo não encontrado" });
+    }
+
+    const update = {};
+    if (funcionarioId !== undefined) update.funcionarioId = funcionarioId;
+    if (funcionarioNome !== undefined) update.funcionarioNome = funcionarioNome;
+    if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
+
+    await roteiro.update(update);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Erro ao iniciar roteiro" });

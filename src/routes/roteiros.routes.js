@@ -4,6 +4,7 @@ import {
   Loja,
   Usuario,
   Maquina,
+  Veiculo,
   RoteiroLoja,
   LogOrdemRoteiro,
   RoteiroFinalizacaoDiaria,
@@ -51,6 +52,11 @@ router.get("/", async (req, res) => {
       include: [
         { model: Usuario, as: "funcionario", attributes: ["id", "nome"] },
         {
+          model: Veiculo,
+          as: "veiculo",
+          attributes: ["id", "nome", "modelo", "tipo", "emoji"],
+        },
+        {
           model: Loja,
           as: "lojas",
           attributes: ["id", "nome"],
@@ -67,15 +73,33 @@ router.get("/", async (req, res) => {
 // Iniciar roteiro
 router.post("/:id/iniciar", async (req, res) => {
   try {
-    const { funcionarioId, funcionarioNome } = req.body;
-    console.log("[INICIAR] body:", { funcionarioId, funcionarioNome });
+    const { funcionarioId, funcionarioNome, veiculoId } = req.body;
+    console.log("[INICIAR] body:", {
+      funcionarioId,
+      funcionarioNome,
+      veiculoId,
+    });
     const roteiro = await Roteiro.findByPk(req.params.id);
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
-    const result = await roteiro.update({ funcionarioId, funcionarioNome });
+
+    const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId;
+    if (veiculoIdNormalizado) {
+      const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
+      if (!veiculo)
+        return res.status(404).json({ error: "Veículo não encontrado" });
+    }
+
+    const update = {};
+    if (funcionarioId !== undefined) update.funcionarioId = funcionarioId;
+    if (funcionarioNome !== undefined) update.funcionarioNome = funcionarioNome;
+    if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
+
+    const result = await roteiro.update(update);
     console.log("[INICIAR] após update:", {
       funcionarioId: result.funcionarioId,
       funcionarioNome: result.funcionarioNome,
+      veiculoId: result.veiculoId,
     });
     res.json({ success: true });
   } catch (error) {
@@ -368,7 +392,7 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
   }
 });
 
-// Atualizar campos do roteiro (diasSemana, nome, observacao, funcionarioId, funcionarioNome)
+// Atualizar campos do roteiro (diasSemana, nome, observacao, funcionarioId, funcionarioNome, veiculoId)
 router.patch("/:id", async (req, res) => {
   try {
     const roteiro = await Roteiro.findByPk(req.params.id);
@@ -381,6 +405,7 @@ router.patch("/:id", async (req, res) => {
       "observacao",
       "funcionarioId",
       "funcionarioNome",
+      "veiculoId",
     ];
     const update = {};
     camposPermitidos.forEach((c) => {
@@ -392,6 +417,17 @@ router.patch("/:id", async (req, res) => {
         return res.status(400).json({ error: "observacao deve ser um texto" });
       }
       update.observacao = update.observacao.trim() || null;
+    }
+
+    if (update.veiculoId !== undefined) {
+      const veiculoIdNormalizado =
+        update.veiculoId === "" ? null : update.veiculoId;
+      if (veiculoIdNormalizado) {
+        const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
+        if (!veiculo)
+          return res.status(404).json({ error: "Veículo não encontrado" });
+      }
+      update.veiculoId = veiculoIdNormalizado;
     }
 
     await roteiro.update(update);
@@ -416,6 +452,11 @@ router.get("/do-dia", autenticar, async (req, res) => {
       where: literal(`"Roteiros"."dias_semana"::jsonb @> '"${diaUpper}"'`),
       include: [
         { model: Usuario, as: "funcionario", attributes: ["id", "nome"] },
+        {
+          model: Veiculo,
+          as: "veiculo",
+          attributes: ["id", "nome", "modelo", "tipo", "emoji"],
+        },
         { model: Loja, as: "lojas", attributes: ["id", "nome"] },
       ],
     });

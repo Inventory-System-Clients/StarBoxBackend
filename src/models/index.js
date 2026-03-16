@@ -51,7 +51,8 @@ import RoteiroLoja from "./RoteiroLoja.js";
 import LogOrdemRoteiro from "./LogOrdemRoteiro.js";
 import FluxoCaixa from "./FluxoCaixa.js";
 import ManutencaoWhatsAppPrompt from "./ManutencaoWhatsAppPrompt.js";
-Roteiro.associate({ Usuario, Loja, RoteiroLoja });
+Roteiro.associate({ Usuario, Loja, RoteiroLoja, Veiculo });
+Veiculo.hasMany(Roteiro, { foreignKey: "veiculoId", as: "roteiros" });
 // Movimentação de Veículo -> Veículo e Usuário
 MovimentacaoVeiculo.belongsTo(Veiculo, {
   as: "veiculo",

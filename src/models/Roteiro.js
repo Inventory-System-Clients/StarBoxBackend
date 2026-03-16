@@ -27,6 +27,11 @@ const Roteiro = sequelize.define("Roteiro", {
     allowNull: true,
     field: "funcionarioNome",
   },
+  veiculoId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    field: "veiculoId",
+  },
   diasSemana: {
     type: DataTypes.JSONB,
     allowNull: true,
@@ -39,6 +44,10 @@ Roteiro.associate = (models) => {
   Roteiro.belongsTo(models.Usuario, {
     as: "funcionario",
     foreignKey: "funcionarioId",
+  });
+  Roteiro.belongsTo(models.Veiculo, {
+    as: "veiculo",
+    foreignKey: "veiculoId",
   });
   Roteiro.belongsToMany(models.Loja, {
     through: models.RoteiroLoja,

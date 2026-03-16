@@ -6,6 +6,7 @@ import {
   RoteiroFinalizacaoDiaria,
   GastoRoteiro,
   Usuario,
+  Veiculo,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
@@ -32,6 +33,11 @@ async function getRoteiroExecucaoComStatus(req, res) {
               ],
             },
           ],
+        },
+        {
+          model: Veiculo,
+          as: "veiculo",
+          attributes: ["id", "nome", "modelo", "tipo", "emoji"],
         },
       ],
     });
@@ -133,6 +139,16 @@ async function getRoteiroExecucaoComStatus(req, res) {
       id: roteiro.id,
       nome: roteiro.nome,
       observacao: roteiro.observacao,
+      veiculoId: roteiro.veiculoId ?? null,
+      veiculo: roteiro.veiculo
+        ? {
+            id: roteiro.veiculo.id,
+            nome: roteiro.veiculo.nome,
+            modelo: roteiro.veiculo.modelo,
+            tipo: roteiro.veiculo.tipo,
+            emoji: roteiro.veiculo.emoji,
+          }
+        : null,
       orcamentoDiario,
       totalGastoHoje: Number.parseFloat(totalGastoHoje.toFixed(2)),
       saldoGastoHoje,
@@ -192,6 +208,11 @@ async function getTodosRoteirosComStatus(req, res) {
               ],
             },
           ],
+        },
+        {
+          model: Veiculo,
+          as: "veiculo",
+          attributes: ["id", "nome", "modelo", "tipo", "emoji"],
         },
       ],
     });
@@ -268,6 +289,16 @@ async function getTodosRoteirosComStatus(req, res) {
         orcamentoDiario: Number.parseFloat(roteiro.orcamentoDiario || 2000),
         funcionarioId: roteiro.funcionarioId,
         funcionarioNome: roteiro.funcionarioNome,
+        veiculoId: roteiro.veiculoId ?? null,
+        veiculo: roteiro.veiculo
+          ? {
+              id: roteiro.veiculo.id,
+              nome: roteiro.veiculo.nome,
+              modelo: roteiro.veiculo.modelo,
+              tipo: roteiro.veiculo.tipo,
+              emoji: roteiro.veiculo.emoji,
+            }
+          : null,
         diasSemana: roteiro.diasSemana ?? [],
         status:
           finalizacoesPorRoteiro.has(roteiro.id) || roteiroFinalizado
