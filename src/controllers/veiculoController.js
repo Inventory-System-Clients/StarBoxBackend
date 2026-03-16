@@ -136,14 +136,8 @@ const veiculoController = {
         intervaloRevisaoKm !== undefined &&
         veiculo.intervaloRevisaoKm !== intervaloAnterior;
 
-      if (kmMudou || intervaloMudou) {
-        const proximaRevisaoKm = calcularProximaRevisaoKm(
-          veiculo.km,
-          veiculo.intervaloRevisaoKm,
-        );
-
-        await veiculo.update({ proximaRevisaoKm });
-      }
+      // Removido: atualização automática de proximaRevisaoKm
+      // proximaRevisaoKm só deve ser atualizado quando revisão for marcada como feita
       
       // Se o km foi atualizado, verificar se precisa de revisão
       if (kmMudou || intervaloMudou) {
@@ -181,14 +175,9 @@ const veiculoController = {
         return res.status(404).json({ error: "Veículo não encontrado" });
       }
 
-      const proximaRevisaoKm = calcularProximaRevisaoKm(
-        veiculo.km,
-        intervaloNormalizado,
-      );
 
       await veiculo.update({
         intervaloRevisaoKm: intervaloNormalizado,
-        proximaRevisaoKm,
       });
 
       await verificarRevisaoPendente(id);
