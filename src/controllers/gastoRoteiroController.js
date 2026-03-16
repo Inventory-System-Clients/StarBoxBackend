@@ -258,7 +258,11 @@ export const registrarGastoRoteiro = async (req, res) => {
       litrosNumericos = Number.parseFloat(litrosConvertidos.toFixed(2));
     }
 
-    if (observacao !== undefined && typeof observacao !== "string") {
+    if (
+      observacao !== undefined &&
+      observacao !== null &&
+      typeof observacao !== "string"
+    ) {
       return res.status(400).json({ error: "observacao deve ser um texto" });
     }
 
