@@ -53,7 +53,7 @@ const Veiculo = sequelize.define(
     nivelCombustivel: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: "5 palzinhos",
+      defaultValue: "Cheio",
     },
     nivelLimpeza: {
       type: DataTypes.STRING,

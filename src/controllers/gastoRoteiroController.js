@@ -262,6 +262,15 @@ export const registrarGastoRoteiro = async (req, res) => {
       return res.status(400).json({ error: "observacao deve ser um texto" });
     }
 
+    const observacaoNormalizada =
+      typeof observacao === "string" ? observacao.trim() : "";
+
+    if (categoriaNormalizada === "outros" && !observacaoNormalizada) {
+      return res.status(400).json({
+        error: "Observação é obrigatória quando a categoria for Outros",
+      });
+    }
+
     const faixaHoje = getFaixaDia();
     const totalGastoAtual = await calcularTotalDia(
       roteiroId,
@@ -294,7 +303,7 @@ export const registrarGastoRoteiro = async (req, res) => {
           categoria: categoriaNormalizada,
           valor: Number.parseFloat(valorNumerico.toFixed(2)),
           quilometragem: quilometragemNumerica,
-          observacao: observacao?.trim() || null,
+          observacao: observacaoNormalizada || null,
           dataHora: dataLancamento,
         },
         { transaction },
@@ -329,7 +338,7 @@ export const registrarGastoRoteiro = async (req, res) => {
               : null,
           km: quilometragemNumerica,
           litros: litrosNumericos,
-          obs: observacao?.trim() || null,
+          obs: observacaoNormalizada || null,
           roteiroId: roteiro.id,
         },
         { transaction },

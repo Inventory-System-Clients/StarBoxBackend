@@ -9,11 +9,14 @@ export async function gerarAlertasVeiculos() {
     // Combustível baixo
     if (
       v.nivelCombustivel &&
-      (v.nivelCombustivel === "1 palzinho" || v.nivelCombustivel === "Vazio")
+      (v.nivelCombustivel === "Reserva" || v.nivelCombustivel === "Vazio")
     ) {
       alertas.push({
         tipo: "combustivel_baixo",
         mensagem: `Nível de combustível baixo em ${v.nome} (${v.nivelCombustivel})`,
+        veiculo: v.nome,
+        nivel: "warning",
+      });
         veiculo: v.nome,
         nivel: "warning",
       });
