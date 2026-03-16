@@ -54,11 +54,21 @@ export const ultimasMovimentacoesPorVeiculo = async (req, res) => {
   }
 };
 
-// Registrar movimentação (retirada ou devolução)
+// Registrar movimentação (retirada, devolução ou abastecimento)
 export const registrarMovimentacaoVeiculo = async (req, res) => {
   try {
-    const { veiculoId, tipo, gasolina, nivel_limpeza, estado, modo, obs, km } =
-      req.body;
+    const {
+      veiculoId,
+      tipo,
+      gasolina,
+      nivel_limpeza,
+      estado,
+      modo,
+      obs,
+      km,
+      litros,
+      roteiroId,
+    } = req.body;
     const usuarioId = req.usuario?.id;
     if (!veiculoId || !tipo || !usuarioId) {
       return res.status(400).json({ error: "Dados obrigatórios ausentes." });
@@ -74,13 +84,32 @@ export const registrarMovimentacaoVeiculo = async (req, res) => {
       modo,
       obs,
       km,
+      litros: litros != null ? Number(litros) : null,
+      roteiroId: roteiroId ?? null,
     });
-    
+
     // Se informou km, verificar se precisa de revisão
     if (km) {
       await verificarRevisaoPendente(veiculoId);
     }
-    
+
+    // Se abastecimento: atualizar km e nivelCombustivel do veículo
+    if (tipo === "abastecimento") {
+      const atualizacoes = {};
+      if (km != null) {
+        const veiculo = await Veiculo.findByPk(veiculoId);
+        if (veiculo && Number(km) > veiculo.km) {
+          atualizacoes.km = Number(km);
+        }
+      }
+      if (gasolina) {
+        atualizacoes.nivelCombustivel = gasolina;
+      }
+      if (Object.keys(atualizacoes).length > 0) {
+        await Veiculo.update(atualizacoes, { where: { id: veiculoId } });
+      }
+    }
+
     res.status(201).json(movimentacao);
   } catch (error) {
     console.error("Erro ao registrar movimentação de veículo:", error);
@@ -129,5 +158,39 @@ export const listarMovimentacoesVeiculo = async (req, res) => {
   } catch (error) {
     console.error("Erro ao listar movimentações de veículo:", error);
     res.status(500).json({ error: "Erro ao listar movimentações de veículo" });
+  }
+};
+
+// Listar apenas abastecimentos com cálculo de km/l
+export const listarAbastecimentos = async (req, res) => {
+  try {
+    const { veiculoId, dataInicio, dataFim } = req.query;
+    const where = { tipo: "abastecimento" };
+    if (veiculoId) where.veiculoId = veiculoId;
+    if (dataInicio && dataFim) {
+      where.dataHora = {
+        [Op.gte]: new Date(dataInicio + "T00:00:00.000Z"),
+        [Op.lte]: new Date(dataFim + "T23:59:59.999Z"),
+      };
+    }
+    const abastecimentos = await MovimentacaoVeiculo.findAll({
+      where,
+      include: [
+        {
+          model: Veiculo,
+          as: "veiculo",
+          attributes: ["id", "nome", "modelo", "tipo"],
+        },
+        { model: Usuario, as: "usuario", attributes: ["id", "nome"] },
+      ],
+      order: [
+        ["veiculoId", "ASC"],
+        ["dataHora", "ASC"],
+      ],
+    });
+    res.json(abastecimentos);
+  } catch (error) {
+    console.error("Erro ao listar abastecimentos:", error);
+    res.status(500).json({ error: "Erro ao listar abastecimentos" });
   }
 };
