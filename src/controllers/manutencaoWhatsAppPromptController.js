@@ -163,36 +163,23 @@ export const listarDestinatariosWhatsAppManutencao = async (req, res) => {
       return res.status(404).json({ error: "Loja nao encontrada" });
     }
 
-    const [funcionarios, roteiroInfo] = await Promise.all([
-      Usuario.findAll({
-        where: {
-          ativo: true,
-          role: {
-            [Op.in]: ["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"],
-          },
+    const funcionarios = await Usuario.findAll({
+      where: {
+        ativo: true,
+        role: {
+          [Op.in]: ["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"],
         },
-        attributes: ["id", "nome", "telefone"],
-        order: [["nome", "ASC"]],
-      }),
-      buscarResponsavelPorRoteiroDaLoja(lojaId),
-    ]);
-
-    const defaultFuncionarioId = roteiroInfo?.funcionario?.id || null;
-    const origemPadrao = roteiroInfo?.funcionario
-      ? ORIGEM_RESPONSAVEL.ROTEIRO_DA_LOJA
-      : null;
+      },
+      attributes: ["id", "nome", "telefone"],
+      order: [["nome", "ASC"]],
+    });
 
     return res.json({
       loja: { id: loja.id, nome: loja.nome },
-      defaultFuncionarioId,
-      origemPadrao,
+      defaultFuncionarioId: null,
+      origemPadrao: null,
       funcionarios: funcionarios.map((funcionario) =>
-        mapearFuncionarioResposta(
-          funcionario,
-          String(funcionario.id) === String(defaultFuncionarioId)
-            ? ORIGEM_RESPONSAVEL.ROTEIRO_DA_LOJA
-            : null,
-        ),
+        mapearFuncionarioResposta(funcionario, null),
       ),
     });
   } catch (error) {
