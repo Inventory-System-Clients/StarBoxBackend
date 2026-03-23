@@ -4,13 +4,11 @@ import { Loja, Maquina, UsuarioLoja } from "../models/index.js";
 export const listarLojas = async (req, res) => {
   try {
     let lojas;
-    const podeVerTodasLojas = [
-      "ADMIN",
-      "FUNCIONARIO_TODAS_LOJAS",
-      "CONTROLADOR_ESTOQUE",
-    ].includes(req.usuario.role);
+    const podeVerTodasLojas = ["ADMIN", "FUNCIONARIO_TODAS_LOJAS"].includes(
+      req.usuario.role,
+    );
 
-    // ADMIN, FUNCIONARIO_TODAS_LOJAS e CONTROLADOR_ESTOQUE veem todas as lojas
+    // ADMIN e FUNCIONARIO_TODAS_LOJAS veem todas as lojas
     if (podeVerTodasLojas) {
       lojas = await Loja.findAll({
         include: [
@@ -23,7 +21,7 @@ export const listarLojas = async (req, res) => {
         order: [["nome", "ASC"]],
       });
     } else {
-      // Funcionário vê apenas lojas permitidas
+      // CONTROLADOR_ESTOQUE e FUNCIONARIO veem apenas lojas permitidas
       const permissoes = await UsuarioLoja.findAll({
         where: { usuarioId: req.usuario.id },
         include: [
@@ -76,7 +74,16 @@ export const obterLoja = async (req, res) => {
 // US04 - Criar loja
 export const criarLoja = async (req, res) => {
   try {
-    const { nome, endereco, numero, bairro, cidade, estado, responsavel, telefone } = req.body;
+    const {
+      nome,
+      endereco,
+      numero,
+      bairro,
+      cidade,
+      estado,
+      responsavel,
+      telefone,
+    } = req.body;
 
     if (!nome) {
       return res.status(400).json({ error: "Nome da loja é obrigatório" });
@@ -110,8 +117,17 @@ export const atualizarLoja = async (req, res) => {
       return res.status(404).json({ error: "Loja não encontrada" });
     }
 
-    const { nome, endereco, numero, bairro, cidade, estado, responsavel, telefone, ativo } =
-      req.body;
+    const {
+      nome,
+      endereco,
+      numero,
+      bairro,
+      cidade,
+      estado,
+      responsavel,
+      telefone,
+      ativo,
+    } = req.body;
 
     await loja.update({
       nome: nome ?? loja.nome,
