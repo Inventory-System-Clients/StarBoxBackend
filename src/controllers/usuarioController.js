@@ -122,9 +122,9 @@ export const criarUsuario = async (req, res) => {
       role,
     });
 
-    // Se for funcionário e tiver lojas permitidas, criar permissões
+    // Se for funcionário OU controlador de estoque e tiver lojas permitidas, criar permissões
     if (
-      role === ROLE_FUNCIONARIO &&
+      (role === ROLE_FUNCIONARIO || role === ROLE_CONTROLADOR_ESTOQUE) &&
       lojasPermitidas &&
       lojasPermitidas.length > 0
     ) {
@@ -137,7 +137,6 @@ export const criarUsuario = async (req, res) => {
           registrarMovimentacao: true,
         },
       }));
-
       await UsuarioLoja.bulkCreate(permissoes);
     }
 
@@ -203,14 +202,18 @@ export const atualizarUsuario = async (req, res) => {
       ativo: ativo ?? usuario.ativo,
     });
 
-    // Se mudou para FUNCIONARIO ou atualizou lojas permitidas
+    // Se mudou para FUNCIONARIO ou CONTROLADOR_ESTOQUE ou atualizou lojas permitidas
     if (lojasPermitidas !== undefined) {
       // Remover permissões antigas
       await UsuarioLoja.destroy({ where: { usuarioId: usuario.id } });
 
-      // Adicionar novas permissões (apenas se for FUNCIONARIO)
+      // Adicionar novas permissões (FUNCIONARIO ou CONTROLADOR_ESTOQUE)
       const roleEfetiva = role ?? usuario.role;
-      if (roleEfetiva === ROLE_FUNCIONARIO && lojasPermitidas.length > 0) {
+      if (
+        (roleEfetiva === ROLE_FUNCIONARIO ||
+          roleEfetiva === ROLE_CONTROLADOR_ESTOQUE) &&
+        lojasPermitidas.length > 0
+      ) {
         const permissoes = lojasPermitidas.map((lojaId) => ({
           usuarioId: usuario.id,
           lojaId,
