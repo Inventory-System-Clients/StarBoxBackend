@@ -209,6 +209,28 @@ const startServer = async () => {
       );
     }
 
+    try {
+      const [colInfoManutencao] = await sequelize.query(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'manutencoes' AND column_name = 'quantidadePecaUsada'
+      `);
+
+      if (colInfoManutencao.length === 0) {
+        await sequelize.query(`
+          ALTER TABLE manutencoes
+          ADD COLUMN "quantidadePecaUsada" INTEGER NULL
+        `);
+        console.log(
+          "✅ Migration: coluna manutencoes.quantidadePecaUsada criada",
+        );
+      }
+    } catch (migErr) {
+      console.warn(
+        "⚠️ Migration inline (manutencoes.quantidadePecaUsada):",
+        migErr.message,
+      );
+    }
+
     // Migration: Aumentar tamanho dos campos de contas_financeiro
     try {
       await sequelize.query(`

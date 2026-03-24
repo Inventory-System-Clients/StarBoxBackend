@@ -12,6 +12,50 @@ Implementar no frontend o fluxo de pecas defeituosas:
 
 ## Endpoints Backend
 
+### 0) Concluir manutencao com quantidade real de peca
+`PUT /api/manutencoes/:id/concluir`
+
+Body quando usa peca:
+```json
+{
+  "status": "feito",
+  "concluidoPorId": "uuid-funcionario",
+  "pecaId": "uuid-peca",
+  "quantidade": 1,
+  "explicacao_sem_peca": null
+}
+```
+
+Body quando nao usa peca:
+```json
+{
+  "status": "feito",
+  "concluidoPorId": "uuid-funcionario",
+  "pecaId": null,
+  "quantidade": null,
+  "explicacao_sem_peca": "Nao foi necessario usar peca"
+}
+```
+
+Resposta de sucesso esperada:
+```json
+{
+  "message": "Manutenção concluída com sucesso",
+  "manutencao": {
+    "id": "uuid",
+    "status": "feito",
+    "pecaUsadaId": "uuid ou null",
+    "quantidadePecaUsada": 1
+  },
+  "carrinho": {
+    "pecaId": "uuid",
+    "quantidadeAnterior": 2,
+    "quantidadeUsada": 1,
+    "quantidadeRestante": 1
+  }
+}
+```
+
 ### 1) Dashboard do funcionario logado
 `GET /api/dashboard/pecas-defeituosas`
 
@@ -165,6 +209,8 @@ export async function esvaziarBasePecasDefeituosas() {
 ---
 
 ## Checklist rapido
+- [ ] Concluir manutencao enviando `quantidade` quando `pecaId` for informado
+- [ ] Exibir/usar retorno `quantidadePecaUsada` e `carrinho.quantidadeRestante`
 - [ ] Exibir aba "Pecas defeituosas" no dashboard de todo funcionario
 - [ ] Consumir `GET /api/dashboard/pecas-defeituosas`
 - [ ] Tela ADMIN com resumo por funcionario

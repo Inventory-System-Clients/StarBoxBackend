@@ -8,6 +8,7 @@ import {
   CarrinhoPeca,
   PecaDefeituosaPendente,
 } from "../models/index.js";
+import { sequelize } from "../database/connection.js";
 
 const STATUS_PERMITIDOS = [
   "pendente",
@@ -277,62 +278,116 @@ export const deletarManutencao = async (req, res) => {
  * Permite com ou sem uso de peça
  */
 export const concluirManutencao = async (req, res) => {
+  let transaction;
+
   try {
     const { id } = req.params;
-    const { concluidoPorId, pecaId, explicacao_sem_peca } = req.body;
+    const { status, concluidoPorId, pecaId, quantidade, explicacao_sem_peca } =
+      req.body;
 
-    // Buscar manutenção
-    const manutencao = await Manutencao.findByPk(id);
-    if (!manutencao) {
-      return res.status(404).json({ error: "Manutenção não encontrada" });
-    }
-
-    // Validações
     if (!concluidoPorId) {
       return res.status(400).json({ error: "concluidoPorId é obrigatório" });
     }
 
-    // Observação é obrigatória sempre
-    if (!explicacao_sem_peca || explicacao_sem_peca.trim() === '') {
+    const statusNormalizado = status ? normalizarStatus(status) : "feito";
+    if (!["feito", "concluida"].includes(statusNormalizado)) {
       return res.status(400).json({
-        error: "Observação é obrigatória ao concluir manutenção"
+        error: "Status inválido para conclusão. Use 'feito' ou 'concluida'",
       });
     }
 
-    // Validar tamanho da explicação
-    if (explicacao_sem_peca.length > 100) {
+    const usandoPeca =
+      pecaId !== undefined && pecaId !== null && String(pecaId).trim() !== "";
+
+    let quantidadeUsada = null;
+
+    if (usandoPeca) {
+      const quantidadeNumero = Number(quantidade);
+      if (!Number.isInteger(quantidadeNumero) || quantidadeNumero <= 0) {
+        return res.status(400).json({
+          error: "quantidade deve ser um inteiro positivo quando pecaId for informado",
+        });
+      }
+
+      quantidadeUsada = quantidadeNumero;
+    } else {
+      if (!explicacao_sem_peca || explicacao_sem_peca.trim() === "") {
+        return res.status(400).json({
+          error: "Observação é obrigatória ao concluir manutenção sem peça",
+        });
+      }
+    }
+
+    if (explicacao_sem_peca && explicacao_sem_peca.length > 100) {
       return res.status(400).json({
-        error: "Observação deve ter no máximo 100 caracteres"
+        error: "Observação deve ter no máximo 100 caracteres",
+      });
+    }
+
+    transaction = await sequelize.transaction();
+
+    const manutencao = await Manutencao.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!manutencao) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Manutenção não encontrada" });
+    }
+
+    if (isStatusConcluido(normalizarStatus(manutencao.status))) {
+      await transaction.rollback();
+      return res.status(409).json({
+        error: "Conflito de estado: manutenção já foi concluída",
       });
     }
 
     let pecaUsadaId = null;
+    let quantidadePecaUsada = null;
+    let carrinhoResumo = null;
 
-    // Se informou pecaId, verificar se está no carrinho e remover
-    if (pecaId) {
+    if (usandoPeca) {
       const itemCarrinho = await CarrinhoPeca.findOne({
         where: {
           usuarioId: concluidoPorId,
-          pecaId: pecaId
-        }
+          pecaId: pecaId,
+        },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
       });
 
       if (!itemCarrinho) {
+        await transaction.rollback();
         return res.status(404).json({
-          error: "Peça não encontrada no carrinho do funcionário"
+          error: "Peça não encontrada no carrinho do funcionário",
         });
       }
 
-      // Verificar se a peça existe
-      const peca = await Peca.findByPk(pecaId);
+      const quantidadeAnterior = Number(itemCarrinho.quantidade) || 0;
+      if (quantidadeUsada > quantidadeAnterior) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: "Quantidade solicitada maior que a disponível no carrinho",
+          quantidadeDisponivel: quantidadeAnterior,
+          quantidadeSolicitada: quantidadeUsada,
+        });
+      }
+
+      const peca = await Peca.findByPk(pecaId, { transaction });
       if (!peca) {
+        await transaction.rollback();
         return res.status(404).json({ error: "Peça não encontrada" });
       }
 
-      const quantidadeDefeituosa = Math.max(
-        1,
-        Number.parseInt(itemCarrinho.quantidade, 10) || 1,
-      );
+      const quantidadeRestante = quantidadeAnterior - quantidadeUsada;
+
+      if (quantidadeRestante > 0) {
+        itemCarrinho.quantidade = quantidadeRestante;
+        await itemCarrinho.save({ transaction });
+      } else {
+        await itemCarrinho.destroy({ transaction });
+      }
 
       await PecaDefeituosaPendente.create({
         usuarioId: concluidoPorId,
@@ -340,39 +395,58 @@ export const concluirManutencao = async (req, res) => {
         pecaOriginalId: peca.id,
         nomePecaOriginal: peca.nome,
         nomePecaDefeituosa: `${peca.nome} defeituosa`,
-        quantidade: quantidadeDefeituosa,
+        quantidade: quantidadeUsada,
+      }, {
+        transaction,
       });
 
-      // Remover do carrinho (usa função do carrinhoPecaController)
-      await itemCarrinho.destroy();
-      
-      console.log(`[Manutenção] Peça ${pecaId} removida do carrinho do usuário ${concluidoPorId}`);
-      
       pecaUsadaId = pecaId;
+      quantidadePecaUsada = quantidadeUsada;
+
+      carrinhoResumo = {
+        pecaId,
+        quantidadeAnterior,
+        quantidadeUsada,
+        quantidadeRestante,
+      };
     }
 
-    // Atualizar manutenção
     await manutencao.update({
-      status: "feito",
+      status: statusNormalizado,
       concluidoPorId: concluidoPorId,
       concluidoEm: new Date(),
       pecaUsadaId: pecaUsadaId,
-      explicacao_sem_peca: explicacao_sem_peca || null
+      quantidadePecaUsada,
+      explicacao_sem_peca: usandoPeca ? null : explicacao_sem_peca.trim(),
+    }, {
+      transaction,
     });
 
-    // Buscar manutenção atualizada com includes
     const manutencaoCompleta = await Manutencao.findByPk(id, {
-      include: includePadrao
+      include: includePadrao,
+      transaction,
     });
 
-    console.log(`[Manutenção] Manutenção ${id} concluída por usuário ${concluidoPorId}`);
+    await transaction.commit();
+    transaction = null;
+
+    console.log(
+      `[Manutenção] Manutenção ${id} concluída por usuário ${concluidoPorId}`,
+    );
 
     return res.json({
       message: "Manutenção concluída com sucesso",
-      manutencao: manutencaoCompleta
+      manutencao: {
+        ...manutencaoCompleta.toJSON(),
+        quantidadePecaUsada,
+      },
+      carrinho: carrinhoResumo,
     });
-
   } catch (error) {
+    if (transaction) {
+      await transaction.rollback();
+    }
+
     console.error("Erro ao concluir manutenção:", error);
     return res.status(500).json({ error: "Erro ao concluir manutenção" });
   }

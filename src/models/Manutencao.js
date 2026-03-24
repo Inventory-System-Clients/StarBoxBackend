@@ -98,6 +98,10 @@ const Manutencao = sequelize.define(
         key: "id",
       },
     },
+    quantidadePecaUsada: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
   },
   {
     tableName: "manutencoes",
