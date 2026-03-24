@@ -6,6 +6,7 @@ import {
   Roteiro,
   Peca,
   CarrinhoPeca,
+  PecaDefeituosaPendente,
 } from "../models/index.js";
 
 const STATUS_PERMITIDOS = [
@@ -327,6 +328,20 @@ export const concluirManutencao = async (req, res) => {
       if (!peca) {
         return res.status(404).json({ error: "Peça não encontrada" });
       }
+
+      const quantidadeDefeituosa = Math.max(
+        1,
+        Number.parseInt(itemCarrinho.quantidade, 10) || 1,
+      );
+
+      await PecaDefeituosaPendente.create({
+        usuarioId: concluidoPorId,
+        manutencaoId: manutencao.id,
+        pecaOriginalId: peca.id,
+        nomePecaOriginal: peca.nome,
+        nomePecaDefeituosa: `${peca.nome} defeituosa`,
+        quantidade: quantidadeDefeituosa,
+      });
 
       // Remover do carrinho (usa função do carrinhoPecaController)
       await itemCarrinho.destroy();

@@ -51,6 +51,8 @@ import RoteiroLoja from "./RoteiroLoja.js";
 import LogOrdemRoteiro from "./LogOrdemRoteiro.js";
 import FluxoCaixa from "./FluxoCaixa.js";
 import ManutencaoWhatsAppPrompt from "./ManutencaoWhatsAppPrompt.js";
+import PecaDefeituosaPendente from "./PecaDefeituosaPendente.js";
+import PecaDefeituosaBase from "./PecaDefeituosaBase.js";
 Roteiro.associate({ Usuario, Loja, RoteiroLoja, Veiculo });
 Veiculo.hasMany(Roteiro, { foreignKey: "veiculoId", as: "roteiros" });
 // Movimentação de Veículo -> Veículo e Usuário
@@ -273,6 +275,69 @@ Peca.hasMany(Manutencao, {
   as: "manutencoesComPeca",
 });
 
+PecaDefeituosaPendente.belongsTo(Usuario, {
+  foreignKey: "usuarioId",
+  as: "funcionario",
+});
+Usuario.hasMany(PecaDefeituosaPendente, {
+  foreignKey: "usuarioId",
+  as: "pecasDefeituosasPendentes",
+});
+
+PecaDefeituosaPendente.belongsTo(Manutencao, {
+  foreignKey: "manutencaoId",
+  as: "manutencao",
+});
+Manutencao.hasMany(PecaDefeituosaPendente, {
+  foreignKey: "manutencaoId",
+  as: "pecasDefeituosasPendentes",
+});
+
+PecaDefeituosaPendente.belongsTo(Peca, {
+  foreignKey: "pecaOriginalId",
+  as: "pecaOriginal",
+});
+Peca.hasMany(PecaDefeituosaPendente, {
+  foreignKey: "pecaOriginalId",
+  as: "pendenciasPecasDefeituosas",
+});
+
+PecaDefeituosaBase.belongsTo(Usuario, {
+  foreignKey: "usuarioId",
+  as: "funcionario",
+});
+Usuario.hasMany(PecaDefeituosaBase, {
+  foreignKey: "usuarioId",
+  as: "pecasDefeituosasNaBase",
+});
+
+PecaDefeituosaBase.belongsTo(Usuario, {
+  foreignKey: "confirmadoPorId",
+  as: "confirmadoPor",
+});
+Usuario.hasMany(PecaDefeituosaBase, {
+  foreignKey: "confirmadoPorId",
+  as: "confirmacoesPecasDefeituosas",
+});
+
+PecaDefeituosaBase.belongsTo(Manutencao, {
+  foreignKey: "manutencaoId",
+  as: "manutencao",
+});
+Manutencao.hasMany(PecaDefeituosaBase, {
+  foreignKey: "manutencaoId",
+  as: "pecasDefeituosasConfirmadas",
+});
+
+PecaDefeituosaBase.belongsTo(Peca, {
+  foreignKey: "pecaOriginalId",
+  as: "pecaOriginal",
+});
+Peca.hasMany(PecaDefeituosaBase, {
+  foreignKey: "pecaOriginalId",
+  as: "basePecasDefeituosas",
+});
+
 Manutencao.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
 Roteiro.hasMany(Manutencao, { foreignKey: "roteiroId", as: "manutencoes" });
 
@@ -374,4 +439,6 @@ export {
   LogOrdemRoteiro,
   FluxoCaixa,
   ManutencaoWhatsAppPrompt,
+  PecaDefeituosaPendente,
+  PecaDefeituosaBase,
 };
