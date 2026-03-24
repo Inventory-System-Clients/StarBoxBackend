@@ -16,6 +16,7 @@ import {
   finalizarRoteiro,
   criarRoteiro,
   atualizarDiasSemana,
+  apagarRoteiro,
 } from "../controllers/roteiroController.js";
 import {
   listarGastosRoteiro,
@@ -437,6 +438,9 @@ router.patch("/:id", async (req, res) => {
     res.status(500).json({ error: "Erro ao atualizar roteiro" });
   }
 });
+
+// Apagar roteiro (ADMIN)
+router.delete("/:id", autenticar, autorizar("ADMIN"), apagarRoteiro);
 
 // Roteiros do dia corrente: GET /roteiros/do-dia?dia=SEG
 router.get("/do-dia", autenticar, async (req, res) => {

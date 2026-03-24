@@ -5,9 +5,17 @@ import {
   Maquina,
   RoteiroFinalizacaoDiaria,
   Veiculo,
+  GastoRoteiro,
+  LogOrdemRoteiro,
+  RoteiroLoja,
+  Manutencao,
+  ManutencaoWhatsAppPrompt,
+  Movimentacao,
+  MovimentacaoVeiculo,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
+import { sequelize } from "../database/connection.js";
 
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -277,5 +285,67 @@ export const finalizarRoteiro = async (req, res) => {
   } catch (error) {
     console.error("Erro ao finalizar roteiro:", error);
     return res.status(500).json({ error: "Erro ao finalizar roteiro" });
+  }
+};
+
+export const apagarRoteiro = async (req, res) => {
+  try {
+    const { id: roteiroId } = req.params;
+
+    const roteiro = await Roteiro.findByPk(roteiroId);
+    if (!roteiro) {
+      return res.status(404).json({ error: "Roteiro não encontrado" });
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      await Promise.all([
+        RoteiroLoja.destroy({
+          where: { RoteiroId: roteiroId },
+          transaction,
+        }),
+        RoteiroFinalizacaoDiaria.destroy({
+          where: { roteiroId },
+          transaction,
+        }),
+        GastoRoteiro.destroy({
+          where: { roteiroId },
+          transaction,
+        }),
+        LogOrdemRoteiro.destroy({
+          where: { roteiroId },
+          transaction,
+        }),
+        MovimentacaoStatusDiario.destroy({
+          where: { roteiro_id: roteiroId },
+          transaction,
+        }),
+      ]);
+
+      await Promise.all([
+        Movimentacao.update(
+          { roteiroId: null },
+          { where: { roteiroId }, transaction },
+        ),
+        MovimentacaoVeiculo.update(
+          { roteiroId: null },
+          { where: { roteiroId }, transaction },
+        ),
+        Manutencao.update(
+          { roteiroId: null },
+          { where: { roteiroId }, transaction },
+        ),
+        ManutencaoWhatsAppPrompt.update(
+          { roteiroId: null },
+          { where: { roteiroId }, transaction },
+        ),
+      ]);
+
+      await roteiro.destroy({ transaction });
+    });
+
+    return res.json({ success: true, message: "Roteiro apagado com sucesso" });
+  } catch (error) {
+    console.error("Erro ao apagar roteiro:", error);
+    return res.status(500).json({ error: "Erro ao apagar roteiro" });
   }
 };
