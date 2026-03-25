@@ -123,7 +123,7 @@ router.patch(
   atualizarOrcamentoDiarioRoteiro,
 );
 
-router.post("/:id/finalizar", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), finalizarRoteiro);
+router.post("/:id/finalizar", autenticar, finalizarRoteiro);
 
 // Mover loja entre roteiros
 router.post("/mover-loja", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), async (req, res) => {

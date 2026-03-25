@@ -16,8 +16,49 @@ import {
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
 import { sequelize } from "../database/connection.js";
+import { randomUUID } from "crypto";
 
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
+
+const ROLES_ADMIN_EQUIVALENTES = new Set(["ADMIN", "GERENCIADOR"]);
+const ROLES_FUNCIONARIO_ROTEIRO = new Set(["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"]);
+
+const getRequestId = (req) =>
+  req.requestId || req.id || req.headers?.["x-request-id"] || randomUUID();
+
+const logFinalizacaoForbidden = ({
+  requestId,
+  userId,
+  role,
+  roteiroId,
+  roteiroFuncionarioId,
+  motivo,
+}) => {
+  console.warn({
+    evento: "roteiro_finalizacao_forbidden",
+    requestId,
+    userId,
+    role,
+    roteiroId,
+    roteiroFuncionarioId,
+    motivo,
+  });
+};
+
+const responderForbiddenFinalizacao = (res, motivo) => {
+  const mensagens = {
+    role_not_allowed: "Seu perfil não pode finalizar este roteiro",
+    not_assigned_to_roteiro:
+      "Você não é o funcionário responsável por este roteiro",
+  };
+
+  return res.status(403).json({
+    error: {
+      code: motivo,
+      message: mensagens[motivo] || "Acesso negado para finalizar roteiro",
+    },
+  });
+};
 
 const parseValorMonetario = (valor) => {
   if (typeof valor === "number") return valor;
@@ -202,8 +243,15 @@ export const moverLoja = async (req, res) => {
 
 export const finalizarRoteiro = async (req, res) => {
   try {
+    if (!req.usuario) {
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+
     const roteiroId = req.params.id;
     const dataHoje = new Date().toISOString().slice(0, 10);
+    const requestId = getRequestId(req);
+    const userId = req.usuario.id;
+    const role = req.usuario.role;
 
     const roteiro = await Roteiro.findByPk(roteiroId, {
       include: [
@@ -224,6 +272,29 @@ export const finalizarRoteiro = async (req, res) => {
 
     if (!roteiro) {
       return res.status(404).json({ error: "Roteiro não encontrado" });
+    }
+
+    const roteiroFuncionarioId = roteiro.funcionarioId || null;
+    const usuarioEhAdminEquivalente = ROLES_ADMIN_EQUIVALENTES.has(role);
+    const usuarioEhFuncionarioDoRoteiro =
+      ROLES_FUNCIONARIO_ROTEIRO.has(role) &&
+      String(userId) === String(roteiroFuncionarioId);
+
+    if (!usuarioEhAdminEquivalente && !usuarioEhFuncionarioDoRoteiro) {
+      const motivo = ROLES_FUNCIONARIO_ROTEIRO.has(role)
+        ? "not_assigned_to_roteiro"
+        : "role_not_allowed";
+
+      logFinalizacaoForbidden({
+        requestId,
+        userId,
+        role,
+        roteiroId,
+        roteiroFuncionarioId,
+        motivo,
+      });
+
+      return responderForbiddenFinalizacao(res, motivo);
     }
 
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
