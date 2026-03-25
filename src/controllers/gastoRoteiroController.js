@@ -75,7 +75,7 @@ const serializarGasto = (gasto) => ({
 
 const validarPermissaoLancamento = (roteiro, usuario) => {
   if (!usuario) return false;
-  if (usuario.role === "ADMIN") return true;
+  if (["ADMIN", "GERENCIADOR"].includes(usuario.role)) return true;
   return roteiro.funcionarioId === usuario.id;
 };
 

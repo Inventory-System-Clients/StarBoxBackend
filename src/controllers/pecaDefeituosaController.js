@@ -77,10 +77,10 @@ export const listarMinhasPecasDefeituosasDashboard = async (req, res) => {
 
 export const listarResumoPecasDefeituosasAdmin = async (req, res) => {
   try {
-    if (req.usuario.role !== "ADMIN") {
+    if (!["ADMIN", "GERENCIADOR"].includes(req.usuario.role)) {
       return res
         .status(403)
-        .json({ error: "Acesso negado. Apenas administradores." });
+        .json({ error: "Acesso negado. Apenas ADMIN ou GERENCIADOR." });
     }
 
     const usuarios = await Usuario.findAll({
@@ -151,11 +151,11 @@ export const confirmarDevolucaoPecaDefeituosa = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    if (req.usuario.role !== "ADMIN") {
+    if (!["ADMIN", "GERENCIADOR"].includes(req.usuario.role)) {
       await transaction.rollback();
       return res
         .status(403)
-        .json({ error: "Acesso negado. Apenas administradores." });
+        .json({ error: "Acesso negado. Apenas ADMIN ou GERENCIADOR." });
     }
 
     const pendenciaId = req.params.id;
@@ -202,11 +202,11 @@ export const confirmarDevolucaoPorFuncionario = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    if (req.usuario.role !== "ADMIN") {
+    if (!["ADMIN", "GERENCIADOR"].includes(req.usuario.role)) {
       await transaction.rollback();
       return res
         .status(403)
-        .json({ error: "Acesso negado. Apenas administradores." });
+        .json({ error: "Acesso negado. Apenas ADMIN ou GERENCIADOR." });
     }
 
     const usuarioId = String(req.params.usuarioId);
@@ -257,10 +257,10 @@ export const confirmarDevolucaoPorFuncionario = async (req, res) => {
 
 export const esvaziarBasePecasDefeituosas = async (req, res) => {
   try {
-    if (req.usuario.role !== "ADMIN") {
+    if (!["ADMIN", "GERENCIADOR"].includes(req.usuario.role)) {
       return res
         .status(403)
-        .json({ error: "Acesso negado. Apenas administradores." });
+        .json({ error: "Acesso negado. Apenas ADMIN ou GERENCIADOR." });
     }
 
     const removidos = await PecaDefeituosaBase.destroy({ where: {} });

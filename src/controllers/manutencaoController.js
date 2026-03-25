@@ -34,6 +34,7 @@ const includePadrao = [
 ];
 
 const isStatusConcluido = (status) => ["feito", "concluida"].includes(status);
+const isAdminLike = (role) => ["ADMIN", "GERENCIADOR"].includes(role);
 
 const usuarioEhResponsavelRoteiroDaLoja = async (usuarioId, manutencao) => {
   if (!usuarioId || !manutencao?.lojaId) return false;
@@ -90,7 +91,7 @@ export const listarManutencoes = async (req, res) => {
       where.lojaId = req.query.lojaId;
     }
 
-    if (req.usuario.role !== "ADMIN") {
+    if (!isAdminLike(req.usuario.role)) {
       where.funcionarioId = req.usuario.id;
     }
 
@@ -171,7 +172,7 @@ export const atualizarManutencao = async (req, res) => {
       return res.status(404).json({ error: "Manutenção não encontrada" });
     }
 
-    const isAdmin = req.usuario.role === "ADMIN";
+    const isAdmin = isAdminLike(req.usuario.role);
 
     if (!isAdmin && manutencao.funcionarioId !== req.usuario.id) {
       return res
@@ -191,7 +192,7 @@ export const atualizarManutencao = async (req, res) => {
       if (!isAdmin) {
         return res
           .status(403)
-          .json({ error: "Apenas ADMIN pode alterar funcionário" });
+          .json({ error: "Apenas ADMIN ou GERENCIADOR pode alterar funcionário" });
       }
 
       if (funcionarioId) {

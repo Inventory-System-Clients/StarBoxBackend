@@ -102,7 +102,7 @@ export const registrarMovimentacao = async (req, res) => {
     const origemEstoqueNormalizada =
       origemEstoque === "loja" ? "loja" : "usuario";
 
-    const isAdmin = req.usuario?.role === "ADMIN";
+    const isAdmin = ["ADMIN", "GERENCIADOR"].includes(req.usuario?.role);
     const normalizarContador = (valor) => {
       if (!possuiNumero(valor)) return null;
       return inteiroSeguro(valor, null);
@@ -194,7 +194,7 @@ export const registrarMovimentacao = async (req, res) => {
         !isAdmin
       ) {
         return res.status(400).json({
-          error: `O contador IN (${contadorInSanitizado}) não pode ser menor que o anterior (${inteiroSeguro(ultimaMov.contadorIn, 0)}). Apenas ADMIN pode informar IN/OUT livremente.`,
+          error: `O contador IN (${contadorInSanitizado}) não pode ser menor que o anterior (${inteiroSeguro(ultimaMov.contadorIn, 0)}). Apenas ADMIN ou GERENCIADOR pode informar IN/OUT livremente.`,
         });
       }
 
@@ -892,7 +892,7 @@ export const atualizarMovimentacao = async (req, res) => {
 
     // Apenas admin ou o próprio usuário que criou pode editar
     if (
-      req.usuario.role !== "ADMIN" &&
+      !["ADMIN", "GERENCIADOR"].includes(req.usuario.role) &&
       movimentacao.usuarioId !== req.usuario.id
     ) {
       return res

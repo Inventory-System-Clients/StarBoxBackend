@@ -3,6 +3,9 @@ import { Usuario } from "../models/index.js";
 import LogAtividade from "../models/LogAtividade.js";
 import { getSecurityState } from "../services/securityService.js";
 
+const ADMIN_EQUIVALENT_ROLES = new Set(["ADMIN", "GERENCIADOR"]);
+export const isAdminLikeRole = (role) => ADMIN_EQUIVALENT_ROLES.has(role);
+
 // US01 - Middleware de Autenticação
 export const autenticar = async (req, res, next) => {
   try {
@@ -48,7 +51,12 @@ export const autenticar = async (req, res, next) => {
 export const autorizar = (...rolesPermitidas) => {
   const roles = rolesPermitidas.flat();
   return (req, res, next) => {
-    if (!roles.includes(req.usuario.role)) {
+    const roleAtual = req.usuario?.role;
+    const permitidoDiretamente = roles.includes(roleAtual);
+    const permitidoComoAdminEquivalente =
+      isAdminLikeRole(roleAtual) && roles.includes("ADMIN");
+
+    if (!permitidoDiretamente && !permitidoComoAdminEquivalente) {
       return res.status(403).json({
         error: "Acesso negado. Você não tem permissão para esta ação.",
       });
@@ -63,7 +71,7 @@ export const verificarPermissaoLoja = (acao = "visualizar") => {
     try {
       // Admin, FUNCIONARIO_TODAS_LOJAS e CONTROLADOR_ESTOQUE têm acesso total
       if (
-        req.usuario.role === "ADMIN" ||
+        isAdminLikeRole(req.usuario.role) ||
         req.usuario.role === "FUNCIONARIO_TODAS_LOJAS" ||
         req.usuario.role === "CONTROLADOR_ESTOQUE"
       ) {

@@ -1,12 +1,7 @@
-﻿import { CarrinhoPeca, Usuario, Peca } from "../models/index.js";
+﻿import { CarrinhoPeca, Peca } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 
-const rolesFuncionario = [
-  "FUNCIONARIO",
-  "FUNCIONARIO_TODAS_LOJAS",
-  "CONTROLADOR_ESTOQUE",
-];
-const ehRoleFuncionario = (role) => rolesFuncionario.includes(role);
+const ehAdminLike = (role) => ["ADMIN", "GERENCIADOR"].includes(role);
 
 // Funcao utilitaria para remover peca do carrinho apos movimentacao
 export const removerPecaDoCarrinho = async (usuarioId, pecaId) => {
@@ -32,8 +27,7 @@ export const listarCarrinho = async (req, res) => {
     const usuarioId = String(req.params.id);
 
     if (
-      req.usuario.role !== "ADMIN" &&
-      req.usuario.role !== "GERENCIADOR" &&
+      !ehAdminLike(req.usuario.role) &&
       String(req.usuario.id) !== usuarioId
     ) {
       return res.status(403).json({ error: "Acesso negado" });
@@ -67,23 +61,10 @@ export const adicionarAoCarrinho = async (req, res) => {
     }
 
     if (
-      req.usuario.role !== "ADMIN" &&
-      req.usuario.role !== "GERENCIADOR" &&
+      !ehAdminLike(req.usuario.role) &&
       String(req.usuario.id) !== usuarioId
     ) {
       return res.status(403).json({ error: "Acesso negado" });
-    }
-
-    if (
-      req.usuario.role === "GERENCIADOR" &&
-      String(req.usuario.id) !== usuarioId
-    ) {
-      const usuarioAlvo = await Usuario.findByPk(usuarioId);
-      if (!usuarioAlvo || !ehRoleFuncionario(usuarioAlvo.role)) {
-        return res
-          .status(403)
-          .json({ error: "So pode manipular carrinho de FUNCIONARIO" });
-      }
     }
 
     const transaction = await sequelize.transaction();
@@ -143,23 +124,10 @@ export const removerDoCarrinho = async (req, res) => {
     const pecaId = req.params.pecaId;
 
     if (
-      req.usuario.role !== "ADMIN" &&
-      req.usuario.role !== "GERENCIADOR" &&
+      !ehAdminLike(req.usuario.role) &&
       String(req.usuario.id) !== usuarioId
     ) {
       return res.status(403).json({ error: "Acesso negado" });
-    }
-
-    if (
-      req.usuario.role === "GERENCIADOR" &&
-      String(req.usuario.id) !== usuarioId
-    ) {
-      const usuarioAlvo = await Usuario.findByPk(usuarioId);
-      if (!usuarioAlvo || !ehRoleFuncionario(usuarioAlvo.role)) {
-        return res
-          .status(403)
-          .json({ error: "So pode manipular carrinho de FUNCIONARIO" });
-      }
     }
 
     const transaction = await sequelize.transaction();
@@ -206,23 +174,10 @@ export const devolverPecaDoCarrinho = async (req, res) => {
     const pecaId = req.params.pecaId;
 
     if (
-      req.usuario.role !== "ADMIN" &&
-      req.usuario.role !== "GERENCIADOR" &&
+      !ehAdminLike(req.usuario.role) &&
       String(req.usuario.id) !== usuarioId
     ) {
       return res.status(403).json({ error: "Acesso negado" });
-    }
-
-    if (
-      req.usuario.role === "GERENCIADOR" &&
-      String(req.usuario.id) !== usuarioId
-    ) {
-      const usuarioAlvo = await Usuario.findByPk(usuarioId);
-      if (!usuarioAlvo || !ehRoleFuncionario(usuarioAlvo.role)) {
-        return res
-          .status(403)
-          .json({ error: "So pode manipular carrinho de FUNCIONARIO" });
-      }
     }
 
     const transaction = await sequelize.transaction();
@@ -265,13 +220,13 @@ export const devolverPecaDoCarrinho = async (req, res) => {
   }
 };
 
-// Listar todos os carrinhos (visao consolidada para ADMIN)
+// Listar todos os carrinhos (visao consolidada para ADMIN e GERENCIADOR)
 export const listarTodosCarrinhos = async (req, res) => {
   try {
-    if (req.usuario.role !== "ADMIN") {
+    if (!ehAdminLike(req.usuario.role)) {
       return res
         .status(403)
-        .json({ error: "Acesso negado. Apenas administradores." });
+        .json({ error: "Acesso negado. Apenas ADMIN ou GERENCIADOR." });
     }
 
     const usuarios = await Usuario.findAll({
