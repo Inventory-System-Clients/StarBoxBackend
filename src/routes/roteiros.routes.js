@@ -27,6 +27,8 @@ import { Op, literal } from "sequelize";
 
 const router = express.Router();
 
+const ROLES_GESTAO_ROTEIROS = ["ADMIN", "GERENCIADOR"];
+
 const roteiroFoiFinalizadoHoje = async (roteiroId, transaction) => {
   if (!roteiroId) return false;
 
@@ -44,7 +46,7 @@ const roteiroFoiFinalizadoHoje = async (roteiroId, transaction) => {
 };
 
 // Criar novo roteiro (aceita diasSemana opcionalmente)
-router.post("/", autenticar, autorizar("ADMIN"), criarRoteiro);
+router.post("/", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), criarRoteiro);
 
 // Listar roteiros
 router.get("/", async (req, res) => {
@@ -72,7 +74,7 @@ router.get("/", async (req, res) => {
 });
 
 // Iniciar roteiro
-router.post("/:id/iniciar", async (req, res) => {
+router.post("/:id/iniciar", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), async (req, res) => {
   try {
     const { funcionarioId, funcionarioNome, veiculoId } = req.body;
     console.log("[INICIAR] body:", {
@@ -113,18 +115,18 @@ router.post("/:id/iniciar", async (req, res) => {
 router.get("/:id/gastos", autenticar, listarGastosRoteiro);
 router.post("/:id/gastos", autenticar, registrarGastoRoteiro);
 
-// Orçamento diário do roteiro (apenas ADMIN)
+// Orçamento diário do roteiro (ADMIN e GERENCIADOR)
 router.patch(
   "/:id/orcamento-diario",
   autenticar,
-  autorizar("ADMIN"),
+  autorizar(ROLES_GESTAO_ROTEIROS),
   atualizarOrcamentoDiarioRoteiro,
 );
 
-router.post("/:id/finalizar", autenticar, finalizarRoteiro);
+router.post("/:id/finalizar", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), finalizarRoteiro);
 
 // Mover loja entre roteiros
-router.post("/mover-loja", async (req, res) => {
+router.post("/mover-loja", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), async (req, res) => {
   try {
     const { lojaId, roteiroOrigemId, roteiroDestinoId } = req.body;
     console.log("[MOVER-LOJA] body:", {
@@ -248,11 +250,11 @@ router.post("/mover-loja", async (req, res) => {
   }
 });
 
-// Reordenar loja dentro do roteiro (ADMIN only)
+// Reordenar loja dentro do roteiro (ADMIN e GERENCIADOR)
 router.patch(
   "/:id/reordenar-loja",
   autenticar,
-  autorizar("ADMIN"),
+  autorizar(ROLES_GESTAO_ROTEIROS),
   async (req, res) => {
     try {
       const { id: roteiroId } = req.params;
@@ -394,7 +396,7 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
 });
 
 // Atualizar campos do roteiro (diasSemana, nome, observacao, funcionarioId, funcionarioNome, veiculoId)
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), async (req, res) => {
   try {
     const roteiro = await Roteiro.findByPk(req.params.id);
     if (!roteiro)
@@ -439,8 +441,8 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
-// Apagar roteiro (ADMIN)
-router.delete("/:id", autenticar, autorizar("ADMIN"), apagarRoteiro);
+// Apagar roteiro (ADMIN e GERENCIADOR)
+router.delete("/:id", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), apagarRoteiro);
 
 // Roteiros do dia corrente: GET /roteiros/do-dia?dia=SEG
 router.get("/do-dia", autenticar, async (req, res) => {
