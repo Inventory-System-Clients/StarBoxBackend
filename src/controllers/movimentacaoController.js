@@ -98,6 +98,7 @@ export const registrarMovimentacao = async (req, res) => {
       origemEstoque,
       confirmarUsoEstoqueLoja,
       produtoNaMaquinaId,
+      produto_na_maquina_id,
     } = req.body;
 
     const origemEstoqueNormalizada =
@@ -133,6 +134,16 @@ export const registrarMovimentacao = async (req, res) => {
         error: "maquinaId, totalPre e abastecidas são obrigatórios",
       });
     }
+
+    const totalPreQtd = inteiroSeguro(totalPre, 0);
+    const abastecidasQtd = inteiroSeguro(abastecidas, 0);
+    const fichasQtd = inteiroSeguro(fichas, 0);
+    const notasEntradaValor = possuiNumero(quantidade_notas_entrada)
+      ? Number(quantidade_notas_entrada)
+      : 0;
+    const pixEntradaValor = possuiNumero(valor_entrada_maquininha_pix)
+      ? Number(valor_entrada_maquininha_pix)
+      : 0;
 
     const isValorContadorValido = (valor) =>
       valor !== null &&
@@ -219,28 +230,22 @@ export const registrarMovimentacao = async (req, res) => {
     }
     if (
       ultimaMov &&
-      typeof ultimaMov.totalPos === "number" &&
-      totalPre > ultimaMov.totalPos &&
+      totalPreQtd > inteiroSeguro(ultimaMov.totalPos, 0) &&
       !isAdmin
     ) {
       return res.status(400).json({
-        error: `Não é permitido abastecer a máquina com uma quantidade maior (${totalPre}) do que o total pós da última movimentação. Confira o que você digitou.`,
+        error: `Não é permitido abastecer a máquina com uma quantidade maior (${totalPreQtd}) do que o total pós da última movimentação. Confira o que você digitou.`,
       });
     }
 
     // --- Recalcular saída (sairam) para garantir consistência ---
-    // Usar contadores digitais para cálculo
+    // Regra de negócio: saída = totalPos da última movimentação - total atual informado.
     let saidaRecalculada = 0;
-    if (
-      typeof contadorInDigitalSanitizado === "number" &&
-      typeof contadorOutDigitalSanitizado === "number"
-    ) {
+    if (ultimaMov) {
       saidaRecalculada = Math.max(
         0,
-        contadorOutDigitalSanitizado - contadorInDigitalSanitizado,
+        inteiroSeguro(ultimaMov.totalPos, 0) - totalPreQtd,
       );
-    } else if (ultimaMov && typeof ultimaMov.totalPos === "number") {
-      saidaRecalculada = Math.max(0, ultimaMov.totalPos - totalPre);
     }
     // Se não houver movimentação anterior, saída é zero
 
@@ -254,8 +259,21 @@ export const registrarMovimentacao = async (req, res) => {
       ? produtos.find((item) => Number(item?.quantidadeSaiu || 0) > 0)
       : null;
 
+    const produtoComAbastecimentoPrincipal = Array.isArray(produtos)
+      ? produtos.find((item) => Number(item?.quantidadeAbastecida || 0) > 0)
+      : null;
+
+    const primeiroProdutoInformado = Array.isArray(produtos)
+      ? produtos.find((item) => item?.produtoId)
+      : null;
+
     const produtoNaMaquinaIdFinal =
-      produtoNaMaquinaId || produtoComSaida?.produtoId || null;
+      produtoNaMaquinaId ||
+      produto_na_maquina_id ||
+      produtoComSaida?.produtoId ||
+      produtoComAbastecimentoPrincipal?.produtoId ||
+      primeiroProdutoInformado?.produtoId ||
+      null;
 
     if (produtoNaMaquinaIdFinal) {
       const produtoNaMaquinaExiste = await Produto.findByPk(produtoNaMaquinaIdFinal, {
@@ -387,18 +405,17 @@ export const registrarMovimentacao = async (req, res) => {
 
     console.log("📝 [registrarMovimentacao] Criando movimentação:", {
       maquinaId,
-      totalPre,
+      totalPre: totalPreQtd,
       sairam: saidaRecalculada,
-      abastecidas,
-      totalPosCalculado: totalPre - saidaRecalculada + abastecidas,
+      abastecidas: abastecidasQtd,
+      totalPosCalculado: totalPreQtd - saidaRecalculada + abastecidasQtd,
     });
 
     // Criar movimentação — persistir TODOS os campos enviados pelo frontend
-    const fichasQtd = fichas || 0;
     const valorFaturado =
       fichasQtd * parseFloat(maquina.valorFicha || 0) +
-      parseFloat(quantidade_notas_entrada || 0) +
-      parseFloat(valor_entrada_maquininha_pix || 0);
+      notasEntradaValor +
+      pixEntradaValor;
 
     // Verificar justificativa de quebra de ordem pendente para esta loja
     const justificativaPendente = maquina.lojaId
@@ -409,16 +426,20 @@ export const registrarMovimentacao = async (req, res) => {
       maquinaId,
       usuarioId: req.usuario.id,
       dataColeta: dataColeta || new Date(),
-      totalPre,
+      totalPre: totalPreQtd,
       sairam: saidaRecalculada,
-      abastecidas,
+      abastecidas: abastecidasQtd,
       fichas: fichasQtd,
       valorFaturado: parseFloat(valorFaturado.toFixed(2)),
       contadorIn: contadorInSanitizado,
       contadorOut: contadorOutSanitizado,
       contadorMaquina: contadorMaquina ?? null,
-      quantidade_notas_entrada: quantidade_notas_entrada ?? null,
-      valor_entrada_maquininha_pix: valor_entrada_maquininha_pix ?? null,
+      quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
+        ? notasEntradaValor
+        : null,
+      valor_entrada_maquininha_pix: possuiNumero(valor_entrada_maquininha_pix)
+        ? pixEntradaValor
+        : null,
       observacoes,
       tipoOcorrencia: tipoOcorrencia || "Normal",
       retiradaEstoque: retiradaEstoque || false,
