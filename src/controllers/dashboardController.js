@@ -1,69 +1,175 @@
 import { Op } from "sequelize";
-import { Movimentacao, Maquina } from "../models/index.js";
+import {
+  Movimentacao,
+  Maquina,
+  FluxoCaixa,
+  MovimentacaoProduto,
+  Produto,
+  ContasFinanceiro,
+} from "../models/index.js";
 
-// Lucro diário agrupado por dia para mês atual e anterior
+// Lucro líquido diário consolidado de todas as lojas para o mês informado
 export const lucroDiario = async (req, res) => {
   try {
-    const { lojaId } = req.query;
+    const paraNumero = (valor) => {
+      const numero = Number(valor);
+      return Number.isFinite(numero) ? numero : 0;
+    };
+
+    const pad2 = (valor) => String(valor).padStart(2, "0");
+    const formatarDataLocal = (data) =>
+      `${data.getFullYear()}-${pad2(data.getMonth() + 1)}-${pad2(data.getDate())}`;
+
+    const arredondar2 = (valor) => Number(paraNumero(valor).toFixed(2));
+
+    const { ano: anoQuery, mes: mesQuery } = req.query;
     const hoje = new Date();
-    const ano = hoje.getFullYear();
-    const mesAtual = hoje.getMonth();
-    const mesAnterior = mesAtual === 0 ? 11 : mesAtual - 1;
-    const anoAnterior = mesAtual === 0 ? ano - 1 : ano;
 
-    // Gera array de datas do mês atual e anterior
-    function datasDoMes(ano, mes) {
-      const datas = [];
-      const primeiro = new Date(ano, mes, 1);
-      const ultimo = new Date(ano, mes + 1, 0);
-      for (let d = new Date(primeiro); d <= ultimo; d.setDate(d.getDate() + 1)) {
-        datas.push(new Date(d));
-      }
-      return datas;
+    const ano = Number(anoQuery ?? hoje.getFullYear());
+    const mes = Number(mesQuery ?? hoje.getMonth() + 1);
+
+    if (!Number.isInteger(ano) || ano < 2000 || ano > 2100) {
+      return res.status(400).json({ error: "Parâmetro ano inválido" });
     }
-    const datasAtual = datasDoMes(ano, mesAtual);
-    const datasAnt = datasDoMes(anoAnterior, mesAnterior);
-    const todasDatas = [...datasAnt, ...datasAtual];
 
-    // Busca lucro por dia
+    if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
+      return res.status(400).json({ error: "Parâmetro mes inválido" });
+    }
+
+    const mesIndex = mes - 1;
+    const inicioMes = new Date(ano, mesIndex, 1, 0, 0, 0, 0);
+    const fimMes = new Date(ano, mesIndex + 1, 0, 23, 59, 59, 999);
+
     const resultado = {};
-    for (const data of todasDatas) {
-      const inicio = new Date(data);
-      inicio.setHours(0, 0, 0, 0);
-      const fim = new Date(data);
-      fim.setHours(23, 59, 59, 999);
-      const dataISO = inicio.toISOString().slice(0, 10);
-      const where = {
-        dataColeta: { [Op.between]: [inicio, fim] },
-        retiradaEstoque: false,
+    const acumuladoresPorDia = {};
+
+    for (
+      let data = new Date(inicioMes);
+      data <= fimMes;
+      data = new Date(data.getFullYear(), data.getMonth(), data.getDate() + 1)
+    ) {
+      const chave = formatarDataLocal(data);
+      resultado[chave] = 0;
+      acumuladoresPorDia[chave] = {
+        receitaBruta: 0,
+        comissao: 0,
+        custoProdutos: 0,
+        despesasFinanceiras: 0,
       };
-      if (lojaId) where["$maquina.lojaId$"] = lojaId;
-      const movimentacoes = await Movimentacao.findAll({
-        where,
-        include: [{ model: Maquina, as: "maquina", attributes: ["valorFicha", "lojaId"] }],
-      });
-      let receitaBruta = 0;
-      let custoProdutos = 0;
-      let comissaoTotal = 0;
-      for (const m of movimentacoes) {
-        const fichas = parseInt(m.fichas) || 0;
-        const valorFicha = parseFloat(m.maquina?.valorFicha || 0);
-        const dinheiro = parseFloat(m.quantidade_notas_entrada || 0);
-        const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
-        const receitaMaquina = fichas * valorFicha + dinheiro + pix;
-        receitaBruta += receitaMaquina;
-        const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
-        comissaoTotal += (receitaMaquina * percentual) / 100;
-        // Custo produtos: se tiver MovimentacaoProduto, some aqui
-        // (simplificado, pois não temos acesso direto)
-      }
-      // custos fixos/variáveis omitidos para simplificação
-      const lucroTotal = receitaBruta - custoProdutos - comissaoTotal;
-      resultado[dataISO] = parseFloat(lucroTotal.toFixed(2));
     }
+
+    const movimentacoes = await Movimentacao.findAll({
+      where: {
+        dataColeta: { [Op.between]: [inicioMes, fimMes] },
+        retiradaEstoque: false,
+      },
+      include: [
+        {
+          model: Maquina,
+          as: "maquina",
+          attributes: ["valorFicha", "comissaoLojaPercentual"],
+        },
+        {
+          model: FluxoCaixa,
+          as: "fluxoCaixa",
+          required: false,
+          attributes: ["valorRetirado"],
+        },
+      ],
+    });
+
+    for (const mov of movimentacoes) {
+      const dataMov = mov?.dataColeta ? new Date(mov.dataColeta) : null;
+      if (!dataMov) continue;
+      const chave = formatarDataLocal(dataMov);
+      const acumulador = acumuladoresPorDia[chave];
+      if (!acumulador) continue;
+
+      const fichas = paraNumero(mov.fichas);
+      const valorFicha = paraNumero(mov.maquina?.valorFicha);
+      const dinheiro = paraNumero(mov.quantidade_notas_entrada);
+      const pix = paraNumero(mov.valor_entrada_maquininha_pix);
+
+      let valorFichas = fichas * valorFicha;
+      if (mov.retiradaDinheiro && mov.fluxoCaixa?.valorRetirado !== null) {
+        valorFichas = paraNumero(mov.fluxoCaixa?.valorRetirado);
+      }
+
+      const receitaMaquina = valorFichas + dinheiro + pix;
+      const percentualComissao = paraNumero(mov.maquina?.comissaoLojaPercentual);
+      const comissao = (receitaMaquina * percentualComissao) / 100;
+
+      acumulador.receitaBruta += receitaMaquina;
+      acumulador.comissao += comissao;
+    }
+
+    const itensVendidos = await MovimentacaoProduto.findAll({
+      attributes: ["quantidadeSaiu"],
+      include: [
+        {
+          model: Produto,
+          as: "produto",
+          attributes: ["custoUnitario"],
+        },
+        {
+          model: Movimentacao,
+          required: true,
+          attributes: ["dataColeta"],
+          where: {
+            dataColeta: { [Op.between]: [inicioMes, fimMes] },
+            retiradaEstoque: false,
+          },
+        },
+      ],
+    });
+
+    for (const item of itensVendidos) {
+      const dataMov = item?.Movimentacao?.dataColeta
+        ? new Date(item.Movimentacao.dataColeta)
+        : null;
+      if (!dataMov) continue;
+      const chave = formatarDataLocal(dataMov);
+      const acumulador = acumuladoresPorDia[chave];
+      if (!acumulador) continue;
+
+      const quantidadeSaiu = paraNumero(item.quantidadeSaiu);
+      const custoUnitario = paraNumero(item.produto?.custoUnitario);
+      acumulador.custoProdutos += quantidadeSaiu * custoUnitario;
+    }
+
+    const inicioMesIso = formatarDataLocal(inicioMes);
+    const fimMesIso = formatarDataLocal(fimMes);
+
+    const despesasFinanceiras = await ContasFinanceiro.findAll({
+      attributes: ["due_date", "value"],
+      where: {
+        due_date: { [Op.between]: [inicioMesIso, fimMesIso] },
+        status: { [Op.ne]: "paid" },
+      },
+      raw: true,
+    });
+
+    for (const despesa of despesasFinanceiras) {
+      const chave = String(despesa?.due_date || "").slice(0, 10);
+      const acumulador = acumuladoresPorDia[chave];
+      if (!acumulador) continue;
+      acumulador.despesasFinanceiras += paraNumero(despesa?.value);
+    }
+
+    for (const [data, valores] of Object.entries(acumuladoresPorDia)) {
+      const lucroLiquido =
+        valores.receitaBruta -
+        valores.comissao -
+        valores.custoProdutos -
+        valores.despesasFinanceiras;
+
+      resultado[data] = arredondar2(lucroLiquido);
+    }
+
     res.json(resultado);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("[dashboard.lucroDiario] Erro:", error);
+    res.status(500).json({ error: "Erro ao gerar lucro diário consolidado" });
   }
 };
 

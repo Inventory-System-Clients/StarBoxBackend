@@ -6,7 +6,7 @@ import { autenticar, autorizar } from "../middlewares/auth.js";
 
 const router = express.Router();
 
-// GET /dashboard/lucro-diario?lojaId=...
+// GET /dashboard/lucro-diario?ano=2026&mes=3
 router.get("/lucro-diario", autenticar, lucroDiario);
 
 // GET /dashboard/faturamento-semanal?lojaId=...
