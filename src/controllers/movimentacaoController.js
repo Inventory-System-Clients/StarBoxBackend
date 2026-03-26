@@ -97,6 +97,7 @@ export const registrarMovimentacao = async (req, res) => {
       ignoreInOut,
       origemEstoque,
       confirmarUsoEstoqueLoja,
+      produtoNaMaquinaId,
     } = req.body;
 
     const origemEstoqueNormalizada =
@@ -247,6 +248,24 @@ export const registrarMovimentacao = async (req, res) => {
     const maquina = await Maquina.findByPk(maquinaId);
     if (!maquina) {
       return res.status(404).json({ error: "Máquina não encontrada" });
+    }
+
+    const produtoComSaida = Array.isArray(produtos)
+      ? produtos.find((item) => Number(item?.quantidadeSaiu || 0) > 0)
+      : null;
+
+    const produtoNaMaquinaIdFinal =
+      produtoNaMaquinaId || produtoComSaida?.produtoId || null;
+
+    if (produtoNaMaquinaIdFinal) {
+      const produtoNaMaquinaExiste = await Produto.findByPk(produtoNaMaquinaIdFinal, {
+        attributes: ["id"],
+      });
+      if (!produtoNaMaquinaExiste) {
+        return res.status(400).json({
+          error: "produtoNaMaquinaId informado não existe no cadastro de produtos",
+        });
+      }
     }
 
     const produtosComAbastecimento = Array.isArray(produtos)
@@ -404,6 +423,7 @@ export const registrarMovimentacao = async (req, res) => {
       tipoOcorrencia: tipoOcorrencia || "Normal",
       retiradaEstoque: retiradaEstoque || false,
       retiradaDinheiro: retiradaDinheiro || false,
+      produtoNaMaquinaId: produtoNaMaquinaIdFinal,
       roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
       justificativa_ordem: justificativaPendente?.justificativa ?? null,
     });

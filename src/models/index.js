@@ -97,6 +97,16 @@ Movimentacao.belongsTo(Maquina, { foreignKey: "maquinaId", as: "maquina" });
 Usuario.hasMany(Movimentacao, { foreignKey: "usuarioId", as: "movimentacoes" });
 Movimentacao.belongsTo(Usuario, { foreignKey: "usuarioId", as: "usuario" });
 
+// Produto atual da máquina na movimentação (fallback de relatório)
+Produto.hasMany(Movimentacao, {
+  foreignKey: "produtoNaMaquinaId",
+  as: "movimentacoesProdutoNaMaquina",
+});
+Movimentacao.belongsTo(Produto, {
+  foreignKey: "produtoNaMaquinaId",
+  as: "produtoNaMaquina",
+});
+
 // Movimentação <-> Produtos (many-to-many)
 Movimentacao.belongsToMany(Produto, {
   through: MovimentacaoProduto,

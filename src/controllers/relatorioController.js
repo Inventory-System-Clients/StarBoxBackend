@@ -1516,6 +1516,19 @@ export const relatorioImpressao = async (req, res) => {
             },
           ],
         },
+        {
+          model: Produto,
+          as: "produtoNaMaquina",
+          required: false,
+          attributes: [
+            "id",
+            "nome",
+            "codigo",
+            "emoji",
+            "preco",
+            "custoUnitario",
+          ],
+        },
       ],
       order: [["dataColeta", "DESC"]],
     });
@@ -1735,6 +1748,28 @@ export const relatorioImpressao = async (req, res) => {
 
       // Sem fallback por movimentação: placeholder só é aplicado em legado
       // excepcional no pós-processamento quando não houver nenhum item real.
+
+      const quantidadeSaiuMov = paraNumero(mov.sairam);
+      const quantidadeSemDetalhe = Math.max(
+        0,
+        quantidadeSaiuMov - quantidadeSaiuDetalhadaMov,
+      );
+
+      if (quantidadeSemDetalhe > 0 && mov.produtoNaMaquina?.id) {
+        const detalhePorProdutoNaMaquina = {
+          produtoId: mov.produtoNaMaquina.id,
+          produto: mov.produtoNaMaquina,
+          quantidadeSaiu: quantidadeSemDetalhe,
+          custoUnitario: mov.produtoNaMaquina.custoUnitario,
+          valorUnitario: mov.produtoNaMaquina.preco,
+        };
+
+        adicionarProdutoSaida(produtosSairamMap, detalhePorProdutoNaMaquina);
+        adicionarProdutoSaida(
+          dadosPorMaquina[maquinaId].produtosSairam,
+          detalhePorProdutoNaMaquina,
+        );
+      }
     });
 
     const existeProdutoRealConsolidado = Object.keys(produtosSairamMap).some(

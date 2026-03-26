@@ -151,6 +151,17 @@ const Movimentacao = sequelize.define(
       type: DataTypes.UUID,
       allowNull: true,
     },
+    produtoNaMaquinaId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "produto_na_maquina_id",
+      references: {
+        model: "produtos",
+        key: "id",
+      },
+      comment:
+        "Produto predominante na maquina no momento da movimentacao (fallback para relatorios sem detalhe)",
+    },
   },
   {
     tableName: "movimentacoes",
