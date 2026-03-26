@@ -68,6 +68,94 @@ export const relatorioRoteiro = async (req, res) => {
         .json({ error: "roteiroId, dataInicio e dataFim são obrigatórios" });
     }
 
+    const paraNumero = (valor) => {
+      const n = Number(valor);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const arredondar2 = (valor) => Number(paraNumero(valor).toFixed(2));
+
+    const resolverValorUnitarioSaida = (detalheProduto) => {
+      const custoUnitarioMov = paraNumero(detalheProduto?.custoUnitario);
+      if (custoUnitarioMov > 0) return custoUnitarioMov;
+
+      const valorUnitarioMov = paraNumero(detalheProduto?.valorUnitario);
+      if (valorUnitarioMov > 0) return valorUnitarioMov;
+
+      const precoCadastro = paraNumero(detalheProduto?.produto?.preco);
+      if (precoCadastro > 0) return precoCadastro;
+
+      return paraNumero(detalheProduto?.produto?.custoUnitario);
+    };
+
+    const adicionarProdutoSaida = (mapa, detalheProduto) => {
+      const quantidade = paraNumero(detalheProduto?.quantidadeSaiu);
+      if (quantidade <= 0) return;
+
+      const produto = detalheProduto?.produto || {};
+      const produtoId = detalheProduto?.produtoId || produto?.id;
+      if (!produtoId) return;
+
+      const key = String(produtoId);
+      if (!mapa[key]) {
+        mapa[key] = {
+          produtoId: key,
+          id: key,
+          nome: produto?.nome || "Produto",
+          codigo: produto?.codigo || "S/C",
+          emoji: produto?.emoji || null,
+          quantidade: 0,
+          valorTotalBruto: 0,
+          preco: paraNumero(produto?.preco),
+          custoUnitario: paraNumero(produto?.custoUnitario),
+        };
+      }
+
+      const valorUnitario = resolverValorUnitarioSaida(detalheProduto);
+      mapa[key].quantidade += quantidade;
+      mapa[key].valorTotalBruto += quantidade * valorUnitario;
+    };
+
+    const mapearProdutosSaida = (mapa) =>
+      Object.values(mapa)
+        .map((item) => {
+          const quantidade = paraNumero(item.quantidade);
+          const valorTotal = arredondar2(item.valorTotalBruto);
+          const valorUnitario =
+            quantidade > 0 ? arredondar2(valorTotal / quantidade) : 0;
+
+          return {
+            produtoId: item.produtoId,
+            id: item.id,
+            nome: item.nome,
+            codigo: item.codigo,
+            emoji: item.emoji,
+            quantidade,
+            valorUnitario,
+            valorTotal,
+            preco: item.preco,
+            custoUnitario: item.custoUnitario,
+          };
+        })
+        .sort(
+          (a, b) =>
+            b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, "pt-BR"),
+        );
+
+    const calcularCustoProdutos = (produtos = []) =>
+      arredondar2(
+        produtos.reduce((acc, produto) => {
+          if (produto?.valorTotal !== undefined) {
+            return acc + paraNumero(produto.valorTotal);
+          }
+          return (
+            acc +
+            paraNumero(produto?.quantidade) *
+              paraNumero(produto?.custoUnitario || produto?.valorUnitario)
+          );
+        }, 0),
+      );
+
     // Buscar roteiro e lojas
     const roteiro = await Roteiro.findByPk(roteiroId, {
       include: [{ model: Loja, as: "lojas", attributes: ["id", "nome"] }],
@@ -87,6 +175,26 @@ export const relatorioRoteiro = async (req, res) => {
       d.setDate(d.getDate() + 1);
     }
 
+    const respostasFinanceiras = await Promise.allSettled(
+      lojas.map((loja) =>
+        obterRelatorioImpressaoInterno({
+          lojaId: loja.id,
+          dataInicio,
+          dataFim,
+        }),
+      ),
+    );
+
+    const relatorioFinanceiroPorLoja = new Map(
+      lojas.map((loja, index) => {
+        const resposta = respostasFinanceiras[index];
+        if (resposta?.status === "fulfilled") {
+          return [loja.id, resposta.value];
+        }
+        return [loja.id, null];
+      }),
+    );
+
     // Novos agregadores globais
     let totaisRoteiro = {
       fichas: 0,
@@ -97,6 +205,16 @@ export const relatorioRoteiro = async (req, res) => {
     const produtosSairamMap = {};
     const produtosEntraramMap = {};
     const lojasResp = [];
+    const totaisFinanceirosRota = {
+      lucroBrutoTotal: 0,
+      produtosSairamTotal: 0,
+      custoProdutosTotal: 0,
+      custoFixoTotal: 0,
+      custoQuebraCaixaTotal: 0,
+      custoVariavelTotal: 0,
+      custoTotal: 0,
+      lucroLiquidoTotal: 0,
+    };
 
     for (const loja of lojas) {
       // Buscar movimentações da loja no período, incluindo detalhes de produtos e máquina
@@ -115,8 +233,27 @@ export const relatorioRoteiro = async (req, res) => {
             include: [
               {
                 association: "produto",
-                attributes: ["id", "nome", "codigo", "emoji"],
+                attributes: [
+                  "id",
+                  "nome",
+                  "codigo",
+                  "emoji",
+                  "preco",
+                  "custoUnitario",
+                ],
               },
+            ],
+          },
+          {
+            association: "produtoNaMaquina",
+            required: false,
+            attributes: [
+              "id",
+              "nome",
+              "codigo",
+              "emoji",
+              "preco",
+              "custoUnitario",
             ],
           },
         ],
@@ -155,27 +292,18 @@ export const relatorioRoteiro = async (req, res) => {
         m.totais.produtosEntraram += mov.abastecidas || 0;
         m.totais.movimentacoes++;
 
+        let quantidadeSaiuDetalhadaMov = 0;
+
         // Produtos por máquina, loja e agregação global
         for (const dp of mov.detalhesProdutos || []) {
           const prod = dp.produto;
           if (!prod) continue;
           // Saíram
           if (dp.quantidadeSaiu > 0) {
-            if (!m.produtosSairam[prod.id])
-              m.produtosSairam[prod.id] = { ...prod.dataValues, quantidade: 0 };
-            m.produtosSairam[prod.id].quantidade += dp.quantidadeSaiu;
-            if (!produtosSairamLoja[prod.id])
-              produtosSairamLoja[prod.id] = {
-                ...prod.dataValues,
-                quantidade: 0,
-              };
-            produtosSairamLoja[prod.id].quantidade += dp.quantidadeSaiu;
-            if (!produtosSairamMap[prod.id])
-              produtosSairamMap[prod.id] = {
-                ...prod.dataValues,
-                quantidade: 0,
-              };
-            produtosSairamMap[prod.id].quantidade += dp.quantidadeSaiu;
+            quantidadeSaiuDetalhadaMov += paraNumero(dp.quantidadeSaiu);
+            adicionarProdutoSaida(m.produtosSairam, dp);
+            adicionarProdutoSaida(produtosSairamLoja, dp);
+            adicionarProdutoSaida(produtosSairamMap, dp);
           }
           // Entraram
           if (dp.quantidadeAbastecida > 0) {
@@ -198,6 +326,25 @@ export const relatorioRoteiro = async (req, res) => {
               };
             produtosEntraramMap[prod.id].quantidade += dp.quantidadeAbastecida;
           }
+        }
+
+        const quantidadeSemDetalhe = Math.max(
+          0,
+          paraNumero(mov.sairam) - quantidadeSaiuDetalhadaMov,
+        );
+
+        if (quantidadeSemDetalhe > 0 && mov.produtoNaMaquina?.id) {
+          const detalheProdutoNaMaquina = {
+            produtoId: mov.produtoNaMaquina.id,
+            produto: mov.produtoNaMaquina,
+            quantidadeSaiu: quantidadeSemDetalhe,
+            custoUnitario: mov.produtoNaMaquina.custoUnitario,
+            valorUnitario: mov.produtoNaMaquina.preco,
+          };
+
+          adicionarProdutoSaida(m.produtosSairam, detalheProdutoNaMaquina);
+          adicionarProdutoSaida(produtosSairamLoja, detalheProdutoNaMaquina);
+          adicionarProdutoSaida(produtosSairamMap, detalheProdutoNaMaquina);
         }
       }
 
@@ -222,6 +369,64 @@ export const relatorioRoteiro = async (req, res) => {
       totaisRoteiro.abastecidas += totais.abastecidas;
       totaisRoteiro.movimentacoes += totais.movimentacoes;
 
+      const relatorioLoja = relatorioFinanceiroPorLoja.get(loja.id) || {};
+      const totaisLoja = relatorioLoja?.totais || {};
+      const produtosSairamFinanceiroLoja = relatorioLoja?.produtosSairam || [];
+
+      const custoProdutosLoja = calcularCustoProdutos(produtosSairamFinanceiroLoja);
+      const custoFixoLoja = paraNumero(
+        totaisLoja.custoFixoPeriodo ?? totaisLoja.gastoFixoTotalPeriodo ?? 0,
+      );
+      const custoQuebraCaixaLoja = paraNumero(
+        totaisLoja.custoQuebraCaixaTotal ??
+          totaisLoja.custoQuebraCaixaPeriodo ??
+          totaisLoja.quebraCaixaTotal ??
+          0,
+      );
+      const custoVariavelLoja = paraNumero(
+        totaisLoja.custoVariavelPeriodo ?? totaisLoja.gastoVariavelTotalPeriodo ?? 0,
+      );
+
+      const dinheiroLoja = paraNumero(totaisLoja.valorDinheiroLoja);
+      const dinheiroMaquinas = paraNumero(totaisLoja.valorDinheiroMaquinas);
+      const cartaoPixLoja = paraNumero(totaisLoja.valorCartaoPixLoja);
+      const cartaoPixMaquinas = paraNumero(totaisLoja.valorCartaoPixMaquinasBruto);
+      const lucroBrutoLoja = paraNumero(
+        totaisLoja.faturamentoBrutoConsolidado ??
+          totaisLoja.valorBrutoConsolidadoLojaMaquinas ??
+          dinheiroLoja + dinheiroMaquinas + cartaoPixLoja + cartaoPixMaquinas,
+      );
+      const custoTotalLoja = arredondar2(
+        custoProdutosLoja +
+          custoFixoLoja +
+          custoQuebraCaixaLoja +
+          custoVariavelLoja,
+      );
+      const lucroLiquidoLoja = arredondar2(lucroBrutoLoja - custoTotalLoja);
+
+      const produtosSairamLojaDetalhados = mapearProdutosSaida(produtosSairamLoja);
+      const produtosSairamLojaTotal = arredondar2(
+        produtosSairamLojaDetalhados.reduce(
+          (acc, item) => acc + paraNumero(item.quantidade),
+          0,
+        ),
+      );
+      const custoProdutosSairamLoja = arredondar2(
+        produtosSairamLojaDetalhados.reduce(
+          (acc, item) => acc + paraNumero(item.valorTotal),
+          0,
+        ),
+      );
+
+      totaisFinanceirosRota.lucroBrutoTotal += lucroBrutoLoja;
+      totaisFinanceirosRota.produtosSairamTotal += produtosSairamLojaTotal;
+      totaisFinanceirosRota.custoProdutosTotal += custoProdutosSairamLoja;
+      totaisFinanceirosRota.custoFixoTotal += custoFixoLoja;
+      totaisFinanceirosRota.custoQuebraCaixaTotal += custoQuebraCaixaLoja;
+      totaisFinanceirosRota.custoVariavelTotal += custoVariavelLoja;
+      totaisFinanceirosRota.custoTotal += custoTotalLoja;
+      totaisFinanceirosRota.lucroLiquidoTotal += lucroLiquidoLoja;
+
       // Dias sem movimentação
       const diasSemMovimentacao = diasPeriodo.filter(
         (dia) => !diasComMov.has(dia),
@@ -231,7 +436,7 @@ export const relatorioRoteiro = async (req, res) => {
       const maquinas = Object.values(maquinasMap).map((m) => ({
         maquina: m.maquina,
         totais: m.totais,
-        produtosSairam: Object.values(m.produtosSairam),
+        produtosSairam: mapearProdutosSaida(m.produtosSairam),
         produtosEntraram: Object.values(m.produtosEntraram),
       }));
 
@@ -266,28 +471,97 @@ export const relatorioRoteiro = async (req, res) => {
       });
 
       lojasResp.push({
+        id: loja.id,
+        lojaId: loja.id,
+        nome: loja.nome,
         loja: { id: loja.id, nome: loja.nome },
         totais,
+        resumoFinanceiro: {
+          lucroBruto: arredondar2(lucroBrutoLoja),
+          produtosSairamTotal: produtosSairamLojaTotal,
+          custoProdutosTotal: custoProdutosSairamLoja,
+          custoFixoTotal: arredondar2(custoFixoLoja),
+          custoQuebraCaixaTotal: arredondar2(custoQuebraCaixaLoja),
+          custoVariavelTotal: arredondar2(custoVariavelLoja),
+          custoTotal: arredondar2(custoTotalLoja),
+          lucroLiquidoTotal: arredondar2(lucroLiquidoLoja),
+        },
         diasSemMovimentacao,
         maquinas,
-        produtosSairam: Object.values(produtosSairamLoja),
+        produtosSairam: produtosSairamLojaDetalhados,
         produtosEntraram: Object.values(produtosEntraramLoja),
         maquinasNaoFeitas,
       });
     }
 
-    // Consolidar arrays globais
-    const produtosSairam = Object.values(produtosSairamMap).sort(
-      (a, b) => b.quantidade - a.quantidade,
+    const existeProdutoRealConsolidado = Object.keys(produtosSairamMap).some(
+      (id) => id !== "__SEM_DETALHE__",
     );
+
+    if (!existeProdutoRealConsolidado && totaisRoteiro.sairam > 0) {
+      const quantidadeConsolidadaSemDetalhe = paraNumero(totaisRoteiro.sairam);
+      if (quantidadeConsolidadaSemDetalhe > 0) {
+        adicionarProdutoSaida(produtosSairamMap, {
+          produtoId: "__SEM_DETALHE__",
+          produto: {
+            id: "__SEM_DETALHE__",
+            nome: "Produto não detalhado",
+            codigo: "SEM-DETALHE",
+            emoji: "📦",
+            preco: 0,
+            custoUnitario: 0,
+          },
+          quantidadeSaiu: quantidadeConsolidadaSemDetalhe,
+          custoUnitario: 0,
+          valorUnitario: 0,
+        });
+      }
+    }
+
+    // Consolidar arrays globais
+    const produtosSairam = mapearProdutosSaida(produtosSairamMap);
     const produtosEntraram = Object.values(produtosEntraramMap).sort(
       (a, b) => b.quantidade - a.quantidade,
     );
 
+    const resumoRoteiroConsolidado = {
+      totais: {
+        lucroBrutoTotal: arredondar2(totaisFinanceirosRota.lucroBrutoTotal),
+        produtosSairamTotal: arredondar2(
+          produtosSairam.reduce((acc, item) => acc + paraNumero(item.quantidade), 0),
+        ),
+        custoProdutosTotal: arredondar2(
+          produtosSairam.reduce((acc, item) => acc + paraNumero(item.valorTotal), 0),
+        ),
+        custoFixoTotal: arredondar2(totaisFinanceirosRota.custoFixoTotal),
+        custoQuebraCaixaTotal: arredondar2(
+          totaisFinanceirosRota.custoQuebraCaixaTotal,
+        ),
+        custoVariavelTotal: arredondar2(totaisFinanceirosRota.custoVariavelTotal),
+        custoTotal: 0,
+        lucroLiquidoTotal: 0,
+      },
+      produtosSairam,
+    };
+
+    resumoRoteiroConsolidado.totais.custoTotal = arredondar2(
+      resumoRoteiroConsolidado.totais.custoProdutosTotal +
+        resumoRoteiroConsolidado.totais.custoFixoTotal +
+        resumoRoteiroConsolidado.totais.custoQuebraCaixaTotal +
+        resumoRoteiroConsolidado.totais.custoVariavelTotal,
+    );
+
+    resumoRoteiroConsolidado.totais.lucroLiquidoTotal = arredondar2(
+      resumoRoteiroConsolidado.totais.lucroBrutoTotal -
+        resumoRoteiroConsolidado.totais.custoTotal,
+    );
+
     res.json({
+      tipo: "roteiro",
       roteiro: { id: roteiro.id, nome: roteiro.nome },
       periodo: { inicio: dataInicio, fim: dataFim },
       totaisRoteiro,
+      resumoRoteiroConsolidado,
       produtosSairam,
       produtosEntraram,
       lojas: lojasResp,
