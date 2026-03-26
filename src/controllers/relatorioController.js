@@ -1733,39 +1733,51 @@ export const relatorioImpressao = async (req, res) => {
         }
       });
 
-      // Fallback de contrato: quando há saída agregada na movimentação sem
-      // detalhamento por produto, cria item sintético para manter retorno estável.
-      const quantidadeSaiuMov = paraNumero(mov.sairam);
-      const quantidadeSemDetalhe = Math.max(
-        0,
-        quantidadeSaiuMov - quantidadeSaiuDetalhadaMov,
-      );
+      // Sem fallback por movimentação: placeholder só é aplicado em legado
+      // excepcional no pós-processamento quando não houver nenhum item real.
+    });
 
-      if (quantidadeSemDetalhe > 0) {
-        const produtoSemDetalhe = {
-          id: "__SEM_DETALHE__",
-          nome: "Produto não detalhado",
-          codigo: "SEM-DETALHE",
-          emoji: "📦",
-          preco: 0,
-          custoUnitario: 0,
-        };
+    const existeProdutoRealConsolidado = Object.keys(produtosSairamMap).some(
+      (id) => id !== "__SEM_DETALHE__",
+    );
 
-        const detalheSintetico = {
+    // Legado excepcional: se há saídas agregadas, mas nenhum item real no período,
+    // adiciona placeholder único para manter contrato de resposta estável.
+    if (!existeProdutoRealConsolidado && totalSairamMovimentacoes > 0) {
+      const produtoSemDetalhe = {
+        id: "__SEM_DETALHE__",
+        nome: "Produto não detalhado",
+        codigo: "SEM-DETALHE",
+        emoji: "📦",
+        preco: 0,
+        custoUnitario: 0,
+      };
+
+      const detalheSinteticoConsolidado = {
+        produtoId: produtoSemDetalhe.id,
+        produto: produtoSemDetalhe,
+        quantidadeSaiu: totalSairamMovimentacoes,
+        custoUnitario: 0,
+        valorUnitario: 0,
+      };
+
+      adicionarProdutoSaida(produtosSairamMap, detalheSinteticoConsolidado);
+
+      Object.values(dadosPorMaquina).forEach((m) => {
+        const quantidadeSaidaMaquina = paraNumero(m.totalSairamMovimentacao);
+        if (quantidadeSaidaMaquina <= 0) return;
+
+        const detalheSinteticoMaquina = {
           produtoId: produtoSemDetalhe.id,
           produto: produtoSemDetalhe,
-          quantidadeSaiu: quantidadeSemDetalhe,
+          quantidadeSaiu: quantidadeSaidaMaquina,
           custoUnitario: 0,
           valorUnitario: 0,
         };
 
-        adicionarProdutoSaida(produtosSairamMap, detalheSintetico);
-        adicionarProdutoSaida(
-          dadosPorMaquina[maquinaId].produtosSairam,
-          detalheSintetico,
-        );
-      }
-    });
+        adicionarProdutoSaida(m.produtosSairam, detalheSinteticoMaquina);
+      });
+    }
 
     const produtosSairam = mapearProdutosSaidaDetalhados(produtosSairamMap);
     const totalSairam = arredondar2(
