@@ -1528,7 +1528,7 @@ export const relatorioImpressao = async (req, res) => {
       (sum, m) => sum + (m.fichas || 0),
       0,
     );
-    const totalSairam = movimentacoes.reduce(
+    const totalSairamMovimentacoes = movimentacoes.reduce(
       (sum, m) => sum + (m.sairam || 0),
       0,
     );
@@ -1536,6 +1536,111 @@ export const relatorioImpressao = async (req, res) => {
       (sum, m) => sum + (m.abastecidas || 0),
       0,
     );
+
+    const paraNumero = (valor) => {
+      const numero = Number(valor);
+      return Number.isFinite(numero) ? numero : 0;
+    };
+
+    const arredondar2 = (valor) => Number(paraNumero(valor).toFixed(2));
+
+    const resolverValorUnitarioSaida = (detalheProduto) => {
+      const custoUnitarioMov = paraNumero(detalheProduto?.custoUnitario);
+      if (custoUnitarioMov > 0) return custoUnitarioMov;
+
+      const valorUnitarioMov = paraNumero(detalheProduto?.valorUnitario);
+      if (valorUnitarioMov > 0) return valorUnitarioMov;
+
+      const precoCadastro = paraNumero(detalheProduto?.produto?.preco);
+      if (precoCadastro > 0) return precoCadastro;
+
+      return paraNumero(detalheProduto?.produto?.custoUnitario);
+    };
+
+    const adicionarProdutoSaida = (mapa, detalheProduto) => {
+      const quantidade = paraNumero(detalheProduto?.quantidadeSaiu);
+      if (quantidade <= 0) return;
+
+      const produto = detalheProduto?.produto || {};
+      const produtoId = detalheProduto?.produtoId || produto?.id;
+      if (!produtoId) return;
+
+      const key = String(produtoId);
+      if (!mapa[key]) {
+        mapa[key] = {
+          produtoId: key,
+          nome: produto?.nome || "Produto",
+          codigo: produto?.codigo || "S/C",
+          emoji: produto?.emoji || null,
+          preco: paraNumero(produto?.preco),
+          custoUnitario: paraNumero(produto?.custoUnitario),
+          quantidade: 0,
+          valorTotalBruto: 0,
+        };
+      }
+
+      const valorUnitario = resolverValorUnitarioSaida(detalheProduto);
+      mapa[key].quantidade += quantidade;
+      mapa[key].valorTotalBruto += quantidade * valorUnitario;
+    };
+
+    const mapearProdutosSaidaDetalhados = (mapa) =>
+      Object.values(mapa)
+        .map((item) => {
+          const quantidade = paraNumero(item.quantidade);
+          const valorTotal = arredondar2(item.valorTotalBruto);
+          const valorUnitario =
+            quantidade > 0 ? arredondar2(valorTotal / quantidade) : 0;
+
+          return {
+            produtoId: item.produtoId,
+            id: item.produtoId,
+            nome: item.nome,
+            codigo: item.codigo,
+            emoji: item.emoji,
+            quantidade,
+            valorUnitario,
+            valorTotal,
+            preco: item.preco,
+            custoUnitario: item.custoUnitario,
+          };
+        })
+        .sort(
+          (a, b) =>
+            b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, "pt-BR"),
+        );
+
+    const validarContratoProdutosSairam = ({
+      escopo,
+      totalProdutosSairam,
+      custoProdutosSairam,
+      itens,
+    }) => {
+      if (totalProdutosSairam > 0 && (!Array.isArray(itens) || itens.length === 0)) {
+        throw new Error(
+          `[Contrato] ${escopo}: totais.produtosSairam > 0 sem detalhamento em produtosSairam.`,
+        );
+      }
+
+      const somaQuantidade = arredondar2(
+        (itens || []).reduce((acc, item) => acc + paraNumero(item.quantidade), 0),
+      );
+      const somaValorTotal = arredondar2(
+        (itens || []).reduce((acc, item) => acc + paraNumero(item.valorTotal), 0),
+      );
+
+      if (Math.abs(totalProdutosSairam - somaQuantidade) > 0.01) {
+        throw new Error(
+          `[Contrato] ${escopo}: soma das quantidades dos itens (${somaQuantidade}) difere de totais.produtosSairam (${totalProdutosSairam}).`,
+        );
+      }
+
+      if (Math.abs(custoProdutosSairam - somaValorTotal) > 0.01) {
+        throw new Error(
+          `[Contrato] ${escopo}: soma de valorTotal dos itens (${somaValorTotal}) difere de totais.custoProdutosSairam (${custoProdutosSairam}).`,
+        );
+      }
+    };
 
     // Consolidar produtos
     const produtosSairamMap = {};
@@ -1546,11 +1651,7 @@ export const relatorioImpressao = async (req, res) => {
       // Agregação Global Produtos
       mov.detalhesProdutos?.forEach((mp) => {
         if (mp.quantidadeSaiu > 0) {
-          const key = mp.produtoId;
-          if (!produtosSairamMap[key]) {
-            produtosSairamMap[key] = { produto: mp.produto, quantidade: 0 };
-          }
-          produtosSairamMap[key].quantidade += mp.quantidadeSaiu;
+          adicionarProdutoSaida(produtosSairamMap, mp);
         }
         if (mp.quantidadeAbastecida > 0) {
           const key = mp.produtoId;
@@ -1572,7 +1673,7 @@ export const relatorioImpressao = async (req, res) => {
             valorFicha: mov.maquina.valorFicha,
           },
           fichas: 0,
-          totalSairam: 0,
+          totalSairamMovimentacao: 0,
           totalAbastecidas: 0,
           numMovimentacoes: 0,
           dinheiroMovimentacoes: 0,
@@ -1584,7 +1685,7 @@ export const relatorioImpressao = async (req, res) => {
       }
 
       dadosPorMaquina[maquinaId].fichas += mov.fichas || 0;
-      dadosPorMaquina[maquinaId].totalSairam += mov.sairam || 0;
+      dadosPorMaquina[maquinaId].totalSairamMovimentacao += mov.sairam || 0;
       dadosPorMaquina[maquinaId].totalAbastecidas += mov.abastecidas || 0;
       dadosPorMaquina[maquinaId].numMovimentacoes++;
 
@@ -1614,15 +1715,7 @@ export const relatorioImpressao = async (req, res) => {
 
       mov.detalhesProdutos?.forEach((mp) => {
         if (mp.quantidadeSaiu > 0) {
-          const key = mp.produtoId;
-          if (!dadosPorMaquina[maquinaId].produtosSairam[key]) {
-            dadosPorMaquina[maquinaId].produtosSairam[key] = {
-              produto: mp.produto,
-              quantidade: 0,
-            };
-          }
-          dadosPorMaquina[maquinaId].produtosSairam[key].quantidade +=
-            mp.quantidadeSaiu;
+          adicionarProdutoSaida(dadosPorMaquina[maquinaId].produtosSairam, mp);
         }
         if (mp.quantidadeAbastecida > 0) {
           const key = mp.produtoId;
@@ -1638,9 +1731,26 @@ export const relatorioImpressao = async (req, res) => {
       });
     });
 
-    const produtosSairam = Object.values(produtosSairamMap).sort(
-      (a, b) => b.quantidade - a.quantidade,
+    const produtosSairam = mapearProdutosSaidaDetalhados(produtosSairamMap);
+    const totalSairam = arredondar2(
+      produtosSairam.reduce((acc, item) => acc + paraNumero(item.quantidade), 0),
     );
+    const custoProdutosSairam = arredondar2(
+      produtosSairam.reduce((acc, item) => acc + paraNumero(item.valorTotal), 0),
+    );
+
+    if (totalSairamMovimentacoes > 0 && produtosSairam.length === 0) {
+      throw new Error(
+        "[Contrato] Consolidado: houve produtos saindo nas movimentações, mas o detalhamento produtosSairam está vazio.",
+      );
+    }
+
+    validarContratoProdutosSairam({
+      escopo: "Consolidado",
+      totalProdutosSairam: totalSairam,
+      custoProdutosSairam,
+      itens: produtosSairam,
+    });
 
     const produtosEntraram = Object.values(produtosEntraramMap).sort(
       (a, b) => b.quantidade - a.quantidade,
@@ -1653,16 +1763,46 @@ export const relatorioImpressao = async (req, res) => {
       const faturamentoBrutoMaquina = Number(
         m.faturamentoBrutoMovimentacoes || 0,
       );
+      const produtosSairamMaquina = mapearProdutosSaidaDetalhados(
+        m.produtosSairam,
+      );
+      const totalSairamMaquina = arredondar2(
+        produtosSairamMaquina.reduce(
+          (acc, item) => acc + paraNumero(item.quantidade),
+          0,
+        ),
+      );
+      const custoProdutosSairamMaquina = arredondar2(
+        produtosSairamMaquina.reduce(
+          (acc, item) => acc + paraNumero(item.valorTotal),
+          0,
+        ),
+      );
+
+      if (m.totalSairamMovimentacao > 0 && produtosSairamMaquina.length === 0) {
+        throw new Error(
+          `[Contrato] Máquina ${m.maquina?.codigo || m.maquina?.id}: houve produtos saindo nas movimentações, mas o detalhamento produtosSairam está vazio.`,
+        );
+      }
+
+      validarContratoProdutosSairam({
+        escopo: `Máquina ${m.maquina?.codigo || m.maquina?.id}`,
+        totalProdutosSairam: totalSairamMaquina,
+        custoProdutosSairam: custoProdutosSairamMaquina,
+        itens: produtosSairamMaquina,
+      });
+
       const ticketPorPremioMaquina =
-        Number(m.totalSairam || 0) > 0
-          ? faturamentoBrutoMaquina / Number(m.totalSairam || 0)
+        Number(totalSairamMaquina || 0) > 0
+          ? faturamentoBrutoMaquina / Number(totalSairamMaquina || 0)
           : 0;
 
       return {
         maquina: m.maquina,
         totais: {
           fichas: m.fichas,
-          produtosSairam: m.totalSairam,
+          produtosSairam: totalSairamMaquina,
+          custoProdutosSairam: custoProdutosSairamMaquina,
           produtosEntraram: m.totalAbastecidas,
           movimentacoes: m.numMovimentacoes,
           dinheiro: dinheiroMaquina,
@@ -1670,20 +1810,7 @@ export const relatorioImpressao = async (req, res) => {
           faturamentoBruto: Number(faturamentoBrutoMaquina.toFixed(2)),
           ticketPorPremio: Number(ticketPorPremioMaquina.toFixed(2)),
         },
-        produtosSairam: Object.values(m.produtosSairam)
-          .map((p) => ({
-            id: p.produto.id,
-            nome: p.produto.nome,
-            codigo: p.produto.codigo,
-            emoji: p.produto.emoji,
-            quantidade: p.quantidade,
-            valorUnitario: parseFloat(
-              p.produto.preco || p.produto.custoUnitario || 0,
-            ),
-            preco: parseFloat(p.produto.preco || 0),
-            custoUnitario: parseFloat(p.produto.custoUnitario || 0),
-          }))
-          .sort((a, b) => b.quantidade - a.quantidade),
+        produtosSairam: produtosSairamMaquina,
         produtosEntraram: Object.values(m.produtosEntraram)
           .map((p) => ({
             id: p.produto.id,
@@ -1784,7 +1911,7 @@ export const relatorioImpressao = async (req, res) => {
       produtosSairam: m.totais.produtosSairam,
     }));
     const graficoSaidaPorProduto = produtosSairam.map((p) => ({
-      produto: p.produto.nome,
+      produto: p.nome,
       quantidade: p.quantidade,
     }));
 
@@ -1801,6 +1928,7 @@ export const relatorioImpressao = async (req, res) => {
       totais: {
         fichas: totalFichas,
         produtosSairam: totalSairam,
+        custoProdutosSairam,
         saidasPremioTotal: totalSairam,
         produtosEntraram: totalAbastecidas,
         movimentacoes: movimentacoes.length,
@@ -1822,18 +1950,7 @@ export const relatorioImpressao = async (req, res) => {
         ),
         ticketPorPremioTotal: Number(ticketPorPremioTotal.toFixed(2)),
       },
-      produtosSairam: produtosSairam.map((p) => ({
-        id: p.produto.id,
-        nome: p.produto.nome,
-        codigo: p.produto.codigo,
-        emoji: p.produto.emoji,
-        quantidade: p.quantidade,
-        valorUnitario: parseFloat(
-          p.produto.preco || p.produto.custoUnitario || 0,
-        ),
-        preco: parseFloat(p.produto.preco || 0),
-        custoUnitario: parseFloat(p.produto.custoUnitario || 0),
-      })),
+      produtosSairam,
       produtosEntraram: produtosEntraram.map((p) => ({
         id: p.produto.id,
         nome: p.produto.nome,
