@@ -300,7 +300,6 @@ export const finalizarRoteiro = async (req, res) => {
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         roteiro_id: roteiroId,
-        data: dataHoje,
         concluida: true,
       },
     });

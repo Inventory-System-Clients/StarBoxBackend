@@ -44,19 +44,17 @@ async function getRoteiroExecucaoComStatus(req, res) {
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    // Buscar status diário das máquinas para o roteiro e data de hoje
+    // Buscar status das máquinas concluídas para o roteiro (sem filtro diário)
     const dataHoje = new Date().toISOString().slice(0, 10);
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         roteiro_id: roteiro.id,
-        data: dataHoje,
         concluida: true,
       },
     });
     const finalizacaoManual = await RoteiroFinalizacaoDiaria.findOne({
       where: {
         roteiroId: roteiro.id,
-        data: dataHoje,
         finalizado: true,
       },
     });
@@ -217,16 +215,14 @@ async function getTodosRoteirosComStatus(req, res) {
       ],
     });
     const dataHoje = new Date().toISOString().slice(0, 10);
-    // Buscar status diário de todas as máquinas para todos os roteiros
+    // Buscar status de todas as máquinas concluídas para todos os roteiros
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
-        data: dataHoje,
         concluida: true,
       },
     });
     const finalizacoesManuais = await RoteiroFinalizacaoDiaria.findAll({
       where: {
-        data: dataHoje,
         finalizado: true,
       },
     });

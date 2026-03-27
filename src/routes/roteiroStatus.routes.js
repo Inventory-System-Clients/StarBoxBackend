@@ -8,7 +8,6 @@ const router = express.Router();
 router.get("/:id/status-execucao", async (req, res) => {
   try {
     const roteiroId = req.params.id;
-    const dataHoje = new Date().toISOString().slice(0, 10);
     const roteiro = await Roteiro.findByPk(roteiroId, {
       include: [
         {
@@ -25,9 +24,9 @@ router.get("/:id/status-execucao", async (req, res) => {
     });
     if (!roteiro) return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    // Buscar status das máquinas para o roteiro e data
+    // Buscar status das máquinas concluídas para o roteiro (sem filtro diário)
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
-      where: { roteiro_id: roteiroId, data: dataHoje },
+      where: { roteiro_id: roteiroId, concluida: true },
     });
     const statusMap = {};
     statusMaquinas.forEach((s) => {
@@ -59,7 +58,7 @@ router.get("/:id/status-execucao", async (req, res) => {
       id: roteiro.id,
       nome: roteiro.nome,
       status: roteiroFinalizado ? "finalizado" : "pendente",
-      data: dataHoje,
+      data: new Date().toISOString().slice(0, 10),
       lojas,
     });
   } catch (error) {

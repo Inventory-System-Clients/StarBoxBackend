@@ -2,17 +2,17 @@ import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 export const getStatusDiario = async (req, res) => {
   try {
-    const { maquinaId, roteiroId, data } = req.query;
-    if (!maquinaId || !roteiroId || !data) {
+    const { maquinaId, roteiroId } = req.query;
+    if (!maquinaId || !roteiroId) {
       return res
         .status(400)
-        .json({ error: "Parâmetros obrigatórios: maquinaId, roteiroId, data" });
+        .json({ error: "Parâmetros obrigatórios: maquinaId, roteiroId" });
     }
     const status = await MovimentacaoStatusDiario.findOne({
       where: {
         maquina_id: maquinaId,
         roteiro_id: roteiroId,
-        data,
+        concluida: true,
       },
     });
     res.json({ concluida: !!(status && status.concluida) });

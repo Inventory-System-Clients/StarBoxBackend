@@ -332,11 +332,10 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
     const MovimentacaoStatusDiario = (
       await import("../models/MovimentacaoStatusDiario.js")
     ).default;
-    const dataHoje = new Date().toISOString().slice(0, 10);
-    const statusHoje = await MovimentacaoStatusDiario.findAll({
-      where: { roteiro_id: roteiroId, data: dataHoje, concluida: true },
+    const statusConcluido = await MovimentacaoStatusDiario.findAll({
+      where: { roteiro_id: roteiroId, concluida: true },
     });
-    const maquinasConcluidasHoje = new Set(statusHoje.map((s) => s.maquina_id));
+    const maquinasConcluidas = new Set(statusConcluido.map((s) => s.maquina_id));
 
     let lojaEsperadaId = null;
     let lojaEsperadaNome = null;
@@ -348,7 +347,7 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
       });
       if (
         loja &&
-        loja.maquinas.some((m) => !maquinasConcluidasHoje.has(m.id))
+        loja.maquinas.some((m) => !maquinasConcluidas.has(m.id))
       ) {
         lojaEsperadaId = loja.id;
         lojaEsperadaNome = loja.nome;

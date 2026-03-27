@@ -689,7 +689,7 @@ export const registrarMovimentacao = async (req, res) => {
       ],
     });
 
-    // Impedir movimentação duplicada para máquina/roteiro/data
+    // Marcação de conclusão da máquina no roteiro (persistente até reset semanal)
     const hoje = new Date();
     const dataHoje = hoje.toISOString().slice(0, 10); // yyyy-mm-dd
     // LOG detalhado dos dados recebidos
@@ -700,8 +700,7 @@ export const registrarMovimentacao = async (req, res) => {
       usuario: req.usuario ? req.usuario.id : null,
       produtos,
     });
-    // LOG para status diário
-    console.log("[MovStatusDiario] Tentando registrar status:", {
+    console.log("[MovStatus] Tentando registrar status:", {
       maquina_id: maquinaId,
       roteiro_id: roteiroId,
       data: dataHoje,
@@ -711,7 +710,6 @@ export const registrarMovimentacao = async (req, res) => {
       where: {
         maquina_id: maquinaId,
         roteiro_id: roteiroId,
-        data: dataHoje,
         concluida: true,
       },
     });
@@ -720,32 +718,22 @@ export const registrarMovimentacao = async (req, res) => {
       statusExistente,
     );
     if (statusExistente) {
-      if (statusExistente.dataValues) {
-        console.log(
-          "[MovStatusDiario] Já existe status para esta máquina/roteiro/data:",
-          statusExistente.dataValues,
-        );
-      } else {
-        console.log(
-          "[LOG] Movimentação já registrada para esta máquina hoje. Bloqueando duplicidade.",
-        );
-      }
-      res
-        .status(400)
-        .json({ error: "Movimentação já registrada para esta máquina hoje." });
-      return;
+      console.log(
+        "[MovStatus] Máquina já concluída para este roteiro nesta semana. Mantendo status concluído.",
+      );
+    } else {
+      // Após registrar movimentação, marcar como concluída
+      const upsertResult = await MovimentacaoStatusDiario.upsert({
+        maquina_id: maquinaId,
+        roteiro_id: roteiroId,
+        data: dataHoje,
+        concluida: true,
+      });
+      console.log(
+        "[LOG] Resultado do upsert MovimentacaoStatusDiario:",
+        upsertResult,
+      );
     }
-    // Após registrar movimentação, marcar como concluída
-    const upsertResult = await MovimentacaoStatusDiario.upsert({
-      maquina_id: maquinaId,
-      roteiro_id: roteiroId,
-      data: dataHoje,
-      concluida: true,
-    });
-    console.log(
-      "[LOG] Resultado do upsert MovimentacaoStatusDiario:",
-      upsertResult,
-    );
     // Logar movimentacaoCompleta antes de retornar
     console.log("[LOG] Movimentação registrada com sucesso:", {
       movimentacaoId: movimentacao.id,
