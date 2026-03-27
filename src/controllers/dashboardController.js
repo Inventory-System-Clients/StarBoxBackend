@@ -3,12 +3,9 @@ import {
   Movimentacao,
   Maquina,
   FluxoCaixa,
-  MovimentacaoProduto,
-  Produto,
-  ContasFinanceiro,
 } from "../models/index.js";
 
-// Lucro líquido diário consolidado de todas as lojas para o mês informado
+// Renda bruta diária consolidada de todas as lojas para o mês informado
 export const lucroDiario = async (req, res) => {
   try {
     const paraNumero = (valor) => {
@@ -50,12 +47,7 @@ export const lucroDiario = async (req, res) => {
     ) {
       const chave = formatarDataLocal(data);
       resultado[chave] = 0;
-      acumuladoresPorDia[chave] = {
-        receitaBruta: 0,
-        comissao: 0,
-        custoProdutos: 0,
-        despesasFinanceiras: 0,
-      };
+      acumuladoresPorDia[chave] = { receitaBruta: 0 };
     }
 
     const movimentacoes = await Movimentacao.findAll({
@@ -96,80 +88,17 @@ export const lucroDiario = async (req, res) => {
       }
 
       const receitaMaquina = valorFichas + dinheiro + pix;
-      const percentualComissao = paraNumero(mov.maquina?.comissaoLojaPercentual);
-      const comissao = (receitaMaquina * percentualComissao) / 100;
-
       acumulador.receitaBruta += receitaMaquina;
-      acumulador.comissao += comissao;
-    }
-
-    const itensVendidos = await MovimentacaoProduto.findAll({
-      attributes: ["quantidadeSaiu"],
-      include: [
-        {
-          model: Produto,
-          as: "produto",
-          attributes: ["custoUnitario"],
-        },
-        {
-          model: Movimentacao,
-          required: true,
-          attributes: ["dataColeta"],
-          where: {
-            dataColeta: { [Op.between]: [inicioMes, fimMes] },
-            retiradaEstoque: false,
-          },
-        },
-      ],
-    });
-
-    for (const item of itensVendidos) {
-      const dataMov = item?.Movimentacao?.dataColeta
-        ? new Date(item.Movimentacao.dataColeta)
-        : null;
-      if (!dataMov) continue;
-      const chave = formatarDataLocal(dataMov);
-      const acumulador = acumuladoresPorDia[chave];
-      if (!acumulador) continue;
-
-      const quantidadeSaiu = paraNumero(item.quantidadeSaiu);
-      const custoUnitario = paraNumero(item.produto?.custoUnitario);
-      acumulador.custoProdutos += quantidadeSaiu * custoUnitario;
-    }
-
-    const inicioMesIso = formatarDataLocal(inicioMes);
-    const fimMesIso = formatarDataLocal(fimMes);
-
-    const despesasFinanceiras = await ContasFinanceiro.findAll({
-      attributes: ["due_date", "value"],
-      where: {
-        due_date: { [Op.between]: [inicioMesIso, fimMesIso] },
-        status: { [Op.ne]: "paid" },
-      },
-      raw: true,
-    });
-
-    for (const despesa of despesasFinanceiras) {
-      const chave = String(despesa?.due_date || "").slice(0, 10);
-      const acumulador = acumuladoresPorDia[chave];
-      if (!acumulador) continue;
-      acumulador.despesasFinanceiras += paraNumero(despesa?.value);
     }
 
     for (const [data, valores] of Object.entries(acumuladoresPorDia)) {
-      const lucroLiquido =
-        valores.receitaBruta -
-        valores.comissao -
-        valores.custoProdutos -
-        valores.despesasFinanceiras;
-
-      resultado[data] = arredondar2(lucroLiquido);
+      resultado[data] = arredondar2(valores.receitaBruta);
     }
 
     res.json(resultado);
   } catch (error) {
     console.error("[dashboard.lucroDiario] Erro:", error);
-    res.status(500).json({ error: "Erro ao gerar lucro diário consolidado" });
+    res.status(500).json({ error: "Erro ao gerar renda bruta diária consolidada" });
   }
 };
 
@@ -217,7 +146,7 @@ export const faturamentoSemanal = async (req, res) => {
   }
 };
 
-// Comparação de lucro acumulado até hoje (mês atual vs anterior)
+// Comparação de renda bruta acumulada até hoje (mês atual vs anterior)
 export const comparacaoLucro = async (req, res) => {
   try {
     const { lojaId } = req.query;
@@ -245,7 +174,6 @@ export const comparacaoLucro = async (req, res) => {
           include: [{ model: Maquina, as: "maquina", attributes: ["valorFicha", "lojaId"] }],
         });
         let receitaBruta = 0;
-        let comissaoTotal = 0;
         for (const m of movimentacoes) {
           const fichas = parseInt(m.fichas) || 0;
           const valorFicha = parseFloat(m.maquina?.valorFicha || 0);
@@ -253,10 +181,8 @@ export const comparacaoLucro = async (req, res) => {
           const pix = parseFloat(m.valor_entrada_maquininha_pix || 0);
           const receitaMaquina = fichas * valorFicha + dinheiro + pix;
           receitaBruta += receitaMaquina;
-          const percentual = parseFloat(m.maquina?.comissaoLojaPercentual || 0);
-          comissaoTotal += (receitaMaquina * percentual) / 100;
         }
-        total += receitaBruta - comissaoTotal;
+        total += receitaBruta;
       }
       return total;
     }
