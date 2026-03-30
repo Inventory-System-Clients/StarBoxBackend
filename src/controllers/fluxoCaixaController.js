@@ -56,7 +56,10 @@ const calcularValorEsperadoRetirada = async ({
         attributes: ["id", "contadorIn", "contadorOut", "dataColeta"],
       },
     ],
-    order: [[{ model: Movimentacao, as: "movimentacao" }, "dataColeta", "DESC"]],
+    order: [
+      [{ model: Movimentacao, as: "movimentacao" }, "dataColeta", "DESC"],
+      [{ model: Movimentacao, as: "movimentacao" }, "createdAt", "DESC"],
+    ],
   });
 
   const contadorInAtual = inteiroOuNull(movimentacaoAtual.contadorIn);
