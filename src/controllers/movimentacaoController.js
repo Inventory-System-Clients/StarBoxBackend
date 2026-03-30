@@ -30,6 +30,79 @@ const inteiroSeguro = (valor, fallback = 0) => {
   return parseInt(valor, 10);
 };
 
+const arredondar2 = (valor) => {
+  if (!possuiNumero(valor)) return null;
+  return Number(Number(valor).toFixed(2));
+};
+
+const calcularValorEsperadoInicialRetirada = async ({
+  movimentacaoAtual,
+  valorJogada,
+  contadorInAnteriorFallback,
+  contadorOutAnteriorFallback,
+}) => {
+  if (!movimentacaoAtual?.maquinaId || !movimentacaoAtual?.dataColeta) {
+    return null;
+  }
+
+  const retiradaAnterior = await FluxoCaixa.findOne({
+    include: [
+      {
+        model: Movimentacao,
+        as: "movimentacao",
+        required: true,
+        where: {
+          maquinaId: movimentacaoAtual.maquinaId,
+          dataColeta: { [Op.lt]: movimentacaoAtual.dataColeta },
+        },
+        attributes: ["id", "contadorIn", "contadorOut", "dataColeta"],
+      },
+    ],
+    order: [[{ model: Movimentacao, as: "movimentacao" }, "dataColeta", "DESC"]],
+  });
+
+  const contadorInAtual = possuiNumero(movimentacaoAtual.contadorIn)
+    ? inteiroSeguro(movimentacaoAtual.contadorIn, null)
+    : null;
+  const contadorOutAtual = possuiNumero(movimentacaoAtual.contadorOut)
+    ? inteiroSeguro(movimentacaoAtual.contadorOut, null)
+    : null;
+
+  const contadorInBase = retiradaAnterior?.movimentacao
+    ? inteiroSeguro(retiradaAnterior.movimentacao.contadorIn, null)
+    : (possuiNumero(contadorInAnteriorFallback)
+      ? inteiroSeguro(contadorInAnteriorFallback, null)
+      : null);
+  const contadorOutBase = retiradaAnterior?.movimentacao
+    ? inteiroSeguro(retiradaAnterior.movimentacao.contadorOut, null)
+    : (possuiNumero(contadorOutAnteriorFallback)
+      ? inteiroSeguro(contadorOutAnteriorFallback, null)
+      : null);
+
+  const deltaIn =
+    contadorInAtual !== null && contadorInBase !== null
+      ? Math.max(0, contadorInAtual - contadorInBase)
+      : null;
+  const deltaOut =
+    contadorOutAtual !== null && contadorOutBase !== null
+      ? Math.max(0, contadorOutAtual - contadorOutBase)
+      : null;
+
+  if (!possuiNumero(valorJogada) || Number(valorJogada) <= 0) {
+    return null;
+  }
+
+  if (deltaIn !== null) {
+    return arredondar2(deltaIn / Number(valorJogada));
+  }
+
+  if (deltaOut !== null) {
+    return arredondar2(deltaOut / Number(valorJogada));
+  }
+
+  return null;
+};
+
 const calcularContadoresProjetados = (historico) => {
   let contadorInProjetado = 0;
   let contadorOutProjetado = 0;
@@ -541,13 +614,26 @@ export const registrarMovimentacao = async (req, res) => {
 
     // Se a movimentação é marcada como retirada de dinheiro, criar registro no FluxoCaixa
     if (retiradaDinheiro) {
+      const valorEsperadoCalculadoInicial = await calcularValorEsperadoInicialRetirada(
+        {
+          movimentacaoAtual: movimentacao,
+          valorJogada: maquina.valorFicha,
+          contadorInAnteriorFallback: contadorInAnteriorSanitizado,
+          contadorOutAnteriorFallback: contadorOutAnteriorSanitizado,
+        },
+      );
+
       await FluxoCaixa.create({
         movimentacaoId: movimentacao.id,
+        valorEsperado: valorEsperadoCalculadoInicial,
         conferencia: "pendente",
       });
       console.log(
         "✅ [registrarMovimentacao] Registro de FluxoCaixa criado para movimentação:",
-        movimentacao.id,
+        {
+          movimentacaoId: movimentacao.id,
+          valorEsperadoInicial: valorEsperadoCalculadoInicial,
+        },
       );
     }
 

@@ -1,6 +1,139 @@
 import { FluxoCaixa, Movimentacao, Maquina, Loja, Usuario } from "../models/index.js";
 import { Op } from "sequelize";
 
+const possuiNumero = (valor) =>
+  valor !== null &&
+  valor !== undefined &&
+  valor !== "" &&
+  !Number.isNaN(Number(valor));
+
+const inteiroOuNull = (valor) => {
+  if (!possuiNumero(valor)) return null;
+  return parseInt(valor, 10);
+};
+
+const decimalOuNull = (valor) => {
+  if (!possuiNumero(valor)) return null;
+  return Number(valor);
+};
+
+const arredondar2 = (valor) => {
+  if (!possuiNumero(valor)) return null;
+  return Number(Number(valor).toFixed(2));
+};
+
+const calcularValorEsperadoRetirada = async ({
+  movimentacaoAtual,
+  fluxoAtualId = null,
+}) => {
+  if (!movimentacaoAtual?.maquinaId || !movimentacaoAtual?.dataColeta) {
+    return {
+      valorEsperadoCalculado: null,
+      ultimoContadorInRetirada: null,
+      ultimoContadorOutRetirada: null,
+      deltaContadorIn: null,
+      deltaContadorOut: null,
+      algoritmoValorEsperado: null,
+    };
+  }
+
+  const whereFluxoAnterior = {};
+  if (fluxoAtualId) {
+    whereFluxoAnterior.id = { [Op.ne]: fluxoAtualId };
+  }
+
+  const retiradaAnterior = await FluxoCaixa.findOne({
+    where: whereFluxoAnterior,
+    include: [
+      {
+        model: Movimentacao,
+        as: "movimentacao",
+        required: true,
+        where: {
+          maquinaId: movimentacaoAtual.maquinaId,
+          dataColeta: { [Op.lt]: movimentacaoAtual.dataColeta },
+        },
+        attributes: ["id", "contadorIn", "contadorOut", "dataColeta"],
+      },
+    ],
+    order: [[{ model: Movimentacao, as: "movimentacao" }, "dataColeta", "DESC"]],
+  });
+
+  const contadorInAtual = inteiroOuNull(movimentacaoAtual.contadorIn);
+  const contadorOutAtual = inteiroOuNull(movimentacaoAtual.contadorOut);
+
+  let baseIn = null;
+  let baseOut = null;
+
+  if (retiradaAnterior?.movimentacao) {
+    baseIn = inteiroOuNull(retiradaAnterior.movimentacao.contadorIn);
+    baseOut = inteiroOuNull(retiradaAnterior.movimentacao.contadorOut);
+  } else {
+    // Fallback: quando não há retirada anterior, tentar usar campos anteriores da própria movimentação atual.
+    baseIn = inteiroOuNull(
+      movimentacaoAtual.contadorInAnterior ??
+        movimentacaoAtual.contador_in_anterior ??
+        movimentacaoAtual?.dataValues?.contadorInAnterior,
+    );
+    baseOut = inteiroOuNull(
+      movimentacaoAtual.contadorOutAnterior ??
+        movimentacaoAtual.contador_out_anterior ??
+        movimentacaoAtual?.dataValues?.contadorOutAnterior,
+    );
+  }
+
+  const deltaContadorIn =
+    baseIn !== null && contadorInAtual !== null
+      ? Math.max(0, contadorInAtual - baseIn)
+      : null;
+  const deltaContadorOut =
+    baseOut !== null && contadorOutAtual !== null
+      ? Math.max(0, contadorOutAtual - baseOut)
+      : null;
+
+  const valorJogada = decimalOuNull(movimentacaoAtual?.maquina?.valorFicha);
+
+  let valorEsperadoCalculado = null;
+  let algoritmoValorEsperado = null;
+
+  if (valorJogada !== null && valorJogada > 0) {
+    if (deltaContadorIn !== null) {
+      valorEsperadoCalculado = arredondar2(deltaContadorIn / valorJogada);
+      algoritmoValorEsperado = "delta_in_div_valor_ficha";
+    } else if (deltaContadorOut !== null) {
+      valorEsperadoCalculado = arredondar2(deltaContadorOut / valorJogada);
+      algoritmoValorEsperado = "delta_out_div_valor_ficha";
+    }
+  }
+
+  return {
+    valorEsperadoCalculado,
+    ultimoContadorInRetirada: baseIn,
+    ultimoContadorOutRetirada: baseOut,
+    deltaContadorIn,
+    deltaContadorOut,
+    algoritmoValorEsperado,
+  };
+};
+
+const enriquecerFluxoComCalculo = async (fluxoInstance) => {
+  const fluxo = fluxoInstance.toJSON();
+  const calculo = await calcularValorEsperadoRetirada({
+    movimentacaoAtual: fluxo.movimentacao,
+    fluxoAtualId: fluxo.id,
+  });
+
+  return {
+    ...fluxo,
+    valorEsperadoCalculado: calculo.valorEsperadoCalculado,
+    ultimoContadorInRetirada: calculo.ultimoContadorInRetirada,
+    ultimoContadorOutRetirada: calculo.ultimoContadorOutRetirada,
+    deltaContadorIn: calculo.deltaContadorIn,
+    deltaContadorOut: calculo.deltaContadorOut,
+    algoritmoValorEsperado: calculo.algoritmoValorEsperado,
+  };
+};
+
 // Listar todos os registros de fluxo de caixa (apenas movimentações marcadas como retirada de dinheiro)
 export const listarFluxoCaixa = async (req, res) => {
   try {
@@ -47,7 +180,7 @@ export const listarFluxoCaixa = async (req, res) => {
                   attributes: ["id", "nome", "endereco", "numero", "bairro", "cidade", "estado"]
                 }
               ],
-              attributes: ["id", "nome", "codigo", "lojaId"]
+              attributes: ["id", "nome", "codigo", "valorFicha", "lojaId"]
             },
             {
               model: Usuario,
@@ -57,10 +190,13 @@ export const listarFluxoCaixa = async (req, res) => {
           ],
           attributes: [
             "id", 
+            "maquinaId",
             "dataColeta", 
             "fichas", 
             "valorFaturado",
             "contadorMaquina",
+            "contadorIn",
+            "contadorOut",
             "observacoes"
           ]
         },
@@ -75,7 +211,11 @@ export const listarFluxoCaixa = async (req, res) => {
       ]
     });
 
-    res.json(fluxos);
+    const fluxosEnriquecidos = await Promise.all(
+      fluxos.map((fluxo) => enriquecerFluxoComCalculo(fluxo)),
+    );
+
+    res.json(fluxosEnriquecidos);
   } catch (error) {
     console.error("[listarFluxoCaixa] Erro:", error);
     res.status(500).json({ error: "Erro ao listar fluxo de caixa" });
@@ -96,6 +236,7 @@ export const obterFluxoCaixa = async (req, res) => {
             {
               model: Maquina,
               as: "maquina",
+              attributes: ["id", "codigo", "nome", "valorFicha", "lojaId"],
               include: [
                 {
                   model: Loja,
@@ -123,7 +264,9 @@ export const obterFluxoCaixa = async (req, res) => {
       return res.status(404).json({ error: "Registro de fluxo de caixa não encontrado" });
     }
 
-    res.json(fluxo);
+    const fluxoEnriquecido = await enriquecerFluxoComCalculo(fluxo);
+
+    res.json(fluxoEnriquecido);
   } catch (error) {
     console.error("[obterFluxoCaixa] Erro:", error);
     res.status(500).json({ error: "Erro ao obter registro de fluxo de caixa" });
@@ -163,6 +306,7 @@ export const atualizarFluxoCaixa = async (req, res) => {
             {
               model: Maquina,
               as: "maquina",
+              attributes: ["id", "codigo", "nome", "valorFicha", "lojaId"],
               include: [
                 {
                   model: Loja,
@@ -176,7 +320,18 @@ export const atualizarFluxoCaixa = async (req, res) => {
               as: "usuario",
               attributes: ["id", "nome", "email"]
             }
-          ]
+          ],
+          attributes: [
+            "id",
+            "maquinaId",
+            "contadorIn",
+            "contadorOut",
+            "dataColeta",
+            "fichas",
+            "valorFaturado",
+            "contadorMaquina",
+            "observacoes",
+          ],
         },
         {
           model: Usuario,
@@ -186,7 +341,11 @@ export const atualizarFluxoCaixa = async (req, res) => {
       ]
     });
 
-    res.json(fluxoAtualizado);
+    const fluxoAtualizadoEnriquecido = await enriquecerFluxoComCalculo(
+      fluxoAtualizado,
+    );
+
+    res.json(fluxoAtualizadoEnriquecido);
   } catch (error) {
     console.error("[atualizarFluxoCaixa] Erro:", error);
     res.status(500).json({ error: "Erro ao atualizar fluxo de caixa" });
@@ -297,6 +456,7 @@ export const obterFluxoPorMovimentacao = async (req, res) => {
             {
               model: Maquina,
               as: "maquina",
+              attributes: ["id", "codigo", "nome", "valorFicha", "lojaId"],
               include: [
                 {
                   model: Loja,
@@ -305,7 +465,18 @@ export const obterFluxoPorMovimentacao = async (req, res) => {
                 }
               ]
             }
-          ]
+          ],
+          attributes: [
+            "id",
+            "maquinaId",
+            "contadorIn",
+            "contadorOut",
+            "dataColeta",
+            "fichas",
+            "valorFaturado",
+            "contadorMaquina",
+            "observacoes",
+          ],
         },
         {
           model: Usuario,
@@ -319,7 +490,9 @@ export const obterFluxoPorMovimentacao = async (req, res) => {
       return res.status(404).json({ error: "Registro de fluxo de caixa não encontrado para esta movimentação" });
     }
 
-    res.json(fluxo);
+    const fluxoEnriquecido = await enriquecerFluxoComCalculo(fluxo);
+
+    res.json(fluxoEnriquecido);
   } catch (error) {
     console.error("[obterFluxoPorMovimentacao] Erro:", error);
     res.status(500).json({ error: "Erro ao obter fluxo de caixa" });
