@@ -99,6 +99,8 @@ export const registrarMovimentacao = async (req, res) => {
       confirmarUsoEstoqueLoja,
       produtoNaMaquinaId,
       produto_na_maquina_id,
+      contadorInAnterior,
+      contadorOutAnterior,
     } = req.body;
 
     const origemEstoqueNormalizada =
@@ -125,6 +127,12 @@ export const registrarMovimentacao = async (req, res) => {
       : (normalizarContador(contadorOut) ??
         contadorOutDigitalSanitizado ??
         null);
+    const contadorInAnteriorSanitizado = funcionarioSemContador
+      ? null
+      : normalizarContador(contadorInAnterior);
+    const contadorOutAnteriorSanitizado = funcionarioSemContador
+      ? null
+      : normalizarContador(contadorOutAnterior);
 
     // (Removido alerta/bloqueio de pular loja: agora permite movimentação em qualquer loja do roteiro)
 
@@ -176,6 +184,46 @@ export const registrarMovimentacao = async (req, res) => {
       where: { maquinaId },
       order: [["createdAt", "DESC"]],
     });
+    const isPrimeiraMovimentacao = !ultimaMov;
+
+    if (
+      isPrimeiraMovimentacao &&
+      (!isValorContadorValido(contadorInAnteriorSanitizado) ||
+        !isValorContadorValido(contadorOutAnteriorSanitizado) ||
+        !isValorContadorValido(contadorInSanitizado) ||
+        !isValorContadorValido(contadorOutSanitizado))
+    ) {
+      return res.status(400).json({
+        error:
+          "Na primeira movimentação da máquina, os campos contadorInAnterior, contadorOutAnterior, contadorIn e contadorOut são obrigatórios.",
+      });
+    }
+
+    if (
+      isPrimeiraMovimentacao &&
+      !isAdmin &&
+      isValorContadorValido(contadorInAnteriorSanitizado) &&
+      isValorContadorValido(contadorInSanitizado) &&
+      contadorInAnteriorSanitizado > contadorInSanitizado
+    ) {
+      return res.status(400).json({
+        error:
+          "Na primeira movimentação, contadorInAnterior não pode ser maior que contadorIn.",
+      });
+    }
+
+    if (
+      isPrimeiraMovimentacao &&
+      !isAdmin &&
+      isValorContadorValido(contadorOutAnteriorSanitizado) &&
+      isValorContadorValido(contadorOutSanitizado) &&
+      contadorOutAnteriorSanitizado > contadorOutSanitizado
+    ) {
+      return res.status(400).json({
+        error:
+          "Na primeira movimentação, contadorOutAnterior não pode ser maior que contadorOut.",
+      });
+    }
 
     const historicoContadores = await Movimentacao.findAll({
       where: { maquinaId },
@@ -421,6 +469,43 @@ export const registrarMovimentacao = async (req, res) => {
     const justificativaPendente = maquina.lojaId
       ? justificativasPendentes.get(maquina.lojaId)
       : null;
+
+    let movimentacaoAnterior = null;
+    if (isPrimeiraMovimentacao) {
+      movimentacaoAnterior = await Movimentacao.create({
+        maquinaId,
+        usuarioId: req.usuario.id,
+        dataColeta: dataColeta || new Date(),
+        totalPre: totalPreQtd,
+        sairam: saidaRecalculada,
+        abastecidas: abastecidasQtd,
+        fichas: fichasQtd,
+        valorFaturado: parseFloat(valorFaturado.toFixed(2)),
+        contadorIn: contadorInAnteriorSanitizado,
+        contadorOut: contadorOutAnteriorSanitizado,
+        contadorMaquina: contadorMaquina ?? null,
+        quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
+          ? notasEntradaValor
+          : null,
+        valor_entrada_maquininha_pix: possuiNumero(valor_entrada_maquininha_pix)
+          ? pixEntradaValor
+          : null,
+        observacoes,
+        tipoOcorrencia: tipoOcorrencia || "Normal",
+        retiradaEstoque: retiradaEstoque || false,
+        retiradaDinheiro: retiradaDinheiro || false,
+        produtoNaMaquinaId: produtoNaMaquinaIdFinal,
+        roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
+        justificativa_ordem: justificativaPendente?.justificativa ?? null,
+      });
+
+      console.log("🧭 [registrarMovimentacao] Primeira movimentação detectada. Registro de contadores anteriores criado:", {
+        maquinaId,
+        movimentacaoAnteriorId: movimentacaoAnterior.id,
+        contadorInAnterior: contadorInAnteriorSanitizado,
+        contadorOutAnterior: contadorOutAnteriorSanitizado,
+      });
+    }
 
     const movimentacao = await Movimentacao.create({
       maquinaId,
@@ -760,6 +845,8 @@ export const registrarMovimentacao = async (req, res) => {
 
     const movimentacaoResposta = movimentacaoCompleta.toJSON();
     movimentacaoResposta.origemEstoqueAplicada = origemEstoqueNormalizada;
+    movimentacaoResposta.primeiraMovimentacaoDuplicada = isPrimeiraMovimentacao;
+    movimentacaoResposta.movimentacaoAnteriorId = movimentacaoAnterior?.id || null;
 
     res.locals.entityId = movimentacao.id;
     res.status(201).json(movimentacaoResposta);

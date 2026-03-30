@@ -126,6 +126,8 @@ export const calcularQuantidadeAtual = async (req, res) => {
       calcularContadoresProjetados(historico);
 
     const capacidade = parseInt(maquina.capacidadePadrao) || 0;
+    const totalMovimentacoes = historico.length;
+    const primeiraMovimentacao = totalMovimentacoes === 0;
     const ultimaMovimentacao = historico[historico.length - 1] || null;
 
     const contadorInAtual = possuiNumero(contadorIn)
@@ -175,6 +177,8 @@ export const calcularQuantidadeAtual = async (req, res) => {
       contadorOutUltimaMovimentacao,
       quantidadeDeveriaTerSaido,
       saidaCalculada,
+      totalMovimentacoes,
+      primeiraMovimentacao,
     });
   } catch (error) {
     console.error("Erro ao calcular quantidade atual:", error);
