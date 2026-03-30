@@ -16,7 +16,7 @@ router.use(autenticar);
 router.get("/", listarManutencoes);
 router.post(
   "/",
-  autorizar(["ADMIN", "GERENCIADOR"]),
+  autorizar(["ADMIN", "GERENCIADOR", "FUNCIONARIO_TODAS_LOJAS", "FUNCIONARIO"]),
   registrarLog("CRIAR_MANUTENCAO", "Manutencao"),
   criarManutencao,
 );

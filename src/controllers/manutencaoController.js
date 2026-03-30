@@ -111,6 +111,10 @@ export const listarManutencoes = async (req, res) => {
 export const criarManutencao = async (req, res) => {
   try {
     const { descricao, lojaId, maquinaId, funcionarioId, roteiroId } = req.body;
+    const role = req.usuario?.role;
+    const isOperacional = ["FUNCIONARIO_TODAS_LOJAS", "FUNCIONARIO"].includes(
+      role,
+    );
 
     if (!descricao || !lojaId || !maquinaId) {
       return res.status(400).json({
@@ -129,17 +133,71 @@ export const criarManutencao = async (req, res) => {
       });
     }
 
-    if (funcionarioId) {
-      const funcionario = await Usuario.findByPk(funcionarioId);
+    const funcionarioIdFinal = isOperacional
+      ? req.usuario.id
+      : (funcionarioId || null);
+
+    if (!isOperacional && funcionarioIdFinal) {
+      const funcionario = await Usuario.findByPk(funcionarioIdFinal);
       if (!funcionario) {
         return res.status(404).json({ error: "Funcionário não encontrado" });
       }
     }
 
     if (roteiroId) {
-      const roteiro = await Roteiro.findByPk(roteiroId);
+      const roteiro = await Roteiro.findByPk(roteiroId, {
+        include: [
+          {
+            model: Loja,
+            as: "lojas",
+            attributes: ["id"],
+            through: { attributes: [] },
+          },
+        ],
+      });
       if (!roteiro) {
         return res.status(404).json({ error: "Roteiro não encontrado" });
+      }
+
+      if (isOperacional && roteiro.funcionarioId !== req.usuario.id) {
+        return res.status(403).json({
+          error: "Você não tem permissão para usar este roteiro",
+        });
+      }
+
+      const lojaNoRoteiro = roteiro.lojas?.some((loja) => loja.id === lojaId);
+      if (!lojaNoRoteiro) {
+        return res.status(400).json({
+          error: "A loja informada não faz parte do roteiro selecionado",
+        });
+      }
+    }
+
+    if (isOperacional) {
+      const totalRoteirosDoUsuario = await Roteiro.count({
+        where: { funcionarioId: req.usuario.id },
+      });
+
+      if (totalRoteirosDoUsuario > 0 && !roteiroId) {
+        const roteiroComLoja = await Roteiro.findOne({
+          where: { funcionarioId: req.usuario.id },
+          include: [
+            {
+              model: Loja,
+              as: "lojas",
+              where: { id: lojaId },
+              attributes: ["id"],
+              through: { attributes: [] },
+            },
+          ],
+        });
+
+        if (!roteiroComLoja) {
+          return res.status(403).json({
+            error:
+              "A loja informada não faz parte do roteiro do usuário autenticado",
+          });
+        }
       }
     }
 
@@ -147,7 +205,7 @@ export const criarManutencao = async (req, res) => {
       descricao,
       lojaId,
       maquinaId,
-      funcionarioId: funcionarioId || null,
+      funcionarioId: funcionarioIdFinal,
       roteiroId: roteiroId || null,
       criadoPorId: req.usuario.id,
       status: "pendente",
