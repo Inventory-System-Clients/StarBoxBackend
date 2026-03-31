@@ -1,5 +1,6 @@
 import { FluxoCaixa, Movimentacao, Maquina, Loja, Usuario } from "../models/index.js";
 import { Op } from "sequelize";
+import { calcularEsperadoMovimentacaoRetirada } from "../services/fluxoCaixaCalculoService.js";
 
 const possuiNumero = (valor) =>
   valor !== null &&
@@ -22,108 +23,19 @@ const arredondar2 = (valor) => {
   return Number(Number(valor).toFixed(2));
 };
 
-const calcularValorEsperadoRetirada = async ({
-  movimentacaoAtual,
-  fluxoAtualId = null,
-}) => {
-  if (!movimentacaoAtual?.maquinaId || !movimentacaoAtual?.dataColeta) {
-    return {
-      valorEsperadoCalculado: null,
-      ultimoContadorInRetirada: null,
-      ultimoContadorOutRetirada: null,
-      deltaContadorIn: null,
-      deltaContadorOut: null,
-      algoritmoValorEsperado: null,
-    };
-  }
-
-  const whereFluxoAnterior = {};
-  if (fluxoAtualId) {
-    whereFluxoAnterior.id = { [Op.ne]: fluxoAtualId };
-  }
-
-  const retiradaAnterior = await FluxoCaixa.findOne({
-    where: whereFluxoAnterior,
-    include: [
-      {
-        model: Movimentacao,
-        as: "movimentacao",
-        required: true,
-        where: {
-          maquinaId: movimentacaoAtual.maquinaId,
-          dataColeta: { [Op.lt]: movimentacaoAtual.dataColeta },
-        },
-        attributes: ["id", "contadorIn", "contadorOut", "dataColeta"],
-      },
-    ],
-    order: [
-      [{ model: Movimentacao, as: "movimentacao" }, "dataColeta", "DESC"],
-      [{ model: Movimentacao, as: "movimentacao" }, "createdAt", "DESC"],
-    ],
-  });
-
-  const contadorInAtual = inteiroOuNull(movimentacaoAtual.contadorIn);
-  const contadorOutAtual = inteiroOuNull(movimentacaoAtual.contadorOut);
-
-  let baseIn = null;
-  let baseOut = null;
-
-  if (retiradaAnterior?.movimentacao) {
-    baseIn = inteiroOuNull(retiradaAnterior.movimentacao.contadorIn);
-    baseOut = inteiroOuNull(retiradaAnterior.movimentacao.contadorOut);
-  } else {
-    // Fallback: quando não há retirada anterior, tentar usar campos anteriores da própria movimentação atual.
-    baseIn = inteiroOuNull(
-      movimentacaoAtual.contadorInAnterior ??
-        movimentacaoAtual.contador_in_anterior ??
-        movimentacaoAtual?.dataValues?.contadorInAnterior,
-    );
-    baseOut = inteiroOuNull(
-      movimentacaoAtual.contadorOutAnterior ??
-        movimentacaoAtual.contador_out_anterior ??
-        movimentacaoAtual?.dataValues?.contadorOutAnterior,
-    );
-  }
-
-  const deltaContadorIn =
-    baseIn !== null && contadorInAtual !== null
-      ? Math.max(0, contadorInAtual - baseIn)
-      : null;
-  const deltaContadorOut =
-    baseOut !== null && contadorOutAtual !== null
-      ? Math.max(0, contadorOutAtual - baseOut)
-      : null;
-
+const calcularValorEsperadoRetirada = async ({ movimentacaoAtual }) => {
   const valorJogada = decimalOuNull(movimentacaoAtual?.maquina?.valorFicha);
-
-  let valorEsperadoCalculado = null;
-  let algoritmoValorEsperado = null;
-
-  if (valorJogada !== null && valorJogada > 0) {
-    if (deltaContadorIn !== null) {
-      valorEsperadoCalculado = arredondar2(deltaContadorIn / valorJogada);
-      algoritmoValorEsperado = "delta_in_div_valor_ficha";
-    } else if (deltaContadorOut !== null) {
-      valorEsperadoCalculado = arredondar2(deltaContadorOut / valorJogada);
-      algoritmoValorEsperado = "delta_out_div_valor_ficha";
-    }
-  }
-
-  return {
-    valorEsperadoCalculado,
-    ultimoContadorInRetirada: baseIn,
-    ultimoContadorOutRetirada: baseOut,
-    deltaContadorIn,
-    deltaContadorOut,
-    algoritmoValorEsperado,
-  };
+  return calcularEsperadoMovimentacaoRetirada({
+    movimentacaoAtual,
+    valorFicha: valorJogada,
+    permitirFallbackDeltaOut: false,
+  });
 };
 
 const enriquecerFluxoComCalculo = async (fluxoInstance) => {
   const fluxo = fluxoInstance.toJSON();
   const calculo = await calcularValorEsperadoRetirada({
     movimentacaoAtual: fluxo.movimentacao,
-    fluxoAtualId: fluxo.id,
   });
 
   return {
@@ -406,7 +318,7 @@ export const resumoFluxoCaixa = async (req, res) => {
     let valorTotalRetirado = 0;
     let valorTotalEsperado = 0;
 
-    fluxos.forEach(fluxo => {
+    for (const fluxo of fluxos) {
       if (fluxo.conferencia === "pendente") {
         totalPendentes++;
       } else if (fluxo.conferencia === "bateu") {
@@ -419,10 +331,20 @@ export const resumoFluxoCaixa = async (req, res) => {
         valorTotalRetirado += parseFloat(fluxo.valorRetirado);
       }
 
-      if (fluxo.movimentacao && fluxo.movimentacao.valorFaturado !== null) {
-        valorTotalEsperado += parseFloat(fluxo.movimentacao.valorFaturado);
+      const calculo = await calcularValorEsperadoRetirada({
+        movimentacaoAtual: fluxo.movimentacao,
+      });
+
+      const valorEsperadoManual = decimalOuNull(fluxo.valorEsperado);
+      const valorEsperadoReferencia =
+        valorEsperadoManual !== null
+          ? valorEsperadoManual
+          : calculo.valorEsperadoCalculado;
+
+      if (valorEsperadoReferencia !== null) {
+        valorTotalEsperado += valorEsperadoReferencia;
       }
-    });
+    }
 
     const diferencaTotal = valorTotalRetirado - valorTotalEsperado;
 

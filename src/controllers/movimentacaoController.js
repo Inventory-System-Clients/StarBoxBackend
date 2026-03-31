@@ -18,6 +18,7 @@ import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
 import AlertManager from "../services/alertManager.js";
+import { calcularEsperadoMovimentacaoRetirada } from "../services/fluxoCaixaCalculoService.js";
 
 const possuiNumero = (valor) =>
   valor !== null &&
@@ -41,69 +42,15 @@ const calcularValorEsperadoInicialRetirada = async ({
   contadorInAnteriorFallback,
   contadorOutAnteriorFallback,
 }) => {
-  if (!movimentacaoAtual?.maquinaId || !movimentacaoAtual?.dataColeta) {
-    return null;
-  }
-
-  const retiradaAnterior = await FluxoCaixa.findOne({
-    include: [
-      {
-        model: Movimentacao,
-        as: "movimentacao",
-        required: true,
-        where: {
-          maquinaId: movimentacaoAtual.maquinaId,
-          dataColeta: { [Op.lt]: movimentacaoAtual.dataColeta },
-        },
-        attributes: ["id", "contadorIn", "contadorOut", "dataColeta"],
-      },
-    ],
-    order: [
-      [{ model: Movimentacao, as: "movimentacao" }, "dataColeta", "DESC"],
-      [{ model: Movimentacao, as: "movimentacao" }, "createdAt", "DESC"],
-    ],
+  const calculo = await calcularEsperadoMovimentacaoRetirada({
+    movimentacaoAtual,
+    valorFicha: valorJogada,
+    contadorInAnteriorFallback,
+    contadorOutAnteriorFallback,
+    permitirFallbackDeltaOut: false,
   });
 
-  const contadorInAtual = possuiNumero(movimentacaoAtual.contadorIn)
-    ? inteiroSeguro(movimentacaoAtual.contadorIn, null)
-    : null;
-  const contadorOutAtual = possuiNumero(movimentacaoAtual.contadorOut)
-    ? inteiroSeguro(movimentacaoAtual.contadorOut, null)
-    : null;
-
-  const contadorInBase = retiradaAnterior?.movimentacao
-    ? inteiroSeguro(retiradaAnterior.movimentacao.contadorIn, null)
-    : (possuiNumero(contadorInAnteriorFallback)
-      ? inteiroSeguro(contadorInAnteriorFallback, null)
-      : null);
-  const contadorOutBase = retiradaAnterior?.movimentacao
-    ? inteiroSeguro(retiradaAnterior.movimentacao.contadorOut, null)
-    : (possuiNumero(contadorOutAnteriorFallback)
-      ? inteiroSeguro(contadorOutAnteriorFallback, null)
-      : null);
-
-  const deltaIn =
-    contadorInAtual !== null && contadorInBase !== null
-      ? Math.max(0, contadorInAtual - contadorInBase)
-      : null;
-  const deltaOut =
-    contadorOutAtual !== null && contadorOutBase !== null
-      ? Math.max(0, contadorOutAtual - contadorOutBase)
-      : null;
-
-  if (!possuiNumero(valorJogada) || Number(valorJogada) <= 0) {
-    return null;
-  }
-
-  if (deltaIn !== null) {
-    return arredondar2(deltaIn / Number(valorJogada));
-  }
-
-  if (deltaOut !== null) {
-    return arredondar2(deltaOut / Number(valorJogada));
-  }
-
-  return null;
+  return calculo.valorEsperadoCalculado;
 };
 
 const calcularContadoresProjetados = (historico) => {

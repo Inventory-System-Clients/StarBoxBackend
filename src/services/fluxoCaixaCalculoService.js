@@ -1,0 +1,237 @@
+import { Movimentacao } from "../models/index.js";
+
+const possuiNumero = (valor) =>
+  valor !== null &&
+  valor !== undefined &&
+  valor !== "" &&
+  !Number.isNaN(Number(valor));
+
+const inteiroOuNull = (valor) => {
+  if (!possuiNumero(valor)) return null;
+  return parseInt(valor, 10);
+};
+
+const decimalOuNull = (valor) => {
+  if (!possuiNumero(valor)) return null;
+  return Number(valor);
+};
+
+const arredondar2 = (valor) => {
+  if (!possuiNumero(valor)) return null;
+  return Number(Number(valor).toFixed(2));
+};
+
+const lerCampo = (obj, campos) => {
+  for (const campo of campos) {
+    if (obj?.[campo] !== undefined) return obj[campo];
+    if (obj?.dataValues?.[campo] !== undefined) return obj.dataValues[campo];
+  }
+  return undefined;
+};
+
+const compararNuloPorUltimo = (a, b) => {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+};
+
+const normalizarMovimentacao = (mov) => ({
+  ...mov,
+  id: lerCampo(mov, ["id"]),
+  maquinaId: lerCampo(mov, ["maquinaId", "maquina_id"]),
+  dataColeta: lerCampo(mov, ["dataColeta", "data_coleta"]),
+  createdAt: lerCampo(mov, ["createdAt", "created_at"]),
+  contadorIn: lerCampo(mov, ["contadorIn", "contador_in"]),
+  contadorOut: lerCampo(mov, ["contadorOut", "contador_out"]),
+  contadorInAnterior: lerCampo(mov, ["contadorInAnterior", "contador_in_anterior"]),
+  contadorOutAnterior: lerCampo(mov, ["contadorOutAnterior", "contador_out_anterior"]),
+});
+
+export const ordenarMovimentacoesDeterministico = (movA, movB) => {
+  const a = normalizarMovimentacao(movA);
+  const b = normalizarMovimentacao(movB);
+
+  const dataA = a.dataColeta ? new Date(a.dataColeta).getTime() : null;
+  const dataB = b.dataColeta ? new Date(b.dataColeta).getTime() : null;
+
+  if (dataA !== dataB) {
+    if (dataA === null) return 1;
+    if (dataB === null) return -1;
+    return dataA - dataB;
+  }
+
+  const createdA = a.createdAt ? new Date(a.createdAt).getTime() : null;
+  const createdB = b.createdAt ? new Date(b.createdAt).getTime() : null;
+
+  if (createdA !== createdB) {
+    if (createdA === null) return 1;
+    if (createdB === null) return -1;
+    return createdA - createdB;
+  }
+
+  const contadorInCmp = compararNuloPorUltimo(
+    inteiroOuNull(a.contadorIn),
+    inteiroOuNull(b.contadorIn),
+  );
+  if (contadorInCmp !== 0) return contadorInCmp;
+
+  const contadorOutCmp = compararNuloPorUltimo(
+    inteiroOuNull(a.contadorOut),
+    inteiroOuNull(b.contadorOut),
+  );
+  if (contadorOutCmp !== 0) return contadorOutCmp;
+
+  const idA = String(a.id || "");
+  const idB = String(b.id || "");
+  if (idA < idB) return -1;
+  if (idA > idB) return 1;
+  return 0;
+};
+
+export const calcularEsperadoComHistorico = ({
+  movimentacaoAtual,
+  historicoMovimentacoes,
+  valorFicha,
+  contadorInAnteriorFallback = null,
+  contadorOutAnteriorFallback = null,
+  permitirFallbackDeltaOut = false,
+}) => {
+  const atual = normalizarMovimentacao(movimentacaoAtual || {});
+
+  if (!atual.maquinaId || !atual.id) {
+    return {
+      valorEsperadoCalculado: null,
+      ultimoContadorInRetirada: null,
+      ultimoContadorOutRetirada: null,
+      deltaContadorIn: null,
+      deltaContadorOut: null,
+      algoritmoValorEsperado: null,
+    };
+  }
+
+  const historico = (historicoMovimentacoes || []).map(normalizarMovimentacao);
+  const historicoOrdenado = historico.sort(ordenarMovimentacoesDeterministico);
+
+  let ultimoInValido = null;
+  let ultimoOutValido = null;
+
+  for (const item of historicoOrdenado) {
+    const contadorInAtual = inteiroOuNull(item.contadorIn);
+    const contadorOutAtual = inteiroOuNull(item.contadorOut);
+
+    const inAnteriorPersistido = inteiroOuNull(item.contadorInAnterior);
+    const outAnteriorPersistido = inteiroOuNull(item.contadorOutAnterior);
+
+    const usarFallbackDoPayload = item.id === atual.id;
+    const inAnteriorDoPayload = usarFallbackDoPayload
+      ? inteiroOuNull(contadorInAnteriorFallback)
+      : null;
+    const outAnteriorDoPayload = usarFallbackDoPayload
+      ? inteiroOuNull(contadorOutAnteriorFallback)
+      : null;
+
+    const baseIn =
+      inAnteriorPersistido !== null
+        ? inAnteriorPersistido
+        : (inAnteriorDoPayload !== null ? inAnteriorDoPayload : ultimoInValido);
+    const baseOut =
+      outAnteriorPersistido !== null
+        ? outAnteriorPersistido
+        : (outAnteriorDoPayload !== null
+          ? outAnteriorDoPayload
+          : ultimoOutValido);
+
+    if (item.id === atual.id) {
+      const deltaContadorIn =
+        baseIn !== null && contadorInAtual !== null
+          ? Math.max(0, contadorInAtual - baseIn)
+          : null;
+      const deltaContadorOut =
+        baseOut !== null && contadorOutAtual !== null
+          ? Math.max(0, contadorOutAtual - baseOut)
+          : null;
+
+      const valorFichaNumerico = decimalOuNull(valorFicha);
+      let valorEsperadoCalculado = null;
+      let algoritmoValorEsperado = null;
+
+      if (valorFichaNumerico !== null && valorFichaNumerico > 0) {
+        if (deltaContadorIn !== null) {
+          valorEsperadoCalculado = arredondar2(deltaContadorIn / valorFichaNumerico);
+          algoritmoValorEsperado = "delta_in_div_valor_ficha";
+        } else if (permitirFallbackDeltaOut && deltaContadorOut !== null) {
+          valorEsperadoCalculado = arredondar2(
+            deltaContadorOut / valorFichaNumerico,
+          );
+          algoritmoValorEsperado = "delta_out_div_valor_ficha";
+        }
+      }
+
+      return {
+        valorEsperadoCalculado,
+        ultimoContadorInRetirada: baseIn,
+        ultimoContadorOutRetirada: baseOut,
+        deltaContadorIn,
+        deltaContadorOut,
+        algoritmoValorEsperado,
+      };
+    }
+
+    if (contadorInAtual !== null) {
+      ultimoInValido = contadorInAtual;
+    }
+    if (contadorOutAtual !== null) {
+      ultimoOutValido = contadorOutAtual;
+    }
+  }
+
+  return {
+    valorEsperadoCalculado: null,
+    ultimoContadorInRetirada: null,
+    ultimoContadorOutRetirada: null,
+    deltaContadorIn: null,
+    deltaContadorOut: null,
+    algoritmoValorEsperado: null,
+  };
+};
+
+export const calcularEsperadoMovimentacaoRetirada = async ({
+  movimentacaoAtual,
+  valorFicha,
+  contadorInAnteriorFallback = null,
+  contadorOutAnteriorFallback = null,
+  permitirFallbackDeltaOut = false,
+}) => {
+  const atual = normalizarMovimentacao(movimentacaoAtual || {});
+
+  if (!atual.maquinaId || !atual.id) {
+    return {
+      valorEsperadoCalculado: null,
+      ultimoContadorInRetirada: null,
+      ultimoContadorOutRetirada: null,
+      deltaContadorIn: null,
+      deltaContadorOut: null,
+      algoritmoValorEsperado: null,
+    };
+  }
+
+  const historico = await Movimentacao.findAll({
+    where: {
+      maquinaId: atual.maquinaId,
+      retiradaDinheiro: true,
+    },
+    attributes: ["id", "maquinaId", "dataColeta", "createdAt", "contadorIn", "contadorOut"],
+  });
+
+  return calcularEsperadoComHistorico({
+    movimentacaoAtual: atual,
+    historicoMovimentacoes: historico,
+    valorFicha,
+    contadorInAnteriorFallback,
+    contadorOutAnteriorFallback,
+    permitirFallbackDeltaOut,
+  });
+};
