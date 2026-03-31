@@ -347,12 +347,16 @@ export const registrarMovimentacao = async (req, res) => {
       null;
 
     if (produtoNaMaquinaIdFinal) {
-      const produtoNaMaquinaExiste = await Produto.findByPk(produtoNaMaquinaIdFinal, {
-        attributes: ["id"],
-      });
+      const produtoNaMaquinaExiste = await Produto.findByPk(
+        produtoNaMaquinaIdFinal,
+        {
+          attributes: ["id"],
+        },
+      );
       if (!produtoNaMaquinaExiste) {
         return res.status(400).json({
-          error: "produtoNaMaquinaId informado não existe no cadastro de produtos",
+          error:
+            "produtoNaMaquinaId informado não existe no cadastro de produtos",
         });
       }
     }
@@ -495,17 +499,29 @@ export const registrarMovimentacao = async (req, res) => {
 
     let movimentacaoAnterior = null;
     if (isPrimeiraMovimentacao) {
+      // Sempre usar o padrão da máquina para o totalPre
+      const totalPrePadrao = inteiroSeguro(maquina.capacidadePadrao, 100);
+      // Calcular saíram e abastecidas pela diferença dos contadores
+      const inAnterior = inteiroSeguro(contadorInAnteriorSanitizado, 0);
+      const inAtual = inteiroSeguro(contadorInSanitizado, 0);
+      const outAnterior = inteiroSeguro(contadorOutAnteriorSanitizado, 0);
+      const outAtual = inteiroSeguro(contadorOutSanitizado, 0);
+      const sairamPrimeira = Math.max(0, outAtual - outAnterior); // pelúcias
+      const abastecidasPrimeira = Math.max(0, inAtual - inAnterior); // dinheiro
+      // total atual = padrão - saíram + abastecidas
+      const totalAtualPrimeira =
+        totalPrePadrao - sairamPrimeira + abastecidasPrimeira;
       movimentacaoAnterior = await Movimentacao.create({
         maquinaId,
         usuarioId: req.usuario.id,
         dataColeta: dataColeta || new Date(),
-        totalPre: totalPreQtd,
-        sairam: saidaRecalculada,
-        abastecidas: abastecidasQtd,
+        totalPre: totalPrePadrao,
+        sairam: sairamPrimeira,
+        abastecidas: abastecidasPrimeira,
         fichas: fichasQtd,
         valorFaturado: parseFloat(valorFaturado.toFixed(2)),
-        contadorIn: contadorInAnteriorSanitizado,
-        contadorOut: contadorOutAnteriorSanitizado,
+        contadorIn: inAnterior,
+        contadorOut: outAnterior,
         contadorMaquina: contadorMaquina ?? null,
         quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
           ? notasEntradaValor
@@ -520,14 +536,22 @@ export const registrarMovimentacao = async (req, res) => {
         produtoNaMaquinaId: produtoNaMaquinaIdFinal,
         roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
         justificativa_ordem: justificativaPendente?.justificativa ?? null,
+        totalPos: totalAtualPrimeira,
       });
 
-      console.log("🧭 [registrarMovimentacao] Primeira movimentação detectada. Registro de contadores anteriores criado:", {
-        maquinaId,
-        movimentacaoAnteriorId: movimentacaoAnterior.id,
-        contadorInAnterior: contadorInAnteriorSanitizado,
-        contadorOutAnterior: contadorOutAnteriorSanitizado,
-      });
+      console.log(
+        "🧭 [registrarMovimentacao] Primeira movimentação detectada. Registro de contadores anteriores criado:",
+        {
+          maquinaId,
+          movimentacaoAnteriorId: movimentacaoAnterior.id,
+          contadorInAnterior: inAnterior,
+          contadorOutAnterior: outAnterior,
+          sairamPrimeira,
+          abastecidasPrimeira,
+          totalPrePadrao,
+          totalAtualPrimeira,
+        },
+      );
     }
 
     const movimentacao = await Movimentacao.create({
@@ -564,14 +588,13 @@ export const registrarMovimentacao = async (req, res) => {
 
     // Se a movimentação é marcada como retirada de dinheiro, criar registro no FluxoCaixa
     if (retiradaDinheiro) {
-      const valorEsperadoCalculadoInicial = await calcularValorEsperadoInicialRetirada(
-        {
+      const valorEsperadoCalculadoInicial =
+        await calcularValorEsperadoInicialRetirada({
           movimentacaoAtual: movimentacao,
           valorJogada: maquina.valorFicha,
           contadorInAnteriorFallback: contadorInAnteriorSanitizado,
           contadorOutAnteriorFallback: contadorOutAnteriorSanitizado,
-        },
-      );
+        });
 
       await FluxoCaixa.create({
         movimentacaoId: movimentacao.id,
@@ -882,7 +905,8 @@ export const registrarMovimentacao = async (req, res) => {
     const movimentacaoResposta = movimentacaoCompleta.toJSON();
     movimentacaoResposta.origemEstoqueAplicada = origemEstoqueNormalizada;
     movimentacaoResposta.primeiraMovimentacaoDuplicada = isPrimeiraMovimentacao;
-    movimentacaoResposta.movimentacaoAnteriorId = movimentacaoAnterior?.id || null;
+    movimentacaoResposta.movimentacaoAnteriorId =
+      movimentacaoAnterior?.id || null;
 
     res.locals.entityId = movimentacao.id;
     res.status(201).json(movimentacaoResposta);
