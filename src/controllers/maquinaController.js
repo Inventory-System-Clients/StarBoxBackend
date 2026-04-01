@@ -93,7 +93,13 @@ export const obterUltimoProduto = async (req, res) => {
 
 export const calcularQuantidadeAtual = async (req, res) => {
   try {
-    const { maquinaId, contadorIn, contadorOut } = req.query;
+    const {
+      maquinaId,
+      contadorIn,
+      contadorOut,
+      contadorInAnterior,
+      contadorOutAnterior,
+    } = req.query;
     if (!maquinaId) {
       return res.status(400).json({
         error: "maquinaId é obrigatório",
@@ -136,6 +142,12 @@ export const calcularQuantidadeAtual = async (req, res) => {
     const contadorOutAtual = possuiNumero(contadorOut)
       ? inteiroSeguro(contadorOut, contadorOutProjetado)
       : contadorOutProjetado;
+    const contadorInAnteriorPrimeira = possuiNumero(contadorInAnterior)
+      ? inteiroSeguro(contadorInAnterior, contadorInProjetado)
+      : contadorInProjetado;
+    const contadorOutAnteriorPrimeira = possuiNumero(contadorOutAnterior)
+      ? inteiroSeguro(contadorOutAnterior, contadorOutProjetado)
+      : contadorOutProjetado;
 
     const totalPosUltimaMovimentacao = possuiNumero(
       ultimaMovimentacao?.totalPos,
@@ -143,11 +155,15 @@ export const calcularQuantidadeAtual = async (req, res) => {
       ? inteiroSeguro(ultimaMovimentacao.totalPos, capacidade)
       : capacidade;
 
-    const contadorOutUltimaMovimentacao = possuiNumero(
-      ultimaMovimentacao?.contadorOut,
-    )
-      ? inteiroSeguro(ultimaMovimentacao.contadorOut, contadorOutProjetado)
-      : contadorOutProjetado;
+    const contadorOutUltimaMovimentacao = primeiraMovimentacao
+      ? contadorOutAnteriorPrimeira
+      : possuiNumero(ultimaMovimentacao?.contadorOut)
+        ? inteiroSeguro(ultimaMovimentacao.contadorOut, contadorOutProjetado)
+        : contadorOutProjetado;
+
+    const contadorInBase = primeiraMovimentacao
+      ? contadorInAnteriorPrimeira
+      : contadorInProjetado;
 
     const quantidadeDeveriaTerSaido = Math.max(
       0,
@@ -169,7 +185,7 @@ export const calcularQuantidadeAtual = async (req, res) => {
       totalPreEsperado,
       sugestaoAbastecimento,
       capacidadePadrao: capacidade,
-      contadorInSugerido: contadorInProjetado,
+      contadorInSugerido: contadorInBase,
       contadorOutSugerido: contadorOutProjetado,
       contadorInAtual,
       contadorOutAtual,

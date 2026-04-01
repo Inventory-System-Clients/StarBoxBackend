@@ -478,12 +478,33 @@ export const registrarMovimentacao = async (req, res) => {
 
     // valorFaturado = fichas * valorFicha + dinheiro(notas) + pix/cartão
 
+    const totalPrePadraoPrimeira = isPrimeiraMovimentacao
+      ? inteiroSeguro(maquina.capacidadePadrao, 100)
+      : null;
+    const deltaInPrimeira = isPrimeiraMovimentacao
+      ? Math.max(0, contadorInSanitizado - contadorInAnteriorSanitizado)
+      : 0;
+    const deltaOutPrimeira = isPrimeiraMovimentacao
+      ? Math.max(0, contadorOutSanitizado - contadorOutAnteriorSanitizado)
+      : 0;
+    const totalPrePrincipal = isPrimeiraMovimentacao
+      ? Math.max(0, totalPrePadraoPrimeira - deltaOutPrimeira)
+      : totalPreQtd;
+    const sairamPrincipal = isPrimeiraMovimentacao
+      ? deltaOutPrimeira
+      : saidaRecalculada;
+    const abastecidasPrincipal = isPrimeiraMovimentacao
+      ? deltaInPrimeira
+      : abastecidasQtd;
+
     console.log("📝 [registrarMovimentacao] Criando movimentação:", {
       maquinaId,
-      totalPre: totalPreQtd,
-      sairam: saidaRecalculada,
-      abastecidas: abastecidasQtd,
-      totalPosCalculado: totalPreQtd - saidaRecalculada + abastecidasQtd,
+      totalPre: totalPrePrincipal,
+      sairam: sairamPrincipal,
+      abastecidas: abastecidasPrincipal,
+      totalPosCalculado:
+        totalPrePrincipal - sairamPrincipal + abastecidasPrincipal,
+      isPrimeiraMovimentacao,
     });
 
     // Criar movimentação — persistir TODOS os campos enviados pelo frontend
@@ -499,25 +520,16 @@ export const registrarMovimentacao = async (req, res) => {
 
     let movimentacaoAnterior = null;
     if (isPrimeiraMovimentacao) {
-      // Sempre usar o padrão da máquina para o totalPre
-      const totalPrePadrao = inteiroSeguro(maquina.capacidadePadrao, 100);
-      // Calcular saíram e abastecidas pela diferença dos contadores
       const inAnterior = inteiroSeguro(contadorInAnteriorSanitizado, 0);
-      const inAtual = inteiroSeguro(contadorInSanitizado, 0);
       const outAnterior = inteiroSeguro(contadorOutAnteriorSanitizado, 0);
-      const outAtual = inteiroSeguro(contadorOutSanitizado, 0);
-      const sairamPrimeira = Math.max(0, outAtual - outAnterior); // pelúcias
-      const abastecidasPrimeira = Math.max(0, inAtual - inAnterior); // dinheiro
-      // total atual = padrão - saíram + abastecidas
-      const totalAtualPrimeira =
-        totalPrePadrao - sairamPrimeira + abastecidasPrimeira;
+
       movimentacaoAnterior = await Movimentacao.create({
         maquinaId,
         usuarioId: req.usuario.id,
         dataColeta: dataColeta || new Date(),
-        totalPre: totalPrePadrao,
-        sairam: sairamPrimeira,
-        abastecidas: abastecidasPrimeira,
+        totalPre: totalPrePadraoPrimeira,
+        sairam: 0,
+        abastecidas: 0,
         fichas: fichasQtd,
         valorFaturado: parseFloat(valorFaturado.toFixed(2)),
         contadorIn: inAnterior,
@@ -536,7 +548,7 @@ export const registrarMovimentacao = async (req, res) => {
         produtoNaMaquinaId: produtoNaMaquinaIdFinal,
         roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
         justificativa_ordem: justificativaPendente?.justificativa ?? null,
-        totalPos: totalAtualPrimeira,
+        totalPos: totalPrePadraoPrimeira,
       });
 
       console.log(
@@ -546,10 +558,7 @@ export const registrarMovimentacao = async (req, res) => {
           movimentacaoAnteriorId: movimentacaoAnterior.id,
           contadorInAnterior: inAnterior,
           contadorOutAnterior: outAnterior,
-          sairamPrimeira,
-          abastecidasPrimeira,
-          totalPrePadrao,
-          totalAtualPrimeira,
+          totalPrePadraoPrimeira,
         },
       );
     }
@@ -558,9 +567,9 @@ export const registrarMovimentacao = async (req, res) => {
       maquinaId,
       usuarioId: req.usuario.id,
       dataColeta: dataColeta || new Date(),
-      totalPre: totalPreQtd,
-      sairam: saidaRecalculada,
-      abastecidas: abastecidasQtd,
+      totalPre: totalPrePrincipal,
+      sairam: sairamPrincipal,
+      abastecidas: abastecidasPrincipal,
       fichas: fichasQtd,
       valorFaturado: parseFloat(valorFaturado.toFixed(2)),
       contadorIn: contadorInSanitizado,
