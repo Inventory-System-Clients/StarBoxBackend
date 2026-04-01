@@ -1,4 +1,10 @@
-import { FluxoCaixa, Movimentacao, Maquina, Loja, Usuario } from "../models/index.js";
+import {
+  FluxoCaixa,
+  Movimentacao,
+  Maquina,
+  Loja,
+  Usuario,
+} from "../models/index.js";
 import { Op } from "sequelize";
 import { calcularEsperadoMovimentacaoRetirada } from "../services/fluxoCaixaCalculoService.js";
 
@@ -22,6 +28,8 @@ const arredondar2 = (valor) => {
   if (!possuiNumero(valor)) return null;
   return Number(Number(valor).toFixed(2));
 };
+
+const STATUS_FLUXO_VALIDOS = new Set(["pendente", "bateu", "nao_bateu"]);
 
 const calcularValorEsperadoRetirada = async ({ movimentacaoAtual }) => {
   const valorJogada = decimalOuNull(movimentacaoAtual?.maquina?.valorFicha);
@@ -63,8 +71,8 @@ export const listarFluxoCaixa = async (req, res) => {
       whereMovimentacao.dataColeta = {
         [Op.between]: [
           new Date(`${dataInicio}T00:00:00`),
-          new Date(`${dataFim}T23:59:59`)
-        ]
+          new Date(`${dataFim}T23:59:59`),
+        ],
       };
     }
 
@@ -72,7 +80,7 @@ export const listarFluxoCaixa = async (req, res) => {
       whereLoja.id = lojaId;
     }
 
-    if (status) {
+    if (status && STATUS_FLUXO_VALIDOS.has(status)) {
       whereFluxo.conferencia = status;
     }
 
@@ -92,38 +100,46 @@ export const listarFluxoCaixa = async (req, res) => {
                   model: Loja,
                   as: "loja",
                   where: whereLoja,
-                  attributes: ["id", "nome", "endereco", "numero", "bairro", "cidade", "estado"]
-                }
+                  attributes: [
+                    "id",
+                    "nome",
+                    "endereco",
+                    "numero",
+                    "bairro",
+                    "cidade",
+                    "estado",
+                  ],
+                },
               ],
-              attributes: ["id", "nome", "codigo", "valorFicha", "lojaId"]
+              attributes: ["id", "nome", "codigo", "valorFicha", "lojaId"],
             },
             {
               model: Usuario,
               as: "usuario",
-              attributes: ["id", "nome", "email"]
-            }
+              attributes: ["id", "nome", "email"],
+            },
           ],
           attributes: [
-            "id", 
+            "id",
             "maquinaId",
-            "dataColeta", 
-            "fichas", 
+            "dataColeta",
+            "fichas",
             "valorFaturado",
             "contadorMaquina",
             "contadorIn",
             "contadorOut",
-            "observacoes"
-          ]
+            "observacoes",
+          ],
         },
         {
           model: Usuario,
           as: "conferidoPorUsuario",
-          attributes: ["id", "nome", "email"]
-        }
+          attributes: ["id", "nome", "email"],
+        },
       ],
       order: [
-        [{ model: Movimentacao, as: "movimentacao" }, "dataColeta", "DESC"]
-      ]
+        [{ model: Movimentacao, as: "movimentacao" }, "dataColeta", "DESC"],
+      ],
     });
 
     const fluxosEnriquecidos = await Promise.all(
@@ -156,27 +172,37 @@ export const obterFluxoCaixa = async (req, res) => {
                 {
                   model: Loja,
                   as: "loja",
-                  attributes: ["id", "nome", "endereco", "numero", "bairro", "cidade", "estado"]
-                }
-              ]
+                  attributes: [
+                    "id",
+                    "nome",
+                    "endereco",
+                    "numero",
+                    "bairro",
+                    "cidade",
+                    "estado",
+                  ],
+                },
+              ],
             },
             {
               model: Usuario,
               as: "usuario",
-              attributes: ["id", "nome", "email"]
-            }
-          ]
+              attributes: ["id", "nome", "email"],
+            },
+          ],
         },
         {
           model: Usuario,
           as: "conferidoPorUsuario",
-          attributes: ["id", "nome", "email"]
-        }
-      ]
+          attributes: ["id", "nome", "email"],
+        },
+      ],
     });
 
     if (!fluxo) {
-      return res.status(404).json({ error: "Registro de fluxo de caixa não encontrado" });
+      return res
+        .status(404)
+        .json({ error: "Registro de fluxo de caixa não encontrado" });
     }
 
     const fluxoEnriquecido = await enriquecerFluxoComCalculo(fluxo);
@@ -198,14 +224,19 @@ export const atualizarFluxoCaixa = async (req, res) => {
     const fluxo = await FluxoCaixa.findByPk(id);
 
     if (!fluxo) {
-      return res.status(404).json({ error: "Registro de fluxo de caixa não encontrado" });
+      return res
+        .status(404)
+        .json({ error: "Registro de fluxo de caixa não encontrado" });
     }
 
     // Atualizar dados
-    fluxo.valorEsperado = valorEsperado !== undefined ? valorEsperado : fluxo.valorEsperado;
-    fluxo.valorRetirado = valorRetirado !== undefined ? valorRetirado : fluxo.valorRetirado;
+    fluxo.valorEsperado =
+      valorEsperado !== undefined ? valorEsperado : fluxo.valorEsperado;
+    fluxo.valorRetirado =
+      valorRetirado !== undefined ? valorRetirado : fluxo.valorRetirado;
     fluxo.conferencia = conferencia || fluxo.conferencia;
-    fluxo.observacoes = observacoes !== undefined ? observacoes : fluxo.observacoes;
+    fluxo.observacoes =
+      observacoes !== undefined ? observacoes : fluxo.observacoes;
     fluxo.conferidoPor = usuarioId;
     fluxo.dataConferencia = new Date();
 
@@ -226,15 +257,23 @@ export const atualizarFluxoCaixa = async (req, res) => {
                 {
                   model: Loja,
                   as: "loja",
-                  attributes: ["id", "nome", "endereco", "numero", "bairro", "cidade", "estado"]
-                }
-              ]
+                  attributes: [
+                    "id",
+                    "nome",
+                    "endereco",
+                    "numero",
+                    "bairro",
+                    "cidade",
+                    "estado",
+                  ],
+                },
+              ],
             },
             {
               model: Usuario,
               as: "usuario",
-              attributes: ["id", "nome", "email"]
-            }
+              attributes: ["id", "nome", "email"],
+            },
           ],
           attributes: [
             "id",
@@ -251,14 +290,13 @@ export const atualizarFluxoCaixa = async (req, res) => {
         {
           model: Usuario,
           as: "conferidoPorUsuario",
-          attributes: ["id", "nome", "email"]
-        }
-      ]
+          attributes: ["id", "nome", "email"],
+        },
+      ],
     });
 
-    const fluxoAtualizadoEnriquecido = await enriquecerFluxoComCalculo(
-      fluxoAtualizado,
-    );
+    const fluxoAtualizadoEnriquecido =
+      await enriquecerFluxoComCalculo(fluxoAtualizado);
 
     res.json(fluxoAtualizadoEnriquecido);
   } catch (error) {
@@ -273,16 +311,18 @@ export const resumoFluxoCaixa = async (req, res) => {
     const { dataInicio, dataFim, lojaId } = req.query;
 
     if (!dataInicio || !dataFim) {
-      return res.status(400).json({ error: "dataInicio e dataFim são obrigatórios" });
+      return res
+        .status(400)
+        .json({ error: "dataInicio e dataFim são obrigatórios" });
     }
 
     const whereMovimentacao = {
       dataColeta: {
         [Op.between]: [
           new Date(`${dataInicio}T00:00:00`),
-          new Date(`${dataFim}T23:59:59`)
-        ]
-      }
+          new Date(`${dataFim}T23:59:59`),
+        ],
+      },
     };
 
     const whereLoja = lojaId ? { id: lojaId } : {};
@@ -302,13 +342,13 @@ export const resumoFluxoCaixa = async (req, res) => {
                   model: Loja,
                   as: "loja",
                   where: whereLoja,
-                  attributes: ["id", "nome"]
-                }
-              ]
-            }
-          ]
-        }
-      ]
+                  attributes: ["id", "nome"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
 
     // Calcular estatísticas
@@ -356,9 +396,10 @@ export const resumoFluxoCaixa = async (req, res) => {
       valorTotalRetirado: parseFloat(valorTotalRetirado.toFixed(2)),
       valorTotalEsperado: parseFloat(valorTotalEsperado.toFixed(2)),
       diferencaTotal: parseFloat(diferencaTotal.toFixed(2)),
-      taxaAcerto: fluxos.length > 0 
-        ? parseFloat(((totalBateu / fluxos.length) * 100).toFixed(2)) 
-        : 0
+      taxaAcerto:
+        fluxos.length > 0
+          ? parseFloat(((totalBateu / fluxos.length) * 100).toFixed(2))
+          : 0,
     });
   } catch (error) {
     console.error("[resumoFluxoCaixa] Erro:", error);
@@ -386,10 +427,18 @@ export const obterFluxoPorMovimentacao = async (req, res) => {
                 {
                   model: Loja,
                   as: "loja",
-                  attributes: ["id", "nome", "endereco", "numero", "bairro", "cidade", "estado"]
-                }
-              ]
-            }
+                  attributes: [
+                    "id",
+                    "nome",
+                    "endereco",
+                    "numero",
+                    "bairro",
+                    "cidade",
+                    "estado",
+                  ],
+                },
+              ],
+            },
           ],
           attributes: [
             "id",
@@ -406,13 +455,18 @@ export const obterFluxoPorMovimentacao = async (req, res) => {
         {
           model: Usuario,
           as: "conferidoPorUsuario",
-          attributes: ["id", "nome", "email"]
-        }
-      ]
+          attributes: ["id", "nome", "email"],
+        },
+      ],
     });
 
     if (!fluxo) {
-      return res.status(404).json({ error: "Registro de fluxo de caixa não encontrado para esta movimentação" });
+      return res
+        .status(404)
+        .json({
+          error:
+            "Registro de fluxo de caixa não encontrado para esta movimentação",
+        });
     }
 
     const fluxoEnriquecido = await enriquecerFluxoComCalculo(fluxo);
