@@ -1,5 +1,5 @@
 -- Regressao de calculo de valorEsperadoCalculado (PostgreSQL)
--- Regra obrigatoria: valorEsperadoCalculado = baseDelta / valorFicha
+-- Regra obrigatoria: valorEsperadoCalculado = baseDelta (sem divisao por valorFicha)
 -- Prioridade: deltaIn, fallback deltaOut
 
 -- =========================
@@ -31,14 +31,14 @@ SELECT
   delta_out,
   valor_ficha,
   CASE
-    WHEN valor_ficha > 0 AND delta_in IS NOT NULL THEN ROUND((delta_in::numeric / valor_ficha), 2)
-    WHEN valor_ficha > 0 AND delta_out IS NOT NULL THEN ROUND((delta_out::numeric / valor_ficha), 2)
+    WHEN delta_in IS NOT NULL THEN ROUND((delta_in::numeric), 2)
+    WHEN delta_out IS NOT NULL THEN ROUND((delta_out::numeric), 2)
     ELSE NULL
   END AS valor_esperado_calculado,
   CASE cenario
-    WHEN 'A' THEN 500::numeric
-    WHEN 'B' THEN 200::numeric
-    WHEN 'C' THEN 60::numeric
+    WHEN 'A' THEN 1000::numeric
+    WHEN 'B' THEN 1000::numeric
+    WHEN 'C' THEN 120::numeric
     WHEN 'D' THEN NULL::numeric
   END AS esperado
 FROM calc
@@ -80,10 +80,10 @@ SELECT
   CASE WHEN contador_out IS NOT NULL AND out_base IS NOT NULL THEN GREATEST(0, contador_out - out_base) END AS delta_out,
   valor_ficha,
   CASE
-    WHEN valor_ficha > 0 AND contador_in IS NOT NULL AND in_base IS NOT NULL
-      THEN ROUND((GREATEST(0, contador_in - in_base)::numeric / valor_ficha), 2)
-    WHEN valor_ficha > 0 AND contador_out IS NOT NULL AND out_base IS NOT NULL
-      THEN ROUND((GREATEST(0, contador_out - out_base)::numeric / valor_ficha), 2)
+    WHEN contador_in IS NOT NULL AND in_base IS NOT NULL
+      THEN ROUND((GREATEST(0, contador_in - in_base)::numeric), 2)
+    WHEN contador_out IS NOT NULL AND out_base IS NOT NULL
+      THEN ROUND((GREATEST(0, contador_out - out_base)::numeric), 2)
     ELSE NULL
   END AS valor_esperado_calculado_regra
 FROM fluxos_maquina

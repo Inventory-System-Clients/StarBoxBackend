@@ -34,8 +34,8 @@ test("Primeira movimentacao com dois registros calcula delta IN corretamente", (
 
   assert.equal(calculo.ultimoContadorInRetirada, 1000);
   assert.equal(calculo.deltaContadorIn, 200);
-  assert.equal(calculo.valorEsperadoCalculado, 100);
-  assert.equal(calculo.algoritmoValorEsperado, "delta_in_div_valor_ficha");
+  assert.equal(calculo.valorEsperadoCalculado, 200);
+  assert.equal(calculo.algoritmoValorEsperado, "delta_in_bruto");
 });
 
 test("Ordenacao deterministica desempata por contadorIn, contadorOut e id", () => {
@@ -114,7 +114,7 @@ test("Quando contador anterior do payload vier nulo usa ultimo contador valido s
 
   assert.equal(calculo.ultimoContadorInRetirada, 900);
   assert.equal(calculo.deltaContadorIn, 200);
-  assert.equal(calculo.valorEsperadoCalculado, 100);
+  assert.equal(calculo.valorEsperadoCalculado, 200);
 });
 
 test("Sem delta IN nao usa delta OUT quando fallback nao estiver habilitado", () => {

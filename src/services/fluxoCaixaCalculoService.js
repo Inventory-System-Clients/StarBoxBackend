@@ -154,20 +154,15 @@ export const calcularEsperadoComHistorico = ({
           ? Math.max(0, contadorOutAtual - baseOut)
           : null;
 
-      const valorFichaNumerico = decimalOuNull(valorFicha);
       let valorEsperadoCalculado = null;
       let algoritmoValorEsperado = null;
 
-      if (valorFichaNumerico !== null && valorFichaNumerico > 0) {
-        if (deltaContadorIn !== null) {
-          valorEsperadoCalculado = arredondar2(deltaContadorIn / valorFichaNumerico);
-          algoritmoValorEsperado = "delta_in_div_valor_ficha";
-        } else if (permitirFallbackDeltaOut && deltaContadorOut !== null) {
-          valorEsperadoCalculado = arredondar2(
-            deltaContadorOut / valorFichaNumerico,
-          );
-          algoritmoValorEsperado = "delta_out_div_valor_ficha";
-        }
+      if (deltaContadorIn !== null) {
+        valorEsperadoCalculado = arredondar2(deltaContadorIn);
+        algoritmoValorEsperado = "delta_in_bruto";
+      } else if (permitirFallbackDeltaOut && deltaContadorOut !== null) {
+        valorEsperadoCalculado = arredondar2(deltaContadorOut);
+        algoritmoValorEsperado = "delta_out_bruto";
       }
 
       return {
