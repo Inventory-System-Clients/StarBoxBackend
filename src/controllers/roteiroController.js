@@ -75,7 +75,6 @@ const obterTotalEstoqueUsuario = async (usuarioId) => {
   const total = await EstoqueUsuario.sum("quantidade", {
     where: {
       usuarioId,
-      ativo: true,
     },
   });
 
@@ -356,6 +355,17 @@ export const finalizarRoteiro = async (req, res) => {
       totalEstoqueFinal !== null && estoqueInicialTotal !== null
         ? Math.max(0, estoqueInicialTotal - totalEstoqueFinal)
         : null;
+
+    console.info({
+      evento: "roteiro_consumo_produtos_resumo",
+      requestId,
+      roteiroId,
+      data: dataHoje,
+      usuarioIdReferencia: usuarioEstoqueId,
+      estoqueInicialTotal,
+      estoqueFinalTotal: totalEstoqueFinal,
+      consumoTotalProdutos,
+    });
 
     await RoteiroFinalizacaoDiaria.upsert({
       roteiroId,

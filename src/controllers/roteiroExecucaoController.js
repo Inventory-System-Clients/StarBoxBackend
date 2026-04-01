@@ -17,7 +17,6 @@ const obterTotalEstoqueUsuario = async (usuarioId) => {
   const total = await EstoqueUsuario.sum("quantidade", {
     where: {
       usuarioId,
-      ativo: true,
     },
   });
 
@@ -75,7 +74,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
       },
     });
 
-    const usuarioEstoqueId = req.usuario?.id || roteiro.funcionarioId || null;
+    const usuarioEstoqueId = roteiro.funcionarioId || req.usuario?.id || null;
     let estoqueInicialTotal = null;
 
     if (usuarioEstoqueId) {
