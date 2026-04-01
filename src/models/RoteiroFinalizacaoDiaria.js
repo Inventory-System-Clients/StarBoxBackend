@@ -42,6 +42,21 @@ const RoteiroFinalizacaoDiaria = sequelize.define(
       defaultValue: DataTypes.NOW,
       field: "finalizado_em",
     },
+    estoqueInicialTotal: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "estoque_inicial_total",
+    },
+    estoqueFinalTotal: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "estoque_final_total",
+    },
+    consumoTotalProdutos: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "consumo_total_produtos",
+    },
   },
   {
     tableName: "roteiro_finalizacao_diaria",

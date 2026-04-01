@@ -12,6 +12,7 @@ import {
   ManutencaoWhatsAppPrompt,
   Movimentacao,
   MovimentacaoVeiculo,
+  EstoqueUsuario,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
@@ -66,6 +67,19 @@ const parseValorMonetario = (valor) => {
     return Number.parseFloat(valor.replace(",", ".").trim());
   }
   return Number.NaN;
+};
+
+const obterTotalEstoqueUsuario = async (usuarioId) => {
+  if (!usuarioId) return null;
+
+  const total = await EstoqueUsuario.sum("quantidade", {
+    where: {
+      usuarioId,
+      ativo: true,
+    },
+  });
+
+  return Number(total) || 0;
 };
 
 export const criarRoteiro = async (req, res) => {
@@ -322,12 +336,36 @@ export const finalizarRoteiro = async (req, res) => {
       });
     });
 
+    const usuarioEstoqueId = roteiro.funcionarioId || req.usuario?.id || null;
+    const totalEstoqueFinal = await obterTotalEstoqueUsuario(usuarioEstoqueId);
+
+    const finalizacaoDia = await RoteiroFinalizacaoDiaria.findOne({
+      where: {
+        roteiroId,
+        data: dataHoje,
+      },
+    });
+
+    const estoqueInicialTotal =
+      finalizacaoDia?.estoqueInicialTotal !== null &&
+      finalizacaoDia?.estoqueInicialTotal !== undefined
+        ? Number(finalizacaoDia.estoqueInicialTotal)
+        : totalEstoqueFinal;
+
+    const consumoTotalProdutos =
+      totalEstoqueFinal !== null && estoqueInicialTotal !== null
+        ? Math.max(0, estoqueInicialTotal - totalEstoqueFinal)
+        : null;
+
     await RoteiroFinalizacaoDiaria.upsert({
       roteiroId,
       data: dataHoje,
       finalizado: true,
       finalizadoPorId: req.usuario?.id || null,
       finalizadoEm: new Date(),
+      estoqueInicialTotal,
+      estoqueFinalTotal: totalEstoqueFinal,
+      consumoTotalProdutos,
     });
 
     let alerta = null;
@@ -344,6 +382,12 @@ export const finalizarRoteiro = async (req, res) => {
       status: "finalizado",
       data: dataHoje,
       pendencias: maquinasPendentes,
+      resumoConsumoProdutos: {
+        usuarioIdReferencia: usuarioEstoqueId,
+        estoqueInicialTotal,
+        estoqueFinalTotal: totalEstoqueFinal,
+        consumoTotalProdutos,
+      },
       alertaWhatsApp: alerta
         ? {
             id: alerta.id,

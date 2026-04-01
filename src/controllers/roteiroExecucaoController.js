@@ -5,10 +5,24 @@ import {
   Maquina,
   RoteiroFinalizacaoDiaria,
   GastoRoteiro,
+  EstoqueUsuario,
   Usuario,
   Veiculo,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
+
+const obterTotalEstoqueUsuario = async (usuarioId) => {
+  if (!usuarioId) return null;
+
+  const total = await EstoqueUsuario.sum("quantidade", {
+    where: {
+      usuarioId,
+      ativo: true,
+    },
+  });
+
+  return Number(total) || 0;
+};
 
 async function getRoteiroExecucaoComStatus(req, res) {
   try {
@@ -44,20 +58,49 @@ async function getRoteiroExecucaoComStatus(req, res) {
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    // Buscar status das máquinas concluídas para o roteiro (sem filtro diário)
     const dataHoje = new Date().toISOString().slice(0, 10);
+
+    // Buscar status das máquinas concluídas para o roteiro (sem filtro diário)
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         roteiro_id: roteiro.id,
         concluida: true,
       },
     });
-    const finalizacaoManual = await RoteiroFinalizacaoDiaria.findOne({
+
+    let finalizacaoDia = await RoteiroFinalizacaoDiaria.findOne({
       where: {
         roteiroId: roteiro.id,
-        finalizado: true,
+        data: dataHoje,
       },
     });
+
+    const usuarioEstoqueId = req.usuario?.id || roteiro.funcionarioId || null;
+    let estoqueInicialTotal = null;
+
+    if (usuarioEstoqueId) {
+      const estoqueAtual = await obterTotalEstoqueUsuario(usuarioEstoqueId);
+
+      if (!finalizacaoDia) {
+        finalizacaoDia = await RoteiroFinalizacaoDiaria.create({
+          roteiroId: roteiro.id,
+          data: dataHoje,
+          finalizado: false,
+          estoqueInicialTotal: estoqueAtual,
+        });
+      } else if (finalizacaoDia.estoqueInicialTotal === null) {
+        await finalizacaoDia.update({
+          estoqueInicialTotal: estoqueAtual,
+        });
+      }
+
+      estoqueInicialTotal =
+        finalizacaoDia.estoqueInicialTotal === null
+          ? estoqueAtual
+          : Number(finalizacaoDia.estoqueInicialTotal);
+    }
+
+    const finalizacaoManual = finalizacaoDia?.finalizado ? finalizacaoDia : null;
     const maquinasFinalizadas = new Set(
       statusMaquinas.map((s) => s.maquina_id),
     );
@@ -176,6 +219,22 @@ async function getRoteiroExecucaoComStatus(req, res) {
         data: s.data,
         concluida: s.concluida,
       })),
+      resumoConsumoProdutos: {
+        usuarioIdReferencia: usuarioEstoqueId,
+        estoqueInicialTotal:
+          estoqueInicialTotal ??
+          (finalizacaoDia?.estoqueInicialTotal !== null
+            ? Number(finalizacaoDia?.estoqueInicialTotal)
+            : null),
+        estoqueFinalTotal:
+          finalizacaoDia?.estoqueFinalTotal !== null
+            ? Number(finalizacaoDia?.estoqueFinalTotal)
+            : null,
+        consumoTotalProdutos:
+          finalizacaoDia?.consumoTotalProdutos !== null
+            ? Number(finalizacaoDia?.consumoTotalProdutos)
+            : null,
+      },
     });
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar execução do roteiro" });

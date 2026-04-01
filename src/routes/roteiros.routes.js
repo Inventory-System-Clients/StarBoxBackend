@@ -479,6 +479,6 @@ router.get("/com-status", getTodosRoteirosComStatus);
 // Página de execução de roteiro: retorna lojas e máquinas do roteiro
 import { getRoteiroExecucaoComStatus } from "../controllers/roteiroExecucaoController.js";
 
-router.get("/:id/executar", getRoteiroExecucaoComStatus);
+router.get("/:id/executar", autenticar, getRoteiroExecucaoComStatus);
 
 export default router;
