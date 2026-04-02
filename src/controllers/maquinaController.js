@@ -292,6 +292,7 @@ export const obterMaquina = async (req, res) => {
 
 // US05 - Criar máquina
 export const criarMaquina = async (req, res) => {
+  let transaction = null;
   try {
     const {
       codigo,
@@ -308,6 +309,8 @@ export const criarMaquina = async (req, res) => {
       jogadasPremium,
       percentualAlertaEstoque,
       localizacao,
+      contadorInInicial,
+      contadorOutInicial,
     } = req.body;
 
     if (!codigo || !lojaId) {
@@ -336,6 +339,8 @@ export const criarMaquina = async (req, res) => {
     // Se nome não foi informado, usar o código como nome
     const nomeDefinitivo = nome && nome.trim() ? nome.trim() : codigo;
 
+    transaction = await Maquina.sequelize.transaction();
+
     const maquina = await Maquina.create({
       codigo,
       nome: nomeDefinitivo,
@@ -354,11 +359,49 @@ export const criarMaquina = async (req, res) => {
       jogadasPremium: jogadasPremium || null,
       percentualAlertaEstoque: percentualAlertaEstoque || 30,
       localizacao,
-    });
+    }, { transaction });
+
+    const inInicialValido = possuiNumero(contadorInInicial);
+    const outInicialValido = possuiNumero(contadorOutInicial);
+
+    if (inInicialValido || outInicialValido) {
+      if (!inInicialValido || !outInicialValido) {
+        await transaction.rollback();
+        return res.status(422).json({
+          error:
+            "Para criar movimentação inicial no cadastro da máquina, informe contadorInInicial e contadorOutInicial.",
+          code: "MAQUINA_VALIDATION_INITIAL_COUNTERS_REQUIRED",
+        });
+      }
+
+      await Movimentacao.create({
+        maquinaId: maquina.id,
+        usuarioId: req.usuario.id,
+        dataColeta: new Date(),
+        totalPre: Number(maquina.capacidadePadrao || 100),
+        sairam: 0,
+        abastecidas: 0,
+        fichas: 0,
+        valorFaturado: 0,
+        contadorIn: inteiroSeguro(contadorInInicial, 0),
+        contadorOut: inteiroSeguro(contadorOutInicial, 0),
+        observacoes: "Movimentação inicial automática no cadastro da máquina",
+        tipoOcorrencia: "Inicial",
+      }, { transaction });
+    }
+
+    await transaction.commit();
+    transaction = null;
 
     res.locals.entityId = maquina.id;
-    res.status(201).json(maquina);
+    res.status(201).json({
+      ...maquina.toJSON(),
+      movimentacaoInicialCriada: inInicialValido && outInicialValido,
+    });
   } catch (error) {
+    if (transaction) {
+      await transaction.rollback();
+    }
     console.error("Erro ao criar máquina:", error);
     res.status(500).json({ error: "Erro ao criar máquina" });
   }

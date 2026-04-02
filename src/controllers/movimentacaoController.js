@@ -14,6 +14,7 @@ import {
   FluxoCaixa,
 } from "../models/index.js";
 import { Op } from "sequelize";
+import { randomUUID } from "node:crypto";
 import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
@@ -83,16 +84,70 @@ const calcularContadoresProjetados = (historico) => {
   };
 };
 
+const getRequestId = (req) =>
+  req.requestId || req.id || req.headers?.["x-request-id"] || randomUUID();
+
+const logMovimentacao = (level, payload) => {
+  const logger = console[level] || console.log;
+  logger(payload);
+};
+
+export const isErroCriticoMovimentacao = (erro) => {
+  if (!erro) return true;
+  if (erro.name === "SequelizeValidationError") return true;
+  if (erro.name === "SequelizeUniqueConstraintError") return true;
+  if (erro.name === "SequelizeForeignKeyConstraintError") return true;
+  if (erro.name === "SequelizeDatabaseError") return true;
+  if (erro.code === "MOVIMENTACAO_VALIDATION") return true;
+  return false;
+};
+
+const montarPayloadMovimentacaoSucesso = ({
+  movimentacao,
+  movimentacaoAnterior = null,
+  origemEstoqueAplicada,
+  idempotent = false,
+  warnings = [],
+}) => ({
+  id: movimentacao.id,
+  maquinaId: movimentacao.maquinaId,
+  contadores: {
+    contadorIn: movimentacao.contadorIn,
+    contadorOut: movimentacao.contadorOut,
+  },
+  origemEstoqueAplicada,
+  movimentacaoAnteriorId: movimentacaoAnterior?.id || null,
+  idempotent,
+  warnings,
+});
+
 // US08, US09, US10 - Registrar movimentação completa
 export const registrarMovimentacao = async (req, res) => {
+  const requestId = getRequestId(req);
+  const warnings = [];
+
   // Validação: apenas campos realmente obrigatórios em todos os formulários
   const requiredFields = ["maquinaId", "totalPre", "abastecidas"];
   const missing = requiredFields.filter((f) => req.body[f] === undefined);
   if (missing.length > 0) {
     return res
-      .status(400)
-      .json({ error: "Campos obrigatórios ausentes: " + missing.join(", ") });
+      .status(422)
+      .json({
+        error: "Campos obrigatórios ausentes: " + missing.join(", "),
+        code: "MOVIMENTACAO_VALIDATION_REQUIRED_FIELDS",
+        requestId,
+      });
   }
+
+  logMovimentacao("info", {
+    evento: "movimentacao_post",
+    requestId,
+    etapa: "validacao",
+    maquinaId: req.body?.maquinaId,
+  });
+
+  let transaction = null;
+
   try {
     const {
       maquinaId,
@@ -124,7 +179,14 @@ export const registrarMovimentacao = async (req, res) => {
       produto_na_maquina_id,
       contadorInAnterior,
       contadorOutAnterior,
+      origemCadastroMaquina,
+      tipoMovimentacao,
     } = req.body;
+
+    const isOrigemCadastroInicial =
+      Boolean(origemCadastroMaquina) ||
+      String(tipoMovimentacao || "").toUpperCase() === "INICIAL";
+    const idempotencyKey = req.headers?.["x-idempotency-key"] || null;
 
     const origemEstoqueNormalizada =
       origemEstoque === "loja" ? "loja" : "usuario";
@@ -161,8 +223,10 @@ export const registrarMovimentacao = async (req, res) => {
 
     // Validações
     if (!maquinaId || totalPre === undefined || abastecidas === undefined) {
-      return res.status(400).json({
+      return res.status(422).json({
         error: "maquinaId, totalPre e abastecidas são obrigatórios",
+        code: "MOVIMENTACAO_VALIDATION_REQUIRED_FIELDS",
+        requestId,
       });
     }
 
@@ -196,9 +260,11 @@ export const registrarMovimentacao = async (req, res) => {
       (!isValorContadorValido(contadorInInformado) ||
         !isValorContadorValido(contadorOutInformado))
     ) {
-      return res.status(400).json({
+      return res.status(422).json({
         error:
           "Para FUNCIONARIO_TODAS_LOJAS e CONTROLADOR_ESTOQUE, os campos IN/OUT são obrigatórios. Marque a opção de ignorar IN/OUT para continuar sem eles.",
+        code: "MOVIMENTACAO_VALIDATION_COUNTERS_REQUIRED",
+        requestId,
       });
     }
 
@@ -216,9 +282,11 @@ export const registrarMovimentacao = async (req, res) => {
         !isValorContadorValido(contadorInSanitizado) ||
         !isValorContadorValido(contadorOutSanitizado))
     ) {
-      return res.status(400).json({
+      return res.status(422).json({
         error:
           "Na primeira movimentação da máquina, os campos contadorInAnterior, contadorOutAnterior, contadorIn e contadorOut são obrigatórios.",
+        code: "MOVIMENTACAO_VALIDATION_FIRST_COUNTERS_REQUIRED",
+        requestId,
       });
     }
 
@@ -229,9 +297,11 @@ export const registrarMovimentacao = async (req, res) => {
       isValorContadorValido(contadorInSanitizado) &&
       contadorInAnteriorSanitizado > contadorInSanitizado
     ) {
-      return res.status(400).json({
+      return res.status(422).json({
         error:
           "Na primeira movimentação, contadorInAnterior não pode ser maior que contadorIn.",
+        code: "MOVIMENTACAO_VALIDATION_FIRST_COUNTER_IN_INVALID",
+        requestId,
       });
     }
 
@@ -242,10 +312,51 @@ export const registrarMovimentacao = async (req, res) => {
       isValorContadorValido(contadorOutSanitizado) &&
       contadorOutAnteriorSanitizado > contadorOutSanitizado
     ) {
-      return res.status(400).json({
+      return res.status(422).json({
         error:
           "Na primeira movimentação, contadorOutAnterior não pode ser maior que contadorOut.",
+        code: "MOVIMENTACAO_VALIDATION_FIRST_COUNTER_OUT_INVALID",
+        requestId,
       });
+    }
+
+    if (isPrimeiraMovimentacao && isOrigemCadastroInicial) {
+      const janelaIdempotencia = new Date(Date.now() - 10 * 60 * 1000);
+      const whereIdempotencia = {
+        maquinaId,
+        usuarioId: req.usuario.id,
+        contadorIn: contadorInSanitizado,
+        contadorOut: contadorOutSanitizado,
+        createdAt: { [Op.gte]: janelaIdempotencia },
+      };
+
+      if (idempotencyKey) {
+        whereIdempotencia.observacoes = observacoes;
+      }
+
+      const movimentacaoExistente = await Movimentacao.findOne({
+        where: whereIdempotencia,
+        order: [["createdAt", "DESC"]],
+      });
+
+      if (movimentacaoExistente) {
+        logMovimentacao("warn", {
+          evento: "movimentacao_idempotencia_reaproveitada",
+          requestId,
+          etapa: "persistencia",
+          maquinaId,
+          movimentacaoId: movimentacaoExistente.id,
+          idempotencyKey,
+        });
+
+        return res.status(200).json(
+          montarPayloadMovimentacaoSucesso({
+            movimentacao: movimentacaoExistente,
+            origemEstoqueAplicada: origemEstoqueNormalizada,
+            idempotent: true,
+          }),
+        );
+      }
     }
 
     const historicoContadores = await Movimentacao.findAll({
@@ -519,6 +630,8 @@ export const registrarMovimentacao = async (req, res) => {
       : null;
 
     let movimentacaoAnterior = null;
+    transaction = await Movimentacao.sequelize.transaction();
+
     if (isPrimeiraMovimentacao) {
       const inAnterior = inteiroSeguro(contadorInAnteriorSanitizado, 0);
       const outAnterior = inteiroSeguro(contadorOutAnteriorSanitizado, 0);
@@ -549,7 +662,7 @@ export const registrarMovimentacao = async (req, res) => {
         roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
         justificativa_ordem: justificativaPendente?.justificativa ?? null,
         totalPos: totalPrePadraoPrimeira,
-      });
+      }, { transaction });
 
       console.log(
         "🧭 [registrarMovimentacao] Primeira movimentação detectada. Registro de contadores anteriores criado:",
@@ -588,7 +701,7 @@ export const registrarMovimentacao = async (req, res) => {
       produtoNaMaquinaId: produtoNaMaquinaIdFinal,
       roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
       justificativa_ordem: justificativaPendente?.justificativa ?? null,
-    });
+    }, { transaction });
 
     // Consumir justificativa pendente após usá-la
     if (justificativaPendente && maquina.lojaId) {
@@ -609,7 +722,7 @@ export const registrarMovimentacao = async (req, res) => {
         movimentacaoId: movimentacao.id,
         valorEsperado: valorEsperadoCalculadoInicial,
         conferencia: "pendente",
-      });
+      }, { transaction });
       console.log(
         "✅ [registrarMovimentacao] Registro de FluxoCaixa criado para movimentação:",
         {
@@ -625,7 +738,11 @@ export const registrarMovimentacao = async (req, res) => {
       Array.isArray(req.body.pecasUsadas) &&
       req.body.pecasUsadas.length > 0
     ) {
-      await registrarMovimentacaoPecas(movimentacao.id, req.body.pecasUsadas);
+      await registrarMovimentacaoPecas(
+        movimentacao.id,
+        req.body.pecasUsadas,
+        { transaction },
+      );
     }
 
     console.log("✅ [registrarMovimentacao] Movimentação criada:", {
@@ -668,7 +785,7 @@ export const registrarMovimentacao = async (req, res) => {
         }
       }
       if (detalhesProdutos.length > 0) {
-        await MovimentacaoProduto.bulkCreate(detalhesProdutos);
+        await MovimentacaoProduto.bulkCreate(detalhesProdutos, { transaction });
         // Atualiza estoque de origem para produtos abastecidos
         for (const produto of detalhesProdutos) {
           if (
@@ -688,7 +805,7 @@ export const registrarMovimentacao = async (req, res) => {
                   0,
                   estoqueLoja.quantidade - produto.quantidadeAbastecida,
                 );
-                await estoqueLoja.update({ quantidade: novaQuantidade });
+                await estoqueLoja.update({ quantidade: novaQuantidade }, { transaction });
                 produtoIdsAjustadosNoEstoqueLoja.add(produto.produtoId);
               }
             } else {
@@ -704,7 +821,7 @@ export const registrarMovimentacao = async (req, res) => {
                   0,
                   estoqueUsuario.quantidade - produto.quantidadeAbastecida,
                 );
-                await estoqueUsuario.update({ quantidade: novaQuantidade });
+                await estoqueUsuario.update({ quantidade: novaQuantidade }, { transaction });
               }
             }
           }
@@ -714,6 +831,7 @@ export const registrarMovimentacao = async (req, res) => {
         await registrarMovimentacaoPecas(
           movimentacao.id,
           pecasParaMovimentacao,
+          { transaction },
         );
       }
     }
@@ -733,7 +851,7 @@ export const registrarMovimentacao = async (req, res) => {
         if (estoqueLoja) {
           const quantidadeAnterior = estoqueLoja.quantidade;
           const novaQuantidade = quantidadeAnterior + produto.retiradaProduto;
-          await estoqueLoja.update({ quantidade: novaQuantidade });
+          await estoqueLoja.update({ quantidade: novaQuantidade }, { transaction });
           produtoIdsAjustadosNoEstoqueLoja.add(produto.produtoId);
           console.log(
             "✅ [registrarMovimentacao] Devolução: retirada devolvida ao estoque da loja:",
@@ -756,173 +874,218 @@ export const registrarMovimentacao = async (req, res) => {
       }
     }
 
-    if (
-      origemEstoqueNormalizada === "loja" &&
-      produtoIdsAjustadosNoEstoqueLoja.size > 0
-    ) {
-      const lojaAlerta = await Loja.findByPk(maquina.lojaId, {
-        attributes: ["id", "nome", "telefone"],
-      });
+    await transaction.commit();
+    transaction = null;
 
-      const destinatarioAlerta =
-        lojaAlerta?.telefone || process.env.WHATSAPP_ALERT_DESTINO || null;
-
-      if (destinatarioAlerta) {
-        const estoquesAjustados = await EstoqueLoja.findAll({
-          where: {
-            lojaId: maquina.lojaId,
-            produtoId: {
-              [Op.in]: Array.from(produtoIdsAjustadosNoEstoqueLoja),
-            },
-          },
-          include: [
-            {
-              model: Produto,
-              as: "produto",
-              attributes: ["id", "nome", "estoqueMinimo"],
-            },
-          ],
+    try {
+      if (
+        origemEstoqueNormalizada === "loja" &&
+        produtoIdsAjustadosNoEstoqueLoja.size > 0
+      ) {
+        const lojaAlerta = await Loja.findByPk(maquina.lojaId, {
+          attributes: ["id", "nome", "telefone"],
         });
 
-        for (const estoqueItem of estoquesAjustados) {
-          const minimoDefinido = Number(
-            estoqueItem.estoqueMinimo ??
-              estoqueItem.produto?.estoqueMinimo ??
-              0,
-          );
+        const destinatarioAlerta =
+          lojaAlerta?.telefone || process.env.WHATSAPP_ALERT_DESTINO || null;
 
-          if (Number(estoqueItem.quantidade) > minimoDefinido) {
-            continue;
-          }
+        if (destinatarioAlerta) {
+          const estoquesAjustados = await EstoqueLoja.findAll({
+            where: {
+              lojaId: maquina.lojaId,
+              produtoId: {
+                [Op.in]: Array.from(produtoIdsAjustadosNoEstoqueLoja),
+              },
+            },
+            include: [
+              {
+                model: Produto,
+                as: "produto",
+                attributes: ["id", "nome", "estoqueMinimo"],
+              },
+            ],
+          });
 
-          AlertManager.estoqueCritico({
-            nomeUsuario: req.usuario?.nome || "Sistema",
-            telefoneChefe: destinatarioAlerta,
-            nomeMaquina:
-              maquina.nome || `Loja ${lojaAlerta?.nome || maquina.lojaId}`,
-            produto: estoqueItem.produto?.nome || estoqueItem.produtoId,
-            quantidadeAtual: Number(estoqueItem.quantidade),
-            estoqueMinimo: minimoDefinido,
-            referenciaTipo: "estoque_loja",
-            referenciaId: estoqueItem.id,
-          }).catch((erroAlerta) => {
-            console.error(
-              "Erro ao disparar alerta de estoque critico:",
-              erroAlerta.message,
+          for (const estoqueItem of estoquesAjustados) {
+            const minimoDefinido = Number(
+              estoqueItem.estoqueMinimo ??
+                estoqueItem.produto?.estoqueMinimo ??
+                0,
             );
+
+            if (Number(estoqueItem.quantidade) > minimoDefinido) {
+              continue;
+            }
+
+            AlertManager.estoqueCritico({
+              nomeUsuario: req.usuario?.nome || "Sistema",
+              telefoneChefe: destinatarioAlerta,
+              nomeMaquina:
+                maquina.nome || `Loja ${lojaAlerta?.nome || maquina.lojaId}`,
+              produto: estoqueItem.produto?.nome || estoqueItem.produtoId,
+              quantidadeAtual: Number(estoqueItem.quantidade),
+              estoqueMinimo: minimoDefinido,
+              referenciaTipo: "estoque_loja",
+              referenciaId: estoqueItem.id,
+            }).catch((erroAlerta) => {
+              logMovimentacao("warn", {
+                evento: "movimentacao_pos_processamento_alerta_erro",
+                requestId,
+                etapa: "pos-processamento",
+                erro: erroAlerta.message,
+                movimentacaoId: movimentacao.id,
+              });
+            });
+          }
+        }
+      }
+    } catch (erroSecundario) {
+      warnings.push("Falha ao processar alertas de estoque");
+      logMovimentacao("warn", {
+        evento: "movimentacao_pos_processamento_erro",
+        requestId,
+        etapa: "pos-processamento",
+        bloco: "alertas_estoque",
+        erro: erroSecundario.message,
+      });
+    }
+
+    try {
+      const hoje = new Date();
+      const dataHoje = hoje.toISOString().slice(0, 10);
+      const statusExistente = await MovimentacaoStatusDiario.findOne({
+        where: {
+          maquina_id: maquinaId,
+          roteiro_id: roteiroId,
+          concluida: true,
+        },
+      });
+
+      if (!statusExistente) {
+        await MovimentacaoStatusDiario.upsert({
+          maquina_id: maquinaId,
+          roteiro_id: roteiroId,
+          data: dataHoje,
+          concluida: true,
+        });
+      }
+    } catch (erroSecundario) {
+      warnings.push("Falha ao atualizar status diario da movimentacao");
+      logMovimentacao("warn", {
+        evento: "movimentacao_pos_processamento_erro",
+        requestId,
+        etapa: "pos-processamento",
+        bloco: "status_diario",
+        erro: erroSecundario.message,
+      });
+    }
+
+    try {
+      const pecasUsadas = req.body.pecasUsadas;
+      if (pecasUsadas && Array.isArray(pecasUsadas) && pecasUsadas.length > 0) {
+        const usuarioId = req.usuario.id;
+        for (const peca of pecasUsadas) {
+          await CarrinhoPeca.destroy({
+            where: {
+              usuarioId,
+              pecaId: peca.pecaId,
+            },
           });
         }
       }
-    }
-
-    // Buscar movimentação completa para retornar
-    const movimentacaoCompleta = await Movimentacao.findByPk(movimentacao.id, {
-      include: [
-        {
-          model: Maquina,
-          as: "maquina",
-          attributes: ["id", "codigo", "nome", "lojaId"],
-        },
-        {
-          model: Usuario,
-          as: "usuario",
-          attributes: ["id", "nome", "email"],
-        },
-        {
-          model: MovimentacaoProduto,
-          as: "detalhesProdutos",
-          include: [
-            {
-              model: Produto,
-              as: "produto",
-              attributes: ["id", "nome", "categoria"],
-            },
-          ],
-        },
-      ],
-    });
-
-    // Marcação de conclusão da máquina no roteiro (persistente até reset semanal)
-    const hoje = new Date();
-    const dataHoje = hoje.toISOString().slice(0, 10); // yyyy-mm-dd
-    // LOG detalhado dos dados recebidos
-    console.log("[LOG] Dados recebidos para registrar movimentação:", {
-      maquinaId,
-      roteiroId,
-      dataHoje,
-      usuario: req.usuario ? req.usuario.id : null,
-      produtos,
-    });
-    console.log("[MovStatus] Tentando registrar status:", {
-      maquina_id: maquinaId,
-      roteiro_id: roteiroId,
-      data: dataHoje,
-      concluida: true,
-    });
-    const statusExistente = await MovimentacaoStatusDiario.findOne({
-      where: {
-        maquina_id: maquinaId,
-        roteiro_id: roteiroId,
-        concluida: true,
-      },
-    });
-    console.log(
-      "[LOG] Status existente MovimentacaoStatusDiario:",
-      statusExistente,
-    );
-    if (statusExistente) {
-      console.log(
-        "[MovStatus] Máquina já concluída para este roteiro nesta semana. Mantendo status concluído.",
-      );
-    } else {
-      // Após registrar movimentação, marcar como concluída
-      const upsertResult = await MovimentacaoStatusDiario.upsert({
-        maquina_id: maquinaId,
-        roteiro_id: roteiroId,
-        data: dataHoje,
-        concluida: true,
+    } catch (erroSecundario) {
+      warnings.push("Falha ao limpar carrinho de pecas usadas");
+      logMovimentacao("warn", {
+        evento: "movimentacao_pos_processamento_erro",
+        requestId,
+        etapa: "pos-processamento",
+        bloco: "limpeza_carrinho",
+        erro: erroSecundario.message,
       });
-      console.log(
-        "[LOG] Resultado do upsert MovimentacaoStatusDiario:",
-        upsertResult,
-      );
     }
-    // Logar movimentacaoCompleta antes de retornar
-    console.log("[LOG] Movimentação registrada com sucesso:", {
-      movimentacaoId: movimentacao.id,
-      maquinaId,
-      roteiroId,
-      dataHoje,
-      usuario: req.usuario ? req.usuario.id : null,
-      movimentacaoCompleta,
+
+    let payloadResposta = montarPayloadMovimentacaoSucesso({
+      movimentacao,
+      movimentacaoAnterior,
+      origemEstoqueAplicada: origemEstoqueNormalizada,
+      warnings,
     });
 
-    // Remover apenas as peças usadas do carrinho do usuário
-    const pecasUsadas = req.body.pecasUsadas;
-    if (pecasUsadas && Array.isArray(pecasUsadas) && pecasUsadas.length > 0) {
-      const usuarioId = req.usuario.id;
-      for (const peca of pecasUsadas) {
-        await CarrinhoPeca.destroy({
-          where: {
-            usuarioId,
-            pecaId: peca.pecaId,
+    try {
+      const movimentacaoCompleta = await Movimentacao.findByPk(movimentacao.id, {
+        include: [
+          {
+            model: Maquina,
+            as: "maquina",
+            attributes: ["id", "codigo", "nome", "lojaId"],
           },
-        });
-      }
-    }
+          {
+            model: Usuario,
+            as: "usuario",
+            attributes: ["id", "nome", "email"],
+          },
+          {
+            model: MovimentacaoProduto,
+            as: "detalhesProdutos",
+            include: [
+              {
+                model: Produto,
+                as: "produto",
+                attributes: ["id", "nome", "categoria"],
+              },
+            ],
+          },
+        ],
+      });
 
-    const movimentacaoResposta = movimentacaoCompleta.toJSON();
-    movimentacaoResposta.origemEstoqueAplicada = origemEstoqueNormalizada;
-    movimentacaoResposta.primeiraMovimentacaoDuplicada = isPrimeiraMovimentacao;
-    movimentacaoResposta.movimentacaoAnteriorId =
-      movimentacaoAnterior?.id || null;
+      if (movimentacaoCompleta) {
+        payloadResposta = {
+          ...movimentacaoCompleta.toJSON(),
+          ...payloadResposta,
+        };
+      }
+    } catch (erroSecundario) {
+      warnings.push("Falha ao montar resposta completa da movimentacao");
+      logMovimentacao("warn", {
+        evento: "movimentacao_pos_processamento_erro",
+        requestId,
+        etapa: "resposta",
+        bloco: "montagem_payload",
+        erro: erroSecundario.message,
+      });
+    }
 
     res.locals.entityId = movimentacao.id;
-    res.status(201).json(movimentacaoResposta);
+    res.status(201).json(payloadResposta);
     return;
   } catch (error) {
-    console.error("Erro ao registrar movimentação:", error);
-    res.status(500).json({ error: "Erro ao registrar movimentação" });
+    if (transaction) {
+      await transaction.rollback();
+    }
+
+    const erroCritico = isErroCriticoMovimentacao(error);
+    const statusCode = erroCritico ? 500 : 422;
+    const codigo = erroCritico
+      ? "MOVIMENTACAO_INTERNAL_ERROR"
+      : "MOVIMENTACAO_VALIDATION_ERROR";
+
+    logMovimentacao("error", {
+      evento: "movimentacao_erro",
+      requestId,
+      etapa: "persistencia",
+      erro: error.message,
+      stack: error.stack,
+      code: error.code,
+      tipo: error.name,
+    });
+
+    res.status(statusCode).json({
+      error: erroCritico
+        ? "Erro interno ao registrar movimentação"
+        : "Erro de validação ao registrar movimentação",
+      code: codigo,
+      requestId,
+    });
   }
 };
 

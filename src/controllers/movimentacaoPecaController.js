@@ -1,12 +1,16 @@
 import { MovimentacaoPeca, Peca } from "../models/index.js";
 
 // Registrar peças usadas em uma movimentação
-export const registrarMovimentacaoPecas = async (movimentacaoId, pecasUsadas = []) => {
+export const registrarMovimentacaoPecas = async (
+  movimentacaoId,
+  pecasUsadas = [],
+  options = {},
+) => {
   if (!pecasUsadas || pecasUsadas.length === 0) return;
   for (const peca of pecasUsadas) {
     let nomePeca = peca.nome;
     if (!nomePeca) {
-      const pecaDb = await Peca.findByPk(peca.pecaId);
+      const pecaDb = await Peca.findByPk(peca.pecaId, options);
       nomePeca = pecaDb ? pecaDb.nome : null;
     }
     await MovimentacaoPeca.create({
@@ -14,7 +18,7 @@ export const registrarMovimentacaoPecas = async (movimentacaoId, pecasUsadas = [
       pecaId: peca.pecaId,
       quantidade: peca.quantidade,
       nome: nomePeca,
-    });
+    }, options);
   }
 };
 
