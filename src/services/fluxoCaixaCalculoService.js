@@ -45,11 +45,23 @@ const normalizarMovimentacao = (mov) => ({
   dataColeta: lerCampo(mov, ["dataColeta", "data_coleta"]),
   createdAt: lerCampo(mov, ["createdAt", "created_at"]),
   contadorIn: lerCampo(mov, ["contadorIn", "contador_in"]),
-  contadorInDigital: lerCampo(mov, ["contadorInDigital", "contador_in_digital"]),
+  contadorInDigital: lerCampo(mov, [
+    "contadorInDigital",
+    "contador_in_digital",
+  ]),
   contadorOut: lerCampo(mov, ["contadorOut", "contador_out"]),
-  contadorOutDigital: lerCampo(mov, ["contadorOutDigital", "contador_out_digital"]),
-  contadorInAnterior: lerCampo(mov, ["contadorInAnterior", "contador_in_anterior"]),
-  contadorOutAnterior: lerCampo(mov, ["contadorOutAnterior", "contador_out_anterior"]),
+  contadorOutDigital: lerCampo(mov, [
+    "contadorOutDigital",
+    "contador_out_digital",
+  ]),
+  contadorInAnterior: lerCampo(mov, [
+    "contadorInAnterior",
+    "contador_in_anterior",
+  ]),
+  contadorOutAnterior: lerCampo(mov, [
+    "contadorOutAnterior",
+    "contador_out_anterior",
+  ]),
 });
 
 export const extrairContadorAtualMovimentacao = (movimentacao = {}) => {
@@ -79,11 +91,15 @@ export const extrairContadoresBaseMovimentacao = ({
   const baseIn =
     inAnteriorPersistido !== null
       ? inAnteriorPersistido
-      : (inFallback !== null ? inFallback : ultimoContadorInValido);
+      : inFallback !== null
+        ? inFallback
+        : ultimoContadorInValido;
   const baseOut =
     outAnteriorPersistido !== null
       ? outAnteriorPersistido
-      : (outFallback !== null ? outFallback : ultimoContadorOutValido);
+      : outFallback !== null
+        ? outFallback
+        : ultimoContadorOutValido;
 
   return { baseIn, baseOut };
 };
@@ -206,22 +222,15 @@ export const calcularEsperadoComHistorico = ({
       ? Math.max(0, contadorOutAtual - baseOut)
       : null;
 
-  const valorFichaNumerico = decimalOuNull(valorFicha);
-
   let valorEsperadoCalculado = null;
   let algoritmoValorEsperado = null;
 
-  if (deltaContadorIn !== null && valorFichaNumerico && valorFichaNumerico > 0) {
-    valorEsperadoCalculado = arredondar2(deltaContadorIn / valorFichaNumerico);
-    algoritmoValorEsperado = "delta_in_div_valor_ficha";
-  } else if (
-    permitirFallbackDeltaOut &&
-    deltaContadorOut !== null &&
-    valorFichaNumerico &&
-    valorFichaNumerico > 0
-  ) {
-    valorEsperadoCalculado = arredondar2(deltaContadorOut / valorFichaNumerico);
-    algoritmoValorEsperado = "delta_out_div_valor_ficha";
+  if (deltaContadorIn !== null) {
+    valorEsperadoCalculado = arredondar2(deltaContadorIn);
+    algoritmoValorEsperado = "delta_in_direto";
+  } else if (permitirFallbackDeltaOut && deltaContadorOut !== null) {
+    valorEsperadoCalculado = arredondar2(deltaContadorOut);
+    algoritmoValorEsperado = "delta_out_direto";
   }
 
   return {

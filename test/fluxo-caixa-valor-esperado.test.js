@@ -35,8 +35,8 @@ test("Cenario A: primeira via cadastro vira base da proxima movimentacao", () =>
 
   assert.equal(calculo.ultimoContadorInRetirada, 1000);
   assert.equal(calculo.deltaContadorIn, 200);
-  assert.equal(calculo.valorEsperadoCalculado, 100);
-  assert.equal(calculo.algoritmoValorEsperado, "delta_in_div_valor_ficha");
+  assert.equal(calculo.valorEsperadoCalculado, 200);
+  assert.equal(calculo.algoritmoValorEsperado, "delta_in_direto");
 });
 
 test("Ordenacao deterministica desempata por contadorIn, contadorOut e id", () => {
@@ -115,7 +115,7 @@ test("Quando contador anterior do payload vier nulo usa ultimo contador valido s
 
   assert.equal(calculo.ultimoContadorInRetirada, 900);
   assert.equal(calculo.deltaContadorIn, 200);
-  assert.equal(calculo.valorEsperadoCalculado, 100);
+  assert.equal(calculo.valorEsperadoCalculado, 200);
 });
 
 test("Cenario C: usa coalesce de contador IN digital quando contador IN principal vier nulo", () => {
@@ -149,7 +149,7 @@ test("Cenario C: usa coalesce de contador IN digital quando contador IN principa
 
   assert.equal(calculo.ultimoContadorInRetirada, 1000);
   assert.equal(calculo.deltaContadorIn, 200);
-  assert.equal(calculo.valorEsperadoCalculado, 100);
+  assert.equal(calculo.valorEsperadoCalculado, 200);
 });
 
 test("Cenario D: contadorInAnterior da atual tem prioridade sobre historico", () => {
@@ -184,7 +184,7 @@ test("Cenario D: contadorInAnterior da atual tem prioridade sobre historico", ()
 
   assert.equal(calculo.ultimoContadorInRetirada, 1100);
   assert.equal(calculo.deltaContadorIn, 100);
-  assert.equal(calculo.valorEsperadoCalculado, 50);
+  assert.equal(calculo.valorEsperadoCalculado, 100);
 });
 
 test("Extrator de contador atual usa contador principal e fallback digital", () => {
