@@ -33,7 +33,21 @@ const FluxoCaixa = sequelize.define(
       allowNull: true,
       defaultValue: null,
       field: "valor_retirado",
-      comment: "Valor real de dinheiro retirado/trazido da máquina",
+      comment: "Valor total retirado (legado), soma de físico + digital",
+    },
+    valorRetiradoFisico: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: null,
+      field: "valor_retirado_fisico",
+      comment: "Valor real retirado em dinheiro físico",
+    },
+    valorRetiradoDigital: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      defaultValue: null,
+      field: "valor_retirado_digital",
+      comment: "Valor real retirado em dinheiro digital (telemetria)",
     },
     conferencia: {
       type: DataTypes.ENUM("pendente", "bateu", "nao_bateu"),
@@ -68,6 +82,24 @@ const FluxoCaixa = sequelize.define(
     timestamps: true,
     underscored: true,
     hooks: {
+      beforeSave: async (fluxoCaixa) => {
+        const fisico =
+          fluxoCaixa.valorRetiradoFisico !== null &&
+          fluxoCaixa.valorRetiradoFisico !== undefined
+            ? Number(fluxoCaixa.valorRetiradoFisico)
+            : null;
+        const digital =
+          fluxoCaixa.valorRetiradoDigital !== null &&
+          fluxoCaixa.valorRetiradoDigital !== undefined
+            ? Number(fluxoCaixa.valorRetiradoDigital)
+            : null;
+
+        if (fisico !== null || digital !== null) {
+          fluxoCaixa.valorRetirado = Number(
+            ((fisico || 0) + (digital || 0)).toFixed(2),
+          );
+        }
+      },
       beforeUpdate: async (fluxoCaixa) => {
         // Se o valor foi preenchido e ainda não tem data de conferência
         if (fluxoCaixa.valorRetirado !== null && fluxoCaixa.dataConferencia === null) {

@@ -31,6 +31,35 @@ const arredondar2 = (valor) => {
 
 const STATUS_FLUXO_VALIDOS = new Set(["pendente", "bateu", "nao_bateu"]);
 
+export const calcularValorRetiradoTotal = ({
+  valorRetiradoFisico,
+  valorRetiradoDigital,
+  valorRetirado,
+}) => {
+  const fisico = decimalOuNull(valorRetiradoFisico);
+  const digital = decimalOuNull(valorRetiradoDigital);
+
+  if (fisico === null && digital === null) {
+    return decimalOuNull(valorRetirado);
+  }
+
+  return arredondar2((fisico || 0) + (digital || 0));
+};
+
+export const calcularConferenciaAutomaticaFluxoCaixa = ({
+  valorEsperado,
+  valorRetiradoTotal,
+}) => {
+  const esperado = decimalOuNull(valorEsperado);
+  const retirado = decimalOuNull(valorRetiradoTotal);
+
+  if (esperado === null || retirado === null) {
+    return "pendente";
+  }
+
+  return Math.abs(esperado - retirado) <= 0.009 ? "bateu" : "nao_bateu";
+};
+
 const calcularValorEsperadoRetirada = async ({ movimentacaoAtual }) => {
   const valorJogada = decimalOuNull(movimentacaoAtual?.maquina?.valorFicha);
   return calcularEsperadoMovimentacaoRetirada({
@@ -46,8 +75,11 @@ const enriquecerFluxoComCalculo = async (fluxoInstance) => {
     movimentacaoAtual: fluxo.movimentacao,
   });
 
+  const valorRetiradoTotal = calcularValorRetiradoTotal(fluxo);
+
   return {
     ...fluxo,
+    valorRetiradoTotal,
     valorEsperadoCalculado: calculo.valorEsperadoCalculado,
     ultimoContadorInRetirada: calculo.ultimoContadorInRetirada,
     ultimoContadorOutRetirada: calculo.ultimoContadorOutRetirada,
@@ -218,7 +250,14 @@ export const obterFluxoCaixa = async (req, res) => {
 export const atualizarFluxoCaixa = async (req, res) => {
   try {
     const { id } = req.params;
-    const { valorEsperado, valorRetirado, conferencia, observacoes } = req.body;
+    const {
+      valorEsperado,
+      valorRetirado,
+      valorRetiradoFisico,
+      valorRetiradoDigital,
+      conferencia,
+      observacoes,
+    } = req.body;
     const usuarioId = req.usuario.id;
 
     const fluxo = await FluxoCaixa.findByPk(id);
@@ -232,9 +271,41 @@ export const atualizarFluxoCaixa = async (req, res) => {
     // Atualizar dados
     fluxo.valorEsperado =
       valorEsperado !== undefined ? valorEsperado : fluxo.valorEsperado;
-    fluxo.valorRetirado =
-      valorRetirado !== undefined ? valorRetirado : fluxo.valorRetirado;
-    fluxo.conferencia = conferencia || fluxo.conferencia;
+    fluxo.valorRetiradoFisico =
+      valorRetiradoFisico !== undefined
+        ? valorRetiradoFisico
+        : fluxo.valorRetiradoFisico;
+    fluxo.valorRetiradoDigital =
+      valorRetiradoDigital !== undefined
+        ? valorRetiradoDigital
+        : fluxo.valorRetiradoDigital;
+
+    // Backward compatibility: se frontend antigo enviar apenas valorRetirado,
+    // considera como valor físico.
+    if (
+      valorRetirado !== undefined &&
+      valorRetiradoFisico === undefined &&
+      valorRetiradoDigital === undefined
+    ) {
+      fluxo.valorRetiradoFisico = valorRetirado;
+      fluxo.valorRetiradoDigital = 0;
+    }
+
+    const valorRetiradoTotal = calcularValorRetiradoTotal({
+      valorRetiradoFisico: fluxo.valorRetiradoFisico,
+      valorRetiradoDigital: fluxo.valorRetiradoDigital,
+      valorRetirado: fluxo.valorRetirado,
+    });
+
+    fluxo.valorRetirado = valorRetiradoTotal;
+
+    fluxo.conferencia =
+      conferencia && STATUS_FLUXO_VALIDOS.has(conferencia)
+        ? conferencia
+        : calcularConferenciaAutomaticaFluxoCaixa({
+            valorEsperado: fluxo.valorEsperado,
+            valorRetiradoTotal,
+          });
     fluxo.observacoes =
       observacoes !== undefined ? observacoes : fluxo.observacoes;
     fluxo.conferidoPor = usuarioId;
@@ -356,6 +427,8 @@ export const resumoFluxoCaixa = async (req, res) => {
     let totalBateu = 0;
     let totalNaoBateu = 0;
     let valorTotalRetirado = 0;
+    let valorTotalRetiradoFisico = 0;
+    let valorTotalRetiradoDigital = 0;
     let valorTotalEsperado = 0;
 
     for (const fluxo of fluxos) {
@@ -367,9 +440,13 @@ export const resumoFluxoCaixa = async (req, res) => {
         totalNaoBateu++;
       }
 
-      if (fluxo.valorRetirado !== null) {
-        valorTotalRetirado += parseFloat(fluxo.valorRetirado);
-      }
+      const valorFisico = decimalOuNull(fluxo.valorRetiradoFisico) || 0;
+      const valorDigital = decimalOuNull(fluxo.valorRetiradoDigital) || 0;
+      const valorTotalLinha = calcularValorRetiradoTotal(fluxo) || 0;
+
+      valorTotalRetiradoFisico += valorFisico;
+      valorTotalRetiradoDigital += valorDigital;
+      valorTotalRetirado += valorTotalLinha;
 
       const calculo = await calcularValorEsperadoRetirada({
         movimentacaoAtual: fluxo.movimentacao,
@@ -394,6 +471,8 @@ export const resumoFluxoCaixa = async (req, res) => {
       totalBateu,
       totalNaoBateu,
       valorTotalRetirado: parseFloat(valorTotalRetirado.toFixed(2)),
+      valorTotalRetiradoFisico: parseFloat(valorTotalRetiradoFisico.toFixed(2)),
+      valorTotalRetiradoDigital: parseFloat(valorTotalRetiradoDigital.toFixed(2)),
       valorTotalEsperado: parseFloat(valorTotalEsperado.toFixed(2)),
       diferencaTotal: parseFloat(diferencaTotal.toFixed(2)),
       taxaAcerto:
