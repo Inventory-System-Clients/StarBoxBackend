@@ -45,10 +45,48 @@ const normalizarMovimentacao = (mov) => ({
   dataColeta: lerCampo(mov, ["dataColeta", "data_coleta"]),
   createdAt: lerCampo(mov, ["createdAt", "created_at"]),
   contadorIn: lerCampo(mov, ["contadorIn", "contador_in"]),
+  contadorInDigital: lerCampo(mov, ["contadorInDigital", "contador_in_digital"]),
   contadorOut: lerCampo(mov, ["contadorOut", "contador_out"]),
+  contadorOutDigital: lerCampo(mov, ["contadorOutDigital", "contador_out_digital"]),
   contadorInAnterior: lerCampo(mov, ["contadorInAnterior", "contador_in_anterior"]),
   contadorOutAnterior: lerCampo(mov, ["contadorOutAnterior", "contador_out_anterior"]),
 });
+
+export const extrairContadorAtualMovimentacao = (movimentacao = {}) => {
+  const mov = normalizarMovimentacao(movimentacao);
+  return {
+    contadorInAtual:
+      inteiroOuNull(mov.contadorIn) ?? inteiroOuNull(mov.contadorInDigital),
+    contadorOutAtual:
+      inteiroOuNull(mov.contadorOut) ?? inteiroOuNull(mov.contadorOutDigital),
+  };
+};
+
+export const extrairContadoresBaseMovimentacao = ({
+  movimentacaoAtual,
+  ultimoContadorInValido,
+  ultimoContadorOutValido,
+  contadorInAnteriorFallback = null,
+  contadorOutAnteriorFallback = null,
+}) => {
+  const atual = normalizarMovimentacao(movimentacaoAtual || {});
+
+  const inAnteriorPersistido = inteiroOuNull(atual.contadorInAnterior);
+  const outAnteriorPersistido = inteiroOuNull(atual.contadorOutAnterior);
+  const inFallback = inteiroOuNull(contadorInAnteriorFallback);
+  const outFallback = inteiroOuNull(contadorOutAnteriorFallback);
+
+  const baseIn =
+    inAnteriorPersistido !== null
+      ? inAnteriorPersistido
+      : (inFallback !== null ? inFallback : ultimoContadorInValido);
+  const baseOut =
+    outAnteriorPersistido !== null
+      ? outAnteriorPersistido
+      : (outFallback !== null ? outFallback : ultimoContadorOutValido);
+
+  return { baseIn, baseOut };
+};
 
 export const ordenarMovimentacoesDeterministico = (movA, movB) => {
   const a = normalizarMovimentacao(movA);
@@ -112,68 +150,32 @@ export const calcularEsperadoComHistorico = ({
     };
   }
 
-  const historico = (historicoMovimentacoes || []).map(normalizarMovimentacao);
-  const historicoOrdenado = historico.sort(ordenarMovimentacoesDeterministico);
+  const historicoOrdenado = (historicoMovimentacoes || [])
+    .map(normalizarMovimentacao)
+    .sort(ordenarMovimentacoesDeterministico);
+
+  const indiceAtual = historicoOrdenado.findIndex(
+    (item) => String(item.id) === String(atual.id),
+  );
+
+  if (indiceAtual === -1) {
+    return {
+      valorEsperadoCalculado: null,
+      ultimoContadorInRetirada: null,
+      ultimoContadorOutRetirada: null,
+      deltaContadorIn: null,
+      deltaContadorOut: null,
+      algoritmoValorEsperado: null,
+    };
+  }
 
   let ultimoInValido = null;
   let ultimoOutValido = null;
 
-  for (const item of historicoOrdenado) {
-    const contadorInAtual = inteiroOuNull(item.contadorIn);
-    const contadorOutAtual = inteiroOuNull(item.contadorOut);
-
-    const inAnteriorPersistido = inteiroOuNull(item.contadorInAnterior);
-    const outAnteriorPersistido = inteiroOuNull(item.contadorOutAnterior);
-
-    const usarFallbackDoPayload = item.id === atual.id;
-    const inAnteriorDoPayload = usarFallbackDoPayload
-      ? inteiroOuNull(contadorInAnteriorFallback)
-      : null;
-    const outAnteriorDoPayload = usarFallbackDoPayload
-      ? inteiroOuNull(contadorOutAnteriorFallback)
-      : null;
-
-    const baseIn =
-      inAnteriorPersistido !== null
-        ? inAnteriorPersistido
-        : (inAnteriorDoPayload !== null ? inAnteriorDoPayload : ultimoInValido);
-    const baseOut =
-      outAnteriorPersistido !== null
-        ? outAnteriorPersistido
-        : (outAnteriorDoPayload !== null
-          ? outAnteriorDoPayload
-          : ultimoOutValido);
-
-    if (item.id === atual.id) {
-      const deltaContadorIn =
-        baseIn !== null && contadorInAtual !== null
-          ? Math.max(0, contadorInAtual - baseIn)
-          : null;
-      const deltaContadorOut =
-        baseOut !== null && contadorOutAtual !== null
-          ? Math.max(0, contadorOutAtual - baseOut)
-          : null;
-
-      let valorEsperadoCalculado = null;
-      let algoritmoValorEsperado = null;
-
-      if (deltaContadorIn !== null) {
-        valorEsperadoCalculado = arredondar2(deltaContadorIn);
-        algoritmoValorEsperado = "delta_in_bruto";
-      } else if (permitirFallbackDeltaOut && deltaContadorOut !== null) {
-        valorEsperadoCalculado = arredondar2(deltaContadorOut);
-        algoritmoValorEsperado = "delta_out_bruto";
-      }
-
-      return {
-        valorEsperadoCalculado,
-        ultimoContadorInRetirada: baseIn,
-        ultimoContadorOutRetirada: baseOut,
-        deltaContadorIn,
-        deltaContadorOut,
-        algoritmoValorEsperado,
-      };
-    }
+  for (let i = 0; i < indiceAtual; i += 1) {
+    const item = historicoOrdenado[i];
+    const { contadorInAtual, contadorOutAtual } =
+      extrairContadorAtualMovimentacao(item);
 
     if (contadorInAtual !== null) {
       ultimoInValido = contadorInAtual;
@@ -183,13 +185,52 @@ export const calcularEsperadoComHistorico = ({
     }
   }
 
+  const itemAtual = historicoOrdenado[indiceAtual];
+  const { contadorInAtual, contadorOutAtual } =
+    extrairContadorAtualMovimentacao(itemAtual);
+
+  const { baseIn, baseOut } = extrairContadoresBaseMovimentacao({
+    movimentacaoAtual: itemAtual,
+    ultimoContadorInValido: ultimoInValido,
+    ultimoContadorOutValido: ultimoOutValido,
+    contadorInAnteriorFallback,
+    contadorOutAnteriorFallback,
+  });
+
+  const deltaContadorIn =
+    baseIn !== null && contadorInAtual !== null
+      ? Math.max(0, contadorInAtual - baseIn)
+      : null;
+  const deltaContadorOut =
+    baseOut !== null && contadorOutAtual !== null
+      ? Math.max(0, contadorOutAtual - baseOut)
+      : null;
+
+  const valorFichaNumerico = decimalOuNull(valorFicha);
+
+  let valorEsperadoCalculado = null;
+  let algoritmoValorEsperado = null;
+
+  if (deltaContadorIn !== null && valorFichaNumerico && valorFichaNumerico > 0) {
+    valorEsperadoCalculado = arredondar2(deltaContadorIn / valorFichaNumerico);
+    algoritmoValorEsperado = "delta_in_div_valor_ficha";
+  } else if (
+    permitirFallbackDeltaOut &&
+    deltaContadorOut !== null &&
+    valorFichaNumerico &&
+    valorFichaNumerico > 0
+  ) {
+    valorEsperadoCalculado = arredondar2(deltaContadorOut / valorFichaNumerico);
+    algoritmoValorEsperado = "delta_out_div_valor_ficha";
+  }
+
   return {
-    valorEsperadoCalculado: null,
-    ultimoContadorInRetirada: null,
-    ultimoContadorOutRetirada: null,
-    deltaContadorIn: null,
-    deltaContadorOut: null,
-    algoritmoValorEsperado: null,
+    valorEsperadoCalculado,
+    ultimoContadorInRetirada: baseIn,
+    ultimoContadorOutRetirada: baseOut,
+    deltaContadorIn,
+    deltaContadorOut,
+    algoritmoValorEsperado,
   };
 };
 
@@ -216,9 +257,19 @@ export const calcularEsperadoMovimentacaoRetirada = async ({
   const historico = await Movimentacao.findAll({
     where: {
       maquinaId: atual.maquinaId,
-      retiradaDinheiro: true,
     },
-    attributes: ["id", "maquinaId", "dataColeta", "createdAt", "contadorIn", "contadorOut"],
+    attributes: [
+      "id",
+      "maquinaId",
+      "dataColeta",
+      "createdAt",
+      "contadorIn",
+      "contadorInDigital",
+      "contadorOut",
+      "contadorOutDigital",
+      "contadorInAnterior",
+      "contadorOutAnterior",
+    ],
   });
 
   return calcularEsperadoComHistorico({

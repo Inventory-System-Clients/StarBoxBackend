@@ -384,7 +384,11 @@ export const criarMaquina = async (req, res) => {
         fichas: 0,
         valorFaturado: 0,
         contadorIn: inteiroSeguro(contadorInInicial, 0),
+        contadorInDigital: inteiroSeguro(contadorInInicial, 0),
+        contadorInAnterior: inteiroSeguro(contadorInInicial, 0),
         contadorOut: inteiroSeguro(contadorOutInicial, 0),
+        contadorOutDigital: inteiroSeguro(contadorOutInicial, 0),
+        contadorOutAnterior: inteiroSeguro(contadorOutInicial, 0),
         observacoes: "Movimentação inicial automática no cadastro da máquina",
         tipoOcorrencia: "Inicial",
       }, { transaction });

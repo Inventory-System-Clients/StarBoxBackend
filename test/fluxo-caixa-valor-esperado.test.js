@@ -4,9 +4,10 @@ import assert from "node:assert/strict";
 import {
   calcularEsperadoComHistorico,
   ordenarMovimentacoesDeterministico,
+  extrairContadorAtualMovimentacao,
 } from "../src/services/fluxoCaixaCalculoService.js";
 
-test("Primeira movimentacao com dois registros calcula delta IN corretamente", () => {
+test("Cenario A: primeira via cadastro vira base da proxima movimentacao", () => {
   const maquinaId = "maq-1";
   const base = {
     id: "mov-a",
@@ -34,8 +35,8 @@ test("Primeira movimentacao com dois registros calcula delta IN corretamente", (
 
   assert.equal(calculo.ultimoContadorInRetirada, 1000);
   assert.equal(calculo.deltaContadorIn, 200);
-  assert.equal(calculo.valorEsperadoCalculado, 200);
-  assert.equal(calculo.algoritmoValorEsperado, "delta_in_bruto");
+  assert.equal(calculo.valorEsperadoCalculado, 100);
+  assert.equal(calculo.algoritmoValorEsperado, "delta_in_div_valor_ficha");
 });
 
 test("Ordenacao deterministica desempata por contadorIn, contadorOut e id", () => {
@@ -114,7 +115,96 @@ test("Quando contador anterior do payload vier nulo usa ultimo contador valido s
 
   assert.equal(calculo.ultimoContadorInRetirada, 900);
   assert.equal(calculo.deltaContadorIn, 200);
-  assert.equal(calculo.valorEsperadoCalculado, 200);
+  assert.equal(calculo.valorEsperadoCalculado, 100);
+});
+
+test("Cenario C: usa coalesce de contador IN digital quando contador IN principal vier nulo", () => {
+  const maquinaId = "maq-4";
+  const historico = [
+    {
+      id: "mov-1",
+      maquinaId,
+      dataColeta: "2026-03-30T10:00:00.000Z",
+      createdAt: "2026-03-30T10:00:00.000Z",
+      contadorIn: 1000,
+      contadorOut: 500,
+    },
+    {
+      id: "mov-2",
+      maquinaId,
+      dataColeta: "2026-03-31T10:00:00.000Z",
+      createdAt: "2026-03-31T10:00:00.000Z",
+      contadorIn: null,
+      contadorInDigital: 1200,
+      contadorOut: 550,
+    },
+  ];
+
+  const calculo = calcularEsperadoComHistorico({
+    movimentacaoAtual: historico[1],
+    historicoMovimentacoes: historico,
+    valorFicha: 2,
+    permitirFallbackDeltaOut: false,
+  });
+
+  assert.equal(calculo.ultimoContadorInRetirada, 1000);
+  assert.equal(calculo.deltaContadorIn, 200);
+  assert.equal(calculo.valorEsperadoCalculado, 100);
+});
+
+test("Cenario D: contadorInAnterior da atual tem prioridade sobre historico", () => {
+  const maquinaId = "maq-5";
+  const historico = [
+    {
+      id: "mov-1",
+      maquinaId,
+      dataColeta: "2026-03-30T10:00:00.000Z",
+      createdAt: "2026-03-30T10:00:00.000Z",
+      contadorIn: 1000,
+      contadorOut: 500,
+    },
+    {
+      id: "mov-2",
+      maquinaId,
+      dataColeta: "2026-03-31T10:00:00.000Z",
+      createdAt: "2026-03-31T10:00:00.000Z",
+      contadorInAnterior: 1100,
+      contadorIn: 1200,
+      contadorOut: 550,
+    },
+  ];
+
+  const calculo = calcularEsperadoComHistorico({
+    movimentacaoAtual: historico[1],
+    historicoMovimentacoes: historico,
+    valorFicha: 2,
+    contadorInAnteriorFallback: 1000,
+    permitirFallbackDeltaOut: false,
+  });
+
+  assert.equal(calculo.ultimoContadorInRetirada, 1100);
+  assert.equal(calculo.deltaContadorIn, 100);
+  assert.equal(calculo.valorEsperadoCalculado, 50);
+});
+
+test("Extrator de contador atual usa contador principal e fallback digital", () => {
+  const principal = extrairContadorAtualMovimentacao({
+    contadorIn: 2000,
+    contadorInDigital: 3000,
+    contadorOut: 1000,
+    contadorOutDigital: 1500,
+  });
+  assert.equal(principal.contadorInAtual, 2000);
+  assert.equal(principal.contadorOutAtual, 1000);
+
+  const fallback = extrairContadorAtualMovimentacao({
+    contadorIn: null,
+    contadorInDigital: 3000,
+    contadorOut: null,
+    contadorOutDigital: 1500,
+  });
+  assert.equal(fallback.contadorInAtual, 3000);
+  assert.equal(fallback.contadorOutAtual, 1500);
 });
 
 test("Sem delta IN nao usa delta OUT quando fallback nao estiver habilitado", () => {

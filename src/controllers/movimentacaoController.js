@@ -646,7 +646,11 @@ export const registrarMovimentacao = async (req, res) => {
         fichas: fichasQtd,
         valorFaturado: parseFloat(valorFaturado.toFixed(2)),
         contadorIn: inAnterior,
+        contadorInDigital: inAnterior,
+        contadorInAnterior: inAnterior,
         contadorOut: outAnterior,
+        contadorOutDigital: outAnterior,
+        contadorOutAnterior: outAnterior,
         contadorMaquina: contadorMaquina ?? null,
         quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
           ? notasEntradaValor
@@ -686,7 +690,11 @@ export const registrarMovimentacao = async (req, res) => {
       fichas: fichasQtd,
       valorFaturado: parseFloat(valorFaturado.toFixed(2)),
       contadorIn: contadorInSanitizado,
+      contadorInDigital: contadorInDigitalSanitizado,
+      contadorInAnterior: contadorInAnteriorSanitizado,
       contadorOut: contadorOutSanitizado,
+      contadorOutDigital: contadorOutDigitalSanitizado,
+      contadorOutAnterior: contadorOutAnteriorSanitizado,
       contadorMaquina: contadorMaquina ?? null,
       quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
         ? notasEntradaValor

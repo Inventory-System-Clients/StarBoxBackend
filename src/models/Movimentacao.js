@@ -75,11 +75,35 @@ const Movimentacao = sequelize.define(
       field: "contador_in",
       comment: "Valor do contador IN da máquina",
     },
+    contadorInDigital: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "contador_in_digital",
+      comment: "Valor do contador IN digital da máquina",
+    },
+    contadorInAnterior: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "contador_in_anterior",
+      comment: "Contador IN anterior usado como base de cálculo",
+    },
     contadorOut: {
       type: DataTypes.INTEGER,
       allowNull: true,
       field: "contador_out",
       comment: "Valor do contador OUT da máquina",
+    },
+    contadorOutDigital: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "contador_out_digital",
+      comment: "Valor do contador OUT digital da máquina",
+    },
+    contadorOutAnterior: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "contador_out_anterior",
+      comment: "Contador OUT anterior usado como base de cálculo",
     },
     valorFaturado: {
       type: DataTypes.DECIMAL(10, 2),
