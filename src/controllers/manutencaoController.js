@@ -91,6 +91,11 @@ export const listarManutencoes = async (req, res) => {
       where.lojaId = req.query.lojaId;
     }
 
+    // Filtro por roteiroId
+    if (req.query.roteiroId) {
+      where.roteiroId = req.query.roteiroId;
+    }
+
     if (!isAdminLike(req.usuario.role)) {
       where.funcionarioId = req.usuario.id;
     }
@@ -135,7 +140,7 @@ export const criarManutencao = async (req, res) => {
 
     const funcionarioIdFinal = isOperacional
       ? req.usuario.id
-      : (funcionarioId || null);
+      : funcionarioId || null;
 
     if (!isOperacional && funcionarioIdFinal) {
       const funcionario = await Usuario.findByPk(funcionarioIdFinal);
@@ -250,7 +255,9 @@ export const atualizarManutencao = async (req, res) => {
       if (!isAdmin) {
         return res
           .status(403)
-          .json({ error: "Apenas ADMIN ou GERENCIADOR pode alterar funcionário" });
+          .json({
+            error: "Apenas ADMIN ou GERENCIADOR pode alterar funcionário",
+          });
       }
 
       if (funcionarioId) {
@@ -341,8 +348,14 @@ export const concluirManutencao = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { status, concluidoPorId, pecaId, quantidade, explicacao_sem_peca } =
-      req.body;
+    const {
+      status,
+      concluidoPorId,
+      pecaId,
+      quantidade,
+      explicacao_sem_peca,
+      roteiroId,
+    } = req.body;
 
     if (!concluidoPorId) {
       return res.status(400).json({ error: "concluidoPorId é obrigatório" });
@@ -364,7 +377,8 @@ export const concluirManutencao = async (req, res) => {
       const quantidadeNumero = Number(quantidade);
       if (!Number.isInteger(quantidadeNumero) || quantidadeNumero <= 0) {
         return res.status(400).json({
-          error: "quantidade deve ser um inteiro positivo quando pecaId for informado",
+          error:
+            "quantidade deve ser um inteiro positivo quando pecaId for informado",
         });
       }
 
@@ -405,6 +419,39 @@ export const concluirManutencao = async (req, res) => {
     let pecaUsadaId = null;
     let quantidadePecaUsada = null;
     let carrinhoResumo = null;
+    let roteiroIdParaPersistir = manutencao.roteiroId || null;
+
+    if (roteiroId) {
+      const roteiro = await Roteiro.findByPk(roteiroId, {
+        transaction,
+        include: [
+          {
+            model: Loja,
+            as: "lojas",
+            attributes: ["id"],
+            through: { attributes: [] },
+          },
+        ],
+      });
+
+      if (!roteiro) {
+        await transaction.rollback();
+        return res.status(404).json({ error: "Roteiro não encontrado" });
+      }
+
+      const lojaNoRoteiro = roteiro.lojas?.some(
+        (loja) => loja.id === manutencao.lojaId,
+      );
+
+      if (!lojaNoRoteiro) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: "A loja da manutenção não faz parte do roteiro informado",
+        });
+      }
+
+      roteiroIdParaPersistir = roteiro.id;
+    }
 
     if (usandoPeca) {
       const itemCarrinho = await CarrinhoPeca.findOne({
@@ -448,16 +495,19 @@ export const concluirManutencao = async (req, res) => {
         await itemCarrinho.destroy({ transaction });
       }
 
-      await PecaDefeituosaPendente.create({
-        usuarioId: concluidoPorId,
-        manutencaoId: manutencao.id,
-        pecaOriginalId: peca.id,
-        nomePecaOriginal: peca.nome,
-        nomePecaDefeituosa: `${peca.nome} defeituosa`,
-        quantidade: quantidadeUsada,
-      }, {
-        transaction,
-      });
+      await PecaDefeituosaPendente.create(
+        {
+          usuarioId: concluidoPorId,
+          manutencaoId: manutencao.id,
+          pecaOriginalId: peca.id,
+          nomePecaOriginal: peca.nome,
+          nomePecaDefeituosa: `${peca.nome} defeituosa`,
+          quantidade: quantidadeUsada,
+        },
+        {
+          transaction,
+        },
+      );
 
       pecaUsadaId = pecaId;
       quantidadePecaUsada = quantidadeUsada;
@@ -470,16 +520,20 @@ export const concluirManutencao = async (req, res) => {
       };
     }
 
-    await manutencao.update({
-      status: statusNormalizado,
-      concluidoPorId: concluidoPorId,
-      concluidoEm: new Date(),
-      pecaUsadaId: pecaUsadaId,
-      quantidadePecaUsada,
-      explicacao_sem_peca: usandoPeca ? null : explicacao_sem_peca.trim(),
-    }, {
-      transaction,
-    });
+    await manutencao.update(
+      {
+        status: statusNormalizado,
+        concluidoPorId: concluidoPorId,
+        concluidoEm: new Date(),
+        pecaUsadaId: pecaUsadaId,
+        quantidadePecaUsada,
+        explicacao_sem_peca: usandoPeca ? null : explicacao_sem_peca.trim(),
+        roteiroId: roteiroIdParaPersistir,
+      },
+      {
+        transaction,
+      },
+    );
 
     const manutencaoCompleta = await Manutencao.findByPk(id, {
       include: includePadrao,
@@ -518,7 +572,7 @@ export const concluirManutencao = async (req, res) => {
 export const naoFazerManutencao = async (req, res) => {
   try {
     const { id } = req.params;
-    const { verificadoPorId, explicacao_nao_fazer } = req.body;
+    const { verificadoPorId, explicacao_nao_fazer, roteiroId } = req.body;
 
     // Buscar manutenção
     const manutencao = await Manutencao.findByPk(id);
@@ -533,36 +587,69 @@ export const naoFazerManutencao = async (req, res) => {
 
     if (!explicacao_nao_fazer) {
       return res.status(400).json({
-        error: "Explicação obrigatória para não fazer manutenção"
+        error: "Explicação obrigatória para não fazer manutenção",
       });
     }
 
     // Validar tamanho da explicação
     if (explicacao_nao_fazer.length > 100) {
       return res.status(400).json({
-        error: "Explicação deve ter no máximo 100 caracteres"
+        error: "Explicação deve ter no máximo 100 caracteres",
       });
+    }
+
+    let roteiroIdParaPersistir = manutencao.roteiroId || null;
+
+    if (roteiroId) {
+      const roteiro = await Roteiro.findByPk(roteiroId, {
+        include: [
+          {
+            model: Loja,
+            as: "lojas",
+            attributes: ["id"],
+            through: { attributes: [] },
+          },
+        ],
+      });
+
+      if (!roteiro) {
+        return res.status(404).json({ error: "Roteiro não encontrado" });
+      }
+
+      const lojaNoRoteiro = roteiro.lojas?.some(
+        (loja) => loja.id === manutencao.lojaId,
+      );
+
+      if (!lojaNoRoteiro) {
+        return res.status(400).json({
+          error: "A loja da manutenção não faz parte do roteiro informado",
+        });
+      }
+
+      roteiroIdParaPersistir = roteiro.id;
     }
 
     // Atualizar manutenção (status permanece pendente)
     await manutencao.update({
       verificadoPorId: verificadoPorId,
       verificadoEm: new Date(),
-      explicacao_nao_fazer: explicacao_nao_fazer
+      explicacao_nao_fazer: explicacao_nao_fazer,
+      roteiroId: roteiroIdParaPersistir,
     });
 
     // Buscar manutenção atualizada com includes
     const manutencaoCompleta = await Manutencao.findByPk(id, {
-      include: includePadrao
+      include: includePadrao,
     });
 
-    console.log(`[Manutenção] Manutenção ${id} não foi feita. Verificada por usuário ${verificadoPorId}`);
+    console.log(
+      `[Manutenção] Manutenção ${id} não foi feita. Verificada por usuário ${verificadoPorId}`,
+    );
 
     return res.json({
       message: "Explicação registrada com sucesso",
-      manutencao: manutencaoCompleta
+      manutencao: manutencaoCompleta,
     });
-
   } catch (error) {
     console.error("Erro ao registrar não fazer manutenção:", error);
     return res.status(500).json({ error: "Erro ao registrar explicação" });
