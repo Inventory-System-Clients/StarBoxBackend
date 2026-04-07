@@ -3,6 +3,7 @@ import {
   Loja,
   Movimentacao,
   MovimentacaoProduto,
+  GastoFixoLoja,
 } from "../models/index.js";
 import { Op } from "sequelize";
 
@@ -15,6 +16,71 @@ const possuiNumero = (valor) =>
 const inteiroSeguro = (valor, fallback = 0) => {
   if (!possuiNumero(valor)) return fallback;
   return parseInt(valor, 10);
+};
+
+const normalizarNomeGasto = (nome) =>
+  String(nome || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+const obterValorAluguelDaLoja = async (lojaId) => {
+  if (!lojaId) {
+    return 0;
+  }
+
+  const gastosDaLoja = await GastoFixoLoja.findAll({
+    where: { lojaId },
+    attributes: ["nome", "valor"],
+    raw: true,
+  });
+
+  const aluguel = gastosDaLoja.find(
+    (item) => normalizarNomeGasto(item.nome) === "aluguel",
+  );
+
+  return aluguel ? Number(aluguel.valor || 0) : 0;
+};
+
+const validarComissaoPorAluguel = async ({
+  lojaId,
+  comissaoLojaPercentual,
+}) => {
+  const loja = await Loja.findByPk(lojaId, {
+    attributes: ["id"],
+  });
+
+  if (!loja) {
+    return { status: 404, error: "Loja não encontrada" };
+  }
+
+  const valorAluguel = await obterValorAluguelDaLoja(lojaId);
+  const comissaoInformada = possuiNumero(comissaoLojaPercentual)
+    ? Number(comissaoLojaPercentual)
+    : null;
+
+  if (valorAluguel > 0) {
+    if ((comissaoInformada ?? 0) !== 0) {
+      return {
+        status: 400,
+        error:
+          "Este ponto possui aluguel maior que zero. A comissão da máquina deve ser 0%.",
+      };
+    }
+
+    return null;
+  }
+
+  if (comissaoInformada === null) {
+    return {
+      status: 400,
+      error: "Este ponto não possui aluguel. Informe a comissão da máquina.",
+    };
+  }
+
+  return null;
 };
 
 const calcularContadoresProjetados = (historico) => {
@@ -330,6 +396,17 @@ export const criarMaquina = async (req, res) => {
       });
     }
 
+    const erroRegraComissao = await validarComissaoPorAluguel({
+      lojaId,
+      comissaoLojaPercentual,
+    });
+
+    if (erroRegraComissao) {
+      return res.status(erroRegraComissao.status).json({
+        error: erroRegraComissao.error,
+      });
+    }
+
     // Verificar se código já existe
     const maquinaExistente = await Maquina.findOne({ where: { codigo } });
     if (maquinaExistente) {
@@ -341,25 +418,29 @@ export const criarMaquina = async (req, res) => {
 
     transaction = await Maquina.sequelize.transaction();
 
-    const maquina = await Maquina.create({
-      codigo,
-      nome: nomeDefinitivo,
-      tipo,
-      lojaId,
-      capacidadePadrao: capacidadePadrao || 100,
-      valorFicha: valorFicha || 5.0,
-      comissaoLojaPercentual:
-        comissaoLojaPercentual !== undefined && comissaoLojaPercentual !== null
-          ? Number(comissaoLojaPercentual)
-          : 0,
-      fichasNecessarias: fichasNecessarias || null,
-      forcaForte: forcaForte || null,
-      forcaFraca: forcaFraca || null,
-      forcaPremium: forcaPremium || null,
-      jogadasPremium: jogadasPremium || null,
-      percentualAlertaEstoque: percentualAlertaEstoque || 30,
-      localizacao,
-    }, { transaction });
+    const maquina = await Maquina.create(
+      {
+        codigo,
+        nome: nomeDefinitivo,
+        tipo,
+        lojaId,
+        capacidadePadrao: capacidadePadrao || 100,
+        valorFicha: valorFicha || 5.0,
+        comissaoLojaPercentual:
+          comissaoLojaPercentual !== undefined &&
+          comissaoLojaPercentual !== null
+            ? Number(comissaoLojaPercentual)
+            : 0,
+        fichasNecessarias: fichasNecessarias || null,
+        forcaForte: forcaForte || null,
+        forcaFraca: forcaFraca || null,
+        forcaPremium: forcaPremium || null,
+        jogadasPremium: jogadasPremium || null,
+        percentualAlertaEstoque: percentualAlertaEstoque || 30,
+        localizacao,
+      },
+      { transaction },
+    );
 
     const inInicialValido = possuiNumero(contadorInInicial);
     const outInicialValido = possuiNumero(contadorOutInicial);
@@ -374,24 +455,27 @@ export const criarMaquina = async (req, res) => {
         });
       }
 
-      await Movimentacao.create({
-        maquinaId: maquina.id,
-        usuarioId: req.usuario.id,
-        dataColeta: new Date(),
-        totalPre: Number(maquina.capacidadePadrao || 100),
-        sairam: 0,
-        abastecidas: 0,
-        fichas: 0,
-        valorFaturado: 0,
-        contadorIn: inteiroSeguro(contadorInInicial, 0),
-        contadorInDigital: inteiroSeguro(contadorInInicial, 0),
-        contadorInAnterior: inteiroSeguro(contadorInInicial, 0),
-        contadorOut: inteiroSeguro(contadorOutInicial, 0),
-        contadorOutDigital: inteiroSeguro(contadorOutInicial, 0),
-        contadorOutAnterior: inteiroSeguro(contadorOutInicial, 0),
-        observacoes: "Movimentação inicial automática no cadastro da máquina",
-        tipoOcorrencia: "Inicial",
-      }, { transaction });
+      await Movimentacao.create(
+        {
+          maquinaId: maquina.id,
+          usuarioId: req.usuario.id,
+          dataColeta: new Date(),
+          totalPre: Number(maquina.capacidadePadrao || 100),
+          sairam: 0,
+          abastecidas: 0,
+          fichas: 0,
+          valorFaturado: 0,
+          contadorIn: inteiroSeguro(contadorInInicial, 0),
+          contadorInDigital: inteiroSeguro(contadorInInicial, 0),
+          contadorInAnterior: inteiroSeguro(contadorInInicial, 0),
+          contadorOut: inteiroSeguro(contadorOutInicial, 0),
+          contadorOutDigital: inteiroSeguro(contadorOutInicial, 0),
+          contadorOutAnterior: inteiroSeguro(contadorOutInicial, 0),
+          observacoes: "Movimentação inicial automática no cadastro da máquina",
+          tipoOcorrencia: "Inicial",
+        },
+        { transaction },
+      );
     }
 
     await transaction.commit();
@@ -454,6 +538,23 @@ export const atualizarMaquina = async (req, res) => {
     ) {
       return res.status(400).json({
         error: "Comissão da loja deve estar entre 0 e 100",
+      });
+    }
+
+    const lojaIdValidacao = lojaId ?? maquina.lojaId;
+    const comissaoValidacao =
+      comissaoLojaPercentual !== undefined
+        ? comissaoLojaPercentual
+        : maquina.comissaoLojaPercentual;
+
+    const erroRegraComissao = await validarComissaoPorAluguel({
+      lojaId: lojaIdValidacao,
+      comissaoLojaPercentual: comissaoValidacao,
+    });
+
+    if (erroRegraComissao) {
+      return res.status(erroRegraComissao.status).json({
+        error: erroRegraComissao.error,
       });
     }
 
