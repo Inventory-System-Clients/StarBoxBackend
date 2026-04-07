@@ -2278,38 +2278,21 @@ export const relatorioImpressao = async (req, res) => {
       0,
     );
 
-    // Valor esperado vem da coluna valor_esperado do fluxo de caixa,
-    // respeitando o filtro do relatório (período + loja e, quando houver, roteiro).
-    const whereMovimentacaoFluxo = {
-      dataColeta: {
-        [Op.between]: [inicio, fim],
-      },
-    };
+    // Valor esperado: soma da coluna valor_esperado dos fluxos associados
+    // exatamente às movimentações que entraram neste relatório.
+    const movimentacaoIdsNoRelatorio = movimentacoes
+      .map((mov) => mov?.id)
+      .filter(Boolean);
 
-    if (roteiroId) {
-      whereMovimentacaoFluxo.roteiroId = roteiroId;
-    }
-
-    const valorEsperadoSomado = await FluxoCaixa.sum("valorEsperado", {
-      include: [
-        {
-          model: Movimentacao,
-          as: "movimentacao",
-          required: true,
-          where: whereMovimentacaoFluxo,
-          attributes: [],
-          include: [
-            {
-              model: Maquina,
-              as: "maquina",
-              required: true,
-              where: { lojaId },
-              attributes: [],
+    const valorEsperadoSomado = movimentacaoIdsNoRelatorio.length
+      ? await FluxoCaixa.sum("valorEsperado", {
+          where: {
+            movimentacaoId: {
+              [Op.in]: movimentacaoIdsNoRelatorio,
             },
-          ],
-        },
-      ],
-    });
+          },
+        })
+      : 0;
 
     const valorEsperadoContadores = arredondar2(valorEsperadoSomado || 0);
 
