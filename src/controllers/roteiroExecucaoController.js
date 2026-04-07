@@ -8,6 +8,7 @@ import {
   EstoqueUsuario,
   Usuario,
   Veiculo,
+  LogOrdemRoteiro,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
@@ -58,6 +59,8 @@ async function getRoteiroExecucaoComStatus(req, res) {
       return res.status(404).json({ error: "Roteiro não encontrado" });
 
     const dataHoje = new Date().toISOString().slice(0, 10);
+    const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
+    const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
 
     // Buscar status das máquinas concluídas para o roteiro (sem filtro diário)
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
@@ -99,13 +102,34 @@ async function getRoteiroExecucaoComStatus(req, res) {
           : Number(finalizacaoDia.estoqueInicialTotal);
     }
 
-    const finalizacaoManual = finalizacaoDia?.finalizado ? finalizacaoDia : null;
+    const finalizacaoManual = finalizacaoDia?.finalizado
+      ? finalizacaoDia
+      : null;
     const maquinasFinalizadas = new Set(
       statusMaquinas.map((s) => s.maquina_id),
     );
 
     const lojasOrdenadas = [...roteiro.lojas].sort(
       (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0),
+    );
+
+    const logsQuebraOrdemHoje = await LogOrdemRoteiro.findAll({
+      where: {
+        roteiroId: roteiro.id,
+        createdAt: {
+          [Op.between]: [inicioDia, fimDia],
+        },
+      },
+      attributes: ["lojaEsperadaId"],
+      raw: true,
+    });
+
+    const lojasPendentesJustificadasIds = Array.from(
+      new Set(
+        logsQuebraOrdemHoje
+          .map((item) => String(item.lojaEsperadaId || "").trim())
+          .filter(Boolean),
+      ),
     );
 
     let roteiroFinalizado = lojasOrdenadas.length > 0;
@@ -147,8 +171,6 @@ async function getRoteiroExecucaoComStatus(req, res) {
       roteiroFinalizado = false;
     }
 
-    const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
-    const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
     const gastosHoje = await GastoRoteiro.findAll({
       where: {
         roteiroId: roteiro.id,
@@ -212,6 +234,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
       status:
         finalizacaoManual || roteiroFinalizado ? "finalizado" : "pendente",
       lojas,
+      lojasPendentesJustificadasIds,
       movimentacoesHoje: statusMaquinas.map((s) => ({
         maquina_id: s.maquina_id,
         roteiro_id: s.roteiro_id,
