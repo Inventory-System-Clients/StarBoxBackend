@@ -2290,8 +2290,7 @@ export const relatorioImpressao = async (req, res) => {
       whereMovimentacaoFluxo.roteiroId = roteiroId;
     }
 
-    const fluxosEsperado = await FluxoCaixa.findAll({
-      attributes: ["valorEsperado"],
+    const valorEsperadoSomado = await FluxoCaixa.sum("valorEsperado", {
       include: [
         {
           model: Movimentacao,
@@ -2310,15 +2309,9 @@ export const relatorioImpressao = async (req, res) => {
           ],
         },
       ],
-      raw: true,
     });
 
-    const valorEsperadoContadores = arredondar2(
-      fluxosEsperado.reduce(
-        (acc, fluxo) => acc + Number(fluxo?.valorEsperado || 0),
-        0,
-      ),
-    );
+    const valorEsperadoContadores = arredondar2(valorEsperadoSomado || 0);
 
     const faturamentoBrutoConsolidado =
       Number(valorTotalLoja || 0) + Number(faturamentoBrutoMaquinas || 0);
