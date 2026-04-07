@@ -50,10 +50,6 @@ const montarMensagemManutencao = ({
     linhas.push(`Descricao: ${descricao}`);
   }
 
-  if (manutencaoId) {
-    linhas.push(`ID manutencao: ${manutencaoId}`);
-  }
-
   if (roteiro?.nome) {
     linhas.push(`Roteiro: ${roteiro.nome}`);
   }
