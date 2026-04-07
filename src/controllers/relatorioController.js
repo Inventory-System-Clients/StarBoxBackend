@@ -139,7 +139,8 @@ export const relatorioRoteiro = async (req, res) => {
         })
         .sort(
           (a, b) =>
-            b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, "pt-BR"),
+            b.quantidade - a.quantidade ||
+            a.nome.localeCompare(b.nome, "pt-BR"),
         );
 
     const calcularCustoProdutos = (produtos = []) =>
@@ -214,6 +215,7 @@ export const relatorioRoteiro = async (req, res) => {
       custoVariavelTotal: 0,
       custoTotal: 0,
       lucroLiquidoTotal: 0,
+      valorEsperadoTotal: 0,
     };
 
     for (const loja of lojas) {
@@ -373,7 +375,9 @@ export const relatorioRoteiro = async (req, res) => {
       const totaisLoja = relatorioLoja?.totais || {};
       const produtosSairamFinanceiroLoja = relatorioLoja?.produtosSairam || [];
 
-      const custoProdutosLoja = calcularCustoProdutos(produtosSairamFinanceiroLoja);
+      const custoProdutosLoja = calcularCustoProdutos(
+        produtosSairamFinanceiroLoja,
+      );
       const custoFixoLoja = paraNumero(
         totaisLoja.custoFixoPeriodo ?? totaisLoja.gastoFixoTotalPeriodo ?? 0,
       );
@@ -384,13 +388,17 @@ export const relatorioRoteiro = async (req, res) => {
           0,
       );
       const custoVariavelLoja = paraNumero(
-        totaisLoja.custoVariavelPeriodo ?? totaisLoja.gastoVariavelTotalPeriodo ?? 0,
+        totaisLoja.custoVariavelPeriodo ??
+          totaisLoja.gastoVariavelTotalPeriodo ??
+          0,
       );
 
       const dinheiroLoja = paraNumero(totaisLoja.valorDinheiroLoja);
       const dinheiroMaquinas = paraNumero(totaisLoja.valorDinheiroMaquinas);
       const cartaoPixLoja = paraNumero(totaisLoja.valorCartaoPixLoja);
-      const cartaoPixMaquinas = paraNumero(totaisLoja.valorCartaoPixMaquinasBruto);
+      const cartaoPixMaquinas = paraNumero(
+        totaisLoja.valorCartaoPixMaquinasBruto,
+      );
       const lucroBrutoLoja = paraNumero(
         totaisLoja.faturamentoBrutoConsolidado ??
           totaisLoja.valorBrutoConsolidadoLojaMaquinas ??
@@ -404,7 +412,8 @@ export const relatorioRoteiro = async (req, res) => {
       );
       const lucroLiquidoLoja = arredondar2(lucroBrutoLoja - custoTotalLoja);
 
-      const produtosSairamLojaDetalhados = mapearProdutosSaida(produtosSairamLoja);
+      const produtosSairamLojaDetalhados =
+        mapearProdutosSaida(produtosSairamLoja);
       const produtosSairamLojaTotal = arredondar2(
         produtosSairamLojaDetalhados.reduce(
           (acc, item) => acc + paraNumero(item.quantidade),
@@ -418,6 +427,10 @@ export const relatorioRoteiro = async (req, res) => {
         ),
       );
 
+      const valorEsperadoLoja = paraNumero(
+        totaisLoja.valorEsperadoContadores ?? 0,
+      );
+
       totaisFinanceirosRota.lucroBrutoTotal += lucroBrutoLoja;
       totaisFinanceirosRota.produtosSairamTotal += produtosSairamLojaTotal;
       totaisFinanceirosRota.custoProdutosTotal += custoProdutosSairamLoja;
@@ -426,6 +439,7 @@ export const relatorioRoteiro = async (req, res) => {
       totaisFinanceirosRota.custoVariavelTotal += custoVariavelLoja;
       totaisFinanceirosRota.custoTotal += custoTotalLoja;
       totaisFinanceirosRota.lucroLiquidoTotal += lucroLiquidoLoja;
+      totaisFinanceirosRota.valorEsperadoTotal += valorEsperadoLoja;
 
       // Dias sem movimentação
       const diasSemMovimentacao = diasPeriodo.filter(
@@ -528,18 +542,30 @@ export const relatorioRoteiro = async (req, res) => {
       totais: {
         lucroBrutoTotal: arredondar2(totaisFinanceirosRota.lucroBrutoTotal),
         produtosSairamTotal: arredondar2(
-          produtosSairam.reduce((acc, item) => acc + paraNumero(item.quantidade), 0),
+          produtosSairam.reduce(
+            (acc, item) => acc + paraNumero(item.quantidade),
+            0,
+          ),
         ),
         custoProdutosTotal: arredondar2(
-          produtosSairam.reduce((acc, item) => acc + paraNumero(item.valorTotal), 0),
+          produtosSairam.reduce(
+            (acc, item) => acc + paraNumero(item.valorTotal),
+            0,
+          ),
         ),
         custoFixoTotal: arredondar2(totaisFinanceirosRota.custoFixoTotal),
         custoQuebraCaixaTotal: arredondar2(
           totaisFinanceirosRota.custoQuebraCaixaTotal,
         ),
-        custoVariavelTotal: arredondar2(totaisFinanceirosRota.custoVariavelTotal),
+        custoVariavelTotal: arredondar2(
+          totaisFinanceirosRota.custoVariavelTotal,
+        ),
+        valorEsperadoTotal: arredondar2(
+          totaisFinanceirosRota.valorEsperadoTotal,
+        ),
         custoTotal: 0,
         lucroLiquidoTotal: 0,
+        lucroEsperadoTotal: 0,
       },
       produtosSairam,
     };
@@ -553,6 +579,11 @@ export const relatorioRoteiro = async (req, res) => {
 
     resumoRoteiroConsolidado.totais.lucroLiquidoTotal = arredondar2(
       resumoRoteiroConsolidado.totais.lucroBrutoTotal -
+        resumoRoteiroConsolidado.totais.custoTotal,
+    );
+
+    resumoRoteiroConsolidado.totais.lucroEsperadoTotal = arredondar2(
+      resumoRoteiroConsolidado.totais.valorEsperadoTotal -
         resumoRoteiroConsolidado.totais.custoTotal,
     );
 
@@ -1530,6 +1561,7 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
     const ticketPorPremio = Number(
       saidasPremio > 0 ? faturamentoBrutoTicket / saidasPremio : 0,
     );
+    const valorEsperado = Number(totais.valorEsperadoContadores ?? 0);
 
     (dados?.produtosSairam || []).forEach((produto) => {
       const id = String(produto.id ?? produto.codigo ?? produto.nome);
@@ -1570,6 +1602,7 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
       faturamentoBrutoTicket,
       saidasPremio,
       ticketPorPremio,
+      valorEsperado,
     };
   });
 
@@ -1593,6 +1626,7 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
       acc.somaPercentualTaxaPonderado +=
         loja.percentualTaxaCartaoMedia * loja.cartaoPix;
       acc.somaBasePercentualTaxa += loja.cartaoPix;
+      acc.valorEsperadoTotal += loja.valorEsperado;
       return acc;
     },
     {
@@ -1613,6 +1647,7 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
       saidasPremioTotal: 0,
       somaPercentualTaxaPonderado: 0,
       somaBasePercentualTaxa: 0,
+      valorEsperadoTotal: 0,
     },
   );
 
@@ -1627,6 +1662,9 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
       ? totais.faturamentoBrutoTicketTotal / totais.saidasPremioTotal
       : 0
     ).toFixed(2),
+  );
+  totais.lucroEsperadoTotal = Number(
+    (totais.valorEsperadoTotal - totais.custoTotal).toFixed(2),
   );
   delete totais.somaPercentualTaxaPonderado;
   delete totais.somaBasePercentualTaxa;
@@ -1894,7 +1932,8 @@ export const relatorioImpressao = async (req, res) => {
         })
         .sort(
           (a, b) =>
-            b.quantidade - a.quantidade || a.nome.localeCompare(b.nome, "pt-BR"),
+            b.quantidade - a.quantidade ||
+            a.nome.localeCompare(b.nome, "pt-BR"),
         );
 
     const validarContratoProdutosSairam = ({
@@ -1903,17 +1942,26 @@ export const relatorioImpressao = async (req, res) => {
       custoProdutosSairam,
       itens,
     }) => {
-      if (totalProdutosSairam > 0 && (!Array.isArray(itens) || itens.length === 0)) {
+      if (
+        totalProdutosSairam > 0 &&
+        (!Array.isArray(itens) || itens.length === 0)
+      ) {
         throw new Error(
           `[Contrato] ${escopo}: totais.produtosSairam > 0 sem detalhamento em produtosSairam.`,
         );
       }
 
       const somaQuantidade = arredondar2(
-        (itens || []).reduce((acc, item) => acc + paraNumero(item.quantidade), 0),
+        (itens || []).reduce(
+          (acc, item) => acc + paraNumero(item.quantidade),
+          0,
+        ),
       );
       const somaValorTotal = arredondar2(
-        (itens || []).reduce((acc, item) => acc + paraNumero(item.valorTotal), 0),
+        (itens || []).reduce(
+          (acc, item) => acc + paraNumero(item.valorTotal),
+          0,
+        ),
       );
 
       if (Math.abs(totalProdutosSairam - somaQuantidade) > 0.01) {
@@ -2090,10 +2138,16 @@ export const relatorioImpressao = async (req, res) => {
 
     const produtosSairam = mapearProdutosSaidaDetalhados(produtosSairamMap);
     const totalSairam = arredondar2(
-      produtosSairam.reduce((acc, item) => acc + paraNumero(item.quantidade), 0),
+      produtosSairam.reduce(
+        (acc, item) => acc + paraNumero(item.quantidade),
+        0,
+      ),
     );
     const custoProdutosSairam = arredondar2(
-      produtosSairam.reduce((acc, item) => acc + paraNumero(item.valorTotal), 0),
+      produtosSairam.reduce(
+        (acc, item) => acc + paraNumero(item.valorTotal),
+        0,
+      ),
     );
 
     if (totalSairamMovimentacoes > 0 && produtosSairam.length === 0) {
@@ -2221,6 +2275,22 @@ export const relatorioImpressao = async (req, res) => {
       0,
     );
 
+    // Valor esperado = fichas * valorFicha (sem override do fluxo de caixa)
+    const valorEsperadoContadores = arredondar2(
+      movimentacoes.reduce((acc, mov) => {
+        const valorFichaMaquina = Number(
+          mov.maquina?.valorFicha || loja.valorFichaPadrao || 2.5,
+        );
+        const valorFichas = Number(mov.fichas || 0) * valorFichaMaquina;
+        return (
+          acc +
+          valorFichas +
+          Number(mov.quantidade_notas_entrada || 0) +
+          Number(mov.valor_entrada_maquininha_pix || 0)
+        );
+      }, 0),
+    );
+
     const faturamentoBrutoConsolidado =
       Number(valorTotalLoja || 0) + Number(faturamentoBrutoMaquinas || 0);
     const faturamentoBrutoBaseTicket =
@@ -2306,6 +2376,7 @@ export const relatorioImpressao = async (req, res) => {
           faturamentoBrutoBaseTicket.toFixed(2),
         ),
         ticketPorPremioTotal: Number(ticketPorPremioTotal.toFixed(2)),
+        valorEsperadoContadores: Number(valorEsperadoContadores.toFixed(2)),
       },
       produtosSairam,
       produtosEntraram: produtosEntraram.map((p) => ({
