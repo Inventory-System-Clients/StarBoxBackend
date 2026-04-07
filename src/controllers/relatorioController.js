@@ -182,6 +182,7 @@ export const relatorioRoteiro = async (req, res) => {
           lojaId: loja.id,
           dataInicio,
           dataFim,
+          roteiroId,
         }),
       ),
     );
@@ -1403,6 +1404,7 @@ const obterRelatorioImpressaoInterno = async ({
   lojaId,
   dataInicio,
   dataFim,
+  roteiroId,
 }) =>
   new Promise((resolve, reject) => {
     const reqMock = {
@@ -1410,6 +1412,7 @@ const obterRelatorioImpressaoInterno = async ({
         lojaId,
         dataInicio,
         dataFim,
+        roteiroId,
       },
     };
 
@@ -1763,7 +1766,7 @@ const gerarConsolidadoTodasLojas = async ({ dataInicio, dataFim }) => {
 // --- RELATÓRIO DE IMPRESSÃO (RESTAURADO E CORRIGIDO) ---
 export const relatorioImpressao = async (req, res) => {
   try {
-    const { lojaId, dataInicio, dataFim } = req.query;
+    const { lojaId, dataInicio, dataFim, roteiroId } = req.query;
 
     if (!lojaId) {
       return res.status(400).json({ error: "lojaId é obrigatório" });
@@ -2275,20 +2278,46 @@ export const relatorioImpressao = async (req, res) => {
       0,
     );
 
-    // Valor esperado = fichas * valorFicha (sem override do fluxo de caixa)
+    // Valor esperado vem da coluna valor_esperado do fluxo de caixa,
+    // respeitando o filtro do relatório (período + loja e, quando houver, roteiro).
+    const whereMovimentacaoFluxo = {
+      dataColeta: {
+        [Op.between]: [inicio, fim],
+      },
+    };
+
+    if (roteiroId) {
+      whereMovimentacaoFluxo.roteiroId = roteiroId;
+    }
+
+    const fluxosEsperado = await FluxoCaixa.findAll({
+      attributes: ["valorEsperado"],
+      include: [
+        {
+          model: Movimentacao,
+          as: "movimentacao",
+          required: true,
+          where: whereMovimentacaoFluxo,
+          attributes: [],
+          include: [
+            {
+              model: Maquina,
+              as: "maquina",
+              required: true,
+              where: { lojaId },
+              attributes: [],
+            },
+          ],
+        },
+      ],
+      raw: true,
+    });
+
     const valorEsperadoContadores = arredondar2(
-      movimentacoes.reduce((acc, mov) => {
-        const valorFichaMaquina = Number(
-          mov.maquina?.valorFicha || loja.valorFichaPadrao || 2.5,
-        );
-        const valorFichas = Number(mov.fichas || 0) * valorFichaMaquina;
-        return (
-          acc +
-          valorFichas +
-          Number(mov.quantidade_notas_entrada || 0) +
-          Number(mov.valor_entrada_maquininha_pix || 0)
-        );
-      }, 0),
+      fluxosEsperado.reduce(
+        (acc, fluxo) => acc + Number(fluxo?.valorEsperado || 0),
+        0,
+      ),
     );
 
     const faturamentoBrutoConsolidado =
