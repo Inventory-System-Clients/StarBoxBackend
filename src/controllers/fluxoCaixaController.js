@@ -92,7 +92,7 @@ const enriquecerFluxoComCalculo = async (fluxoInstance) => {
 // Listar todos os registros de fluxo de caixa (apenas movimentações marcadas como retirada de dinheiro)
 export const listarFluxoCaixa = async (req, res) => {
   try {
-    const { dataInicio, dataFim, lojaId, status } = req.query;
+    const { dataInicio, dataFim, lojaId, status, roteiroId } = req.query;
 
     // Construir filtros para a busca
     const whereMovimentacao = {};
@@ -110,6 +110,10 @@ export const listarFluxoCaixa = async (req, res) => {
 
     if (lojaId) {
       whereLoja.id = lojaId;
+    }
+
+    if (roteiroId) {
+      whereMovimentacao.roteiroId = roteiroId;
     }
 
     if (status && STATUS_FLUXO_VALIDOS.has(status)) {
@@ -472,7 +476,9 @@ export const resumoFluxoCaixa = async (req, res) => {
       totalNaoBateu,
       valorTotalRetirado: parseFloat(valorTotalRetirado.toFixed(2)),
       valorTotalRetiradoFisico: parseFloat(valorTotalRetiradoFisico.toFixed(2)),
-      valorTotalRetiradoDigital: parseFloat(valorTotalRetiradoDigital.toFixed(2)),
+      valorTotalRetiradoDigital: parseFloat(
+        valorTotalRetiradoDigital.toFixed(2),
+      ),
       valorTotalEsperado: parseFloat(valorTotalEsperado.toFixed(2)),
       diferencaTotal: parseFloat(diferencaTotal.toFixed(2)),
       taxaAcerto:
@@ -540,12 +546,10 @@ export const obterFluxoPorMovimentacao = async (req, res) => {
     });
 
     if (!fluxo) {
-      return res
-        .status(404)
-        .json({
-          error:
-            "Registro de fluxo de caixa não encontrado para esta movimentação",
-        });
+      return res.status(404).json({
+        error:
+          "Registro de fluxo de caixa não encontrado para esta movimentação",
+      });
     }
 
     const fluxoEnriquecido = await enriquecerFluxoComCalculo(fluxo);
