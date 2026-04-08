@@ -1,4 +1,6 @@
 import Veiculo from "../models/Veiculo.js";
+import Roteiro from "../models/Roteiro.js";
+import MovimentacaoVeiculo from "../models/MovimentacaoVeiculo.js";
 import { verificarRevisaoPendente } from "../services/revisaoVeiculoService.js";
 
 const INTERVALO_REVISAO_PADRAO_KM = 10000;
@@ -195,14 +197,43 @@ const veiculoController = {
   },
 
   async remover(req, res) {
+    let transaction;
+
     try {
       const { id } = req.params;
-      const veiculo = await Veiculo.findByPk(id);
+      transaction = await Veiculo.sequelize.transaction();
+
+      const veiculo = await Veiculo.findByPk(id, { transaction });
       if (!veiculo)
         return res.status(404).json({ error: "Veículo não encontrado" });
-      await veiculo.destroy();
+
+      // Desvincula roteiros associados para evitar bloqueio por chave estrangeira.
+      await Roteiro.update(
+        { veiculoId: null },
+        { where: { veiculoId: id }, transaction },
+      );
+
+      // Remove histórico de movimentações do veículo antes de excluir o cadastro.
+      await MovimentacaoVeiculo.destroy({
+        where: { veiculoId: id },
+        transaction,
+      });
+
+      await veiculo.destroy({ transaction });
+      await transaction.commit();
       res.json({ message: "Veículo removido com sucesso" });
     } catch (err) {
+      if (transaction) {
+        await transaction.rollback();
+      }
+
+      if (err?.name === "SequelizeForeignKeyConstraintError") {
+        return res.status(409).json({
+          error: "Não foi possível remover o veículo porque ele possui vínculos ativos",
+          details: err.message,
+        });
+      }
+
       res
         .status(400)
         .json({ error: "Erro ao remover veículo", details: err.message });
