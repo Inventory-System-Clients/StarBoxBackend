@@ -50,6 +50,51 @@ const normalizarBooleano = (valor, fallback = false) => {
   return fallback;
 };
 
+const DATA_APENAS_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const DATA_HORA_LOCAL_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+
+const parseDataColetaUsuario = (valor) => {
+  if (!valor) return null;
+
+  if (valor instanceof Date) {
+    return Number.isNaN(valor.getTime()) ? null : valor;
+  }
+
+  const textoBruto = String(valor).trim();
+  if (!textoBruto) return null;
+
+  const texto = textoBruto.replace(" ", "T");
+
+  // Se já vier com timezone (Z ou +/-HH:MM), respeitar o instante enviado.
+  if (/(Z|[+-]\d{2}:\d{2})$/i.test(texto)) {
+    const dataComTz = new Date(texto);
+    return Number.isNaN(dataComTz.getTime()) ? null : dataComTz;
+  }
+
+  // datetime-local sem timezone: interpretar como America/Sao_Paulo.
+  if (DATA_HORA_LOCAL_REGEX.test(texto)) {
+    const normalizada = texto.length === 16 ? `${texto}:00` : texto;
+    const dataLocalBr = new Date(`${normalizada}-03:00`);
+    return Number.isNaN(dataLocalBr.getTime()) ? null : dataLocalBr;
+  }
+
+  if (DATA_APENAS_REGEX.test(texto)) {
+    const dataDiaBr = new Date(`${texto}T00:00:00-03:00`);
+    return Number.isNaN(dataDiaBr.getTime()) ? null : dataDiaBr;
+  }
+
+  const dataGenerica = new Date(texto);
+  return Number.isNaN(dataGenerica.getTime()) ? null : dataGenerica;
+};
+
+const agoraSaoPaulo = () => {
+  const textoLocal = new Date().toLocaleString("sv-SE", {
+    timeZone: "America/Sao_Paulo",
+    hour12: false,
+  });
+  return parseDataColetaUsuario(textoLocal);
+};
+
 const calcularValorEsperadoInicialRetirada = async ({
   movimentacaoAtual,
   valorJogada,
@@ -199,6 +244,8 @@ export const registrarMovimentacao = async (req, res) => {
     const isOrigemCadastroInicial =
       Boolean(origemCadastroMaquina) ||
       String(tipoMovimentacao || "").toUpperCase() === "INICIAL";
+    const dataColetaNormalizada =
+      parseDataColetaUsuario(dataColeta) || agoraSaoPaulo();
     const idempotencyKey = req.headers?.["x-idempotency-key"] || null;
 
     const origemEstoqueNormalizada =
@@ -660,7 +707,7 @@ export const registrarMovimentacao = async (req, res) => {
         {
           maquinaId,
           usuarioId: req.usuario.id,
-          dataColeta: dataColeta || new Date(),
+          dataColeta: dataColetaNormalizada,
           totalPre: totalPrePadraoPrimeira,
           sairam: 0,
           abastecidas: 0,
@@ -709,7 +756,7 @@ export const registrarMovimentacao = async (req, res) => {
       {
         maquinaId,
         usuarioId: req.usuario.id,
-        dataColeta: dataColeta || new Date(),
+        dataColeta: dataColetaNormalizada,
         totalPre: totalPrePrincipal,
         sairam: sairamPrincipal,
         abastecidas: abastecidasPrincipal,
@@ -1366,7 +1413,7 @@ export const atualizarMovimentacao = async (req, res) => {
           : movimentacao.valor_entrada_maquininha_pix,
       dataColeta:
         dataColeta !== undefined
-          ? new Date(dataColeta)
+          ? (parseDataColetaUsuario(dataColeta) ?? movimentacao.dataColeta)
           : movimentacao.dataColeta,
     };
 

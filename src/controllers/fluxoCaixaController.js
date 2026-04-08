@@ -5,7 +5,7 @@ import {
   Loja,
   Usuario,
 } from "../models/index.js";
-import { Op } from "sequelize";
+import { Op, literal } from "sequelize";
 import { calcularEsperadoMovimentacaoRetirada } from "../services/fluxoCaixaCalculoService.js";
 
 const possuiNumero = (valor) =>
@@ -30,6 +30,20 @@ const arredondar2 = (valor) => {
 };
 
 const STATUS_FLUXO_VALIDOS = new Set(["pendente", "bateu", "nao_bateu"]);
+const DATA_ISO_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+const validarDataIso = (valor) => DATA_ISO_REGEX.test(String(valor || ""));
+
+const montarFiltroDataLocalMovimentacao = ({ dataInicio, dataFim }) => {
+  if (!validarDataIso(dataInicio) || !validarDataIso(dataFim)) {
+    return null;
+  }
+
+  // Usa dia local de Sao Paulo para evitar deslocamento por UTC.
+  return literal(
+    `("movimentacao"."dataColeta" AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN DATE '${dataInicio}' AND DATE '${dataFim}'`,
+  );
+};
 
 export const calcularValorRetiradoTotal = ({
   valorRetiradoFisico,
@@ -100,12 +114,22 @@ export const listarFluxoCaixa = async (req, res) => {
     const whereFluxo = {};
 
     if (dataInicio && dataFim) {
-      whereMovimentacao.dataColeta = {
-        [Op.between]: [
-          new Date(`${dataInicio}T00:00:00`),
-          new Date(`${dataFim}T23:59:59`),
-        ],
-      };
+      const filtroDataLocal = montarFiltroDataLocalMovimentacao({
+        dataInicio,
+        dataFim,
+      });
+
+      if (!filtroDataLocal) {
+        return res.status(400).json({
+          error:
+            "Formato de data inválido. Use YYYY-MM-DD em dataInicio e dataFim.",
+        });
+      }
+
+      whereMovimentacao[Op.and] = [
+        ...(whereMovimentacao[Op.and] || []),
+        filtroDataLocal,
+      ];
     }
 
     if (lojaId) {
@@ -391,13 +415,20 @@ export const resumoFluxoCaixa = async (req, res) => {
         .json({ error: "dataInicio e dataFim são obrigatórios" });
     }
 
+    const filtroDataLocal = montarFiltroDataLocalMovimentacao({
+      dataInicio,
+      dataFim,
+    });
+
+    if (!filtroDataLocal) {
+      return res.status(400).json({
+        error:
+          "Formato de data inválido. Use YYYY-MM-DD em dataInicio e dataFim.",
+      });
+    }
+
     const whereMovimentacao = {
-      dataColeta: {
-        [Op.between]: [
-          new Date(`${dataInicio}T00:00:00`),
-          new Date(`${dataFim}T23:59:59`),
-        ],
-      },
+      [Op.and]: [filtroDataLocal],
     };
 
     const whereLoja = lojaId ? { id: lojaId } : {};
