@@ -298,6 +298,7 @@ export const registrarMovimentacao = async (req, res) => {
     }
 
     const totalPreQtd = inteiroSeguro(totalPre, 0);
+    const sairamQtd = inteiroSeguro(sairam, 0);
     const abastecidasQtd = inteiroSeguro(abastecidas, 0);
     const fichasQtd = inteiroSeguro(fichas, 0);
     const notasEntradaValor = possuiNumero(quantidade_notas_entrada)
@@ -656,22 +657,27 @@ export const registrarMovimentacao = async (req, res) => {
 
     // valorFaturado = fichas * valorFicha + dinheiro(notas) + pix/cartão
 
-    const totalPrePadraoPrimeira = isPrimeiraMovimentacao
+    const aplicarAjustePrimeiraMov =
+      isPrimeiraMovimentacao && isOrigemCadastroInicial;
+
+    const totalPrePadraoPrimeira = aplicarAjustePrimeiraMov
       ? inteiroSeguro(maquina.capacidadePadrao, 100)
       : null;
-    const deltaInPrimeira = isPrimeiraMovimentacao
+    const deltaInPrimeira = aplicarAjustePrimeiraMov
       ? Math.max(0, contadorInSanitizado - contadorInAnteriorSanitizado)
       : 0;
-    const deltaOutPrimeira = isPrimeiraMovimentacao
+    const deltaOutPrimeira = aplicarAjustePrimeiraMov
       ? Math.max(0, contadorOutSanitizado - contadorOutAnteriorSanitizado)
       : 0;
-    const totalPrePrincipal = isPrimeiraMovimentacao
+    const totalPrePrincipal = aplicarAjustePrimeiraMov
       ? Math.max(0, totalPrePadraoPrimeira - deltaOutPrimeira)
       : totalPreQtd;
-    const sairamPrincipal = isPrimeiraMovimentacao
+    const sairamPrincipal = aplicarAjustePrimeiraMov
       ? deltaOutPrimeira
-      : saidaRecalculada;
-    const abastecidasPrincipal = isPrimeiraMovimentacao
+      : isPrimeiraMovimentacao
+        ? sairamQtd
+        : saidaRecalculada;
+    const abastecidasPrincipal = aplicarAjustePrimeiraMov
       ? deltaInPrimeira
       : abastecidasQtd;
 
@@ -699,7 +705,7 @@ export const registrarMovimentacao = async (req, res) => {
     let movimentacaoAnterior = null;
     transaction = await Movimentacao.sequelize.transaction();
 
-    if (isPrimeiraMovimentacao) {
+    if (aplicarAjustePrimeiraMov) {
       const inAnterior = inteiroSeguro(contadorInAnteriorSanitizado, 0);
       const outAnterior = inteiroSeguro(contadorOutAnteriorSanitizado, 0);
 
