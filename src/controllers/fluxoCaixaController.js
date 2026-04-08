@@ -296,6 +296,15 @@ export const atualizarFluxoCaixa = async (req, res) => {
         .json({ error: "Registro de fluxo de caixa não encontrado" });
     }
 
+    // Regra de negócio: após conferido (bateu/nao_bateu), o fluxo fica bloqueado.
+    if (fluxo.conferencia && fluxo.conferencia !== "pendente") {
+      return res.status(409).json({
+        error:
+          "Fluxo de caixa já conferido e bloqueado para edição. Ajustes devem ser refletidos apenas nas movimentações seguintes.",
+        code: "FLUXO_CAIXA_BLOQUEADO_CONFERIDO",
+      });
+    }
+
     // Atualizar dados
     fluxo.valorEsperado =
       valorEsperado !== undefined ? valorEsperado : fluxo.valorEsperado;
