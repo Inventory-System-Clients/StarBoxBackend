@@ -663,10 +663,10 @@ export const registrarMovimentacao = async (req, res) => {
     const totalPrePadraoPrimeira = isPrimeiraMovimentacao
       ? inteiroSeguro(maquina.capacidadePadrao, 100)
       : null;
-    const deltaInPrimeira = aplicarAjustePrimeiraMov
+    const deltaInPrimeira = isPrimeiraMovimentacao
       ? Math.max(0, contadorInSanitizado - contadorInAnteriorSanitizado)
       : 0;
-    const deltaOutPrimeira = aplicarAjustePrimeiraMov
+    const deltaOutPrimeira = isPrimeiraMovimentacao
       ? Math.max(0, contadorOutSanitizado - contadorOutAnteriorSanitizado)
       : 0;
     const totalPrePrincipal = aplicarAjustePrimeiraMov
@@ -675,7 +675,7 @@ export const registrarMovimentacao = async (req, res) => {
     const sairamPrincipal = aplicarAjustePrimeiraMov
       ? deltaOutPrimeira
       : isPrimeiraMovimentacao
-        ? sairamQtd
+        ? deltaOutPrimeira
         : saidaRecalculada;
     const abastecidasPrincipal = aplicarAjustePrimeiraMov
       ? deltaInPrimeira
