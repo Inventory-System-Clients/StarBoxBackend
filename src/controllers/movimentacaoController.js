@@ -660,7 +660,7 @@ export const registrarMovimentacao = async (req, res) => {
     const aplicarAjustePrimeiraMov =
       isPrimeiraMovimentacao && isOrigemCadastroInicial;
 
-    const totalPrePadraoPrimeira = aplicarAjustePrimeiraMov
+    const totalPrePadraoPrimeira = isPrimeiraMovimentacao
       ? inteiroSeguro(maquina.capacidadePadrao, 100)
       : null;
     const deltaInPrimeira = aplicarAjustePrimeiraMov
@@ -705,7 +705,7 @@ export const registrarMovimentacao = async (req, res) => {
     let movimentacaoAnterior = null;
     transaction = await Movimentacao.sequelize.transaction();
 
-    if (aplicarAjustePrimeiraMov) {
+    if (isPrimeiraMovimentacao) {
       const inAnterior = inteiroSeguro(contadorInAnteriorSanitizado, 0);
       const outAnterior = inteiroSeguro(contadorOutAnteriorSanitizado, 0);
 
