@@ -12,6 +12,7 @@ import {
   Manutencao,
   ContasFinanceiro,
   FluxoCaixa,
+  ValorEsperadoMovimentacao,
 } from "../models/index.js";
 import { Op } from "sequelize";
 import { randomUUID } from "node:crypto";
@@ -35,6 +36,18 @@ const inteiroSeguro = (valor, fallback = 0) => {
 const arredondar2 = (valor) => {
   if (!possuiNumero(valor)) return null;
   return Number(Number(valor).toFixed(2));
+};
+
+const normalizarBooleano = (valor, fallback = false) => {
+  if (valor === undefined || valor === null) return fallback;
+  if (typeof valor === "boolean") return valor;
+  if (typeof valor === "number") return valor === 1;
+
+  const texto = String(valor).trim().toLowerCase();
+  if (["true", "1", "sim", "on"].includes(texto)) return true;
+  if (["false", "0", "nao", "não", "off", ""].includes(texto)) return false;
+
+  return fallback;
 };
 
 const calcularValorEsperadoInicialRetirada = async ({
@@ -130,13 +143,11 @@ export const registrarMovimentacao = async (req, res) => {
   const requiredFields = ["maquinaId", "totalPre", "abastecidas"];
   const missing = requiredFields.filter((f) => req.body[f] === undefined);
   if (missing.length > 0) {
-    return res
-      .status(422)
-      .json({
-        error: "Campos obrigatórios ausentes: " + missing.join(", "),
-        code: "MOVIMENTACAO_VALIDATION_REQUIRED_FIELDS",
-        requestId,
-      });
+    return res.status(422).json({
+      error: "Campos obrigatórios ausentes: " + missing.join(", "),
+      code: "MOVIMENTACAO_VALIDATION_REQUIRED_FIELDS",
+      requestId,
+    });
   }
 
   logMovimentacao("info", {
@@ -212,6 +223,13 @@ export const registrarMovimentacao = async (req, res) => {
       : (normalizarContador(contadorOut) ??
         contadorOutDigitalSanitizado ??
         null);
+    const ignoreInOutNormalizado = normalizarBooleano(ignoreInOut, false);
+    const retiradaDinheiroNormalizada =
+      retiradaDinheiro === undefined || retiradaDinheiro === null
+        ? !ignoreInOutNormalizado &&
+          contadorInSanitizado !== null &&
+          contadorOutSanitizado !== null
+        : normalizarBooleano(retiradaDinheiro, false);
     const contadorInAnteriorSanitizado = funcionarioSemContador
       ? null
       : normalizarContador(contadorInAnterior);
@@ -256,7 +274,7 @@ export const registrarMovimentacao = async (req, res) => {
 
     if (
       precisaInOut &&
-      !ignoreInOut &&
+      !ignoreInOutNormalizado &&
       (!isValorContadorValido(contadorInInformado) ||
         !isValorContadorValido(contadorOutInformado))
     ) {
@@ -636,37 +654,42 @@ export const registrarMovimentacao = async (req, res) => {
       const inAnterior = inteiroSeguro(contadorInAnteriorSanitizado, 0);
       const outAnterior = inteiroSeguro(contadorOutAnteriorSanitizado, 0);
 
-      movimentacaoAnterior = await Movimentacao.create({
-        maquinaId,
-        usuarioId: req.usuario.id,
-        dataColeta: dataColeta || new Date(),
-        totalPre: totalPrePadraoPrimeira,
-        sairam: 0,
-        abastecidas: 0,
-        fichas: fichasQtd,
-        valorFaturado: parseFloat(valorFaturado.toFixed(2)),
-        contadorIn: inAnterior,
-        contadorInDigital: inAnterior,
-        contadorInAnterior: inAnterior,
-        contadorOut: outAnterior,
-        contadorOutDigital: outAnterior,
-        contadorOutAnterior: outAnterior,
-        contadorMaquina: contadorMaquina ?? null,
-        quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
-          ? notasEntradaValor
-          : null,
-        valor_entrada_maquininha_pix: possuiNumero(valor_entrada_maquininha_pix)
-          ? pixEntradaValor
-          : null,
-        observacoes,
-        tipoOcorrencia: tipoOcorrencia || "Normal",
-        retiradaEstoque: retiradaEstoque || false,
-        retiradaDinheiro: retiradaDinheiro || false,
-        produtoNaMaquinaId: produtoNaMaquinaIdFinal,
-        roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
-        justificativa_ordem: justificativaPendente?.justificativa ?? null,
-        totalPos: totalPrePadraoPrimeira,
-      }, { transaction });
+      movimentacaoAnterior = await Movimentacao.create(
+        {
+          maquinaId,
+          usuarioId: req.usuario.id,
+          dataColeta: dataColeta || new Date(),
+          totalPre: totalPrePadraoPrimeira,
+          sairam: 0,
+          abastecidas: 0,
+          fichas: fichasQtd,
+          valorFaturado: parseFloat(valorFaturado.toFixed(2)),
+          contadorIn: inAnterior,
+          contadorInDigital: inAnterior,
+          contadorInAnterior: inAnterior,
+          contadorOut: outAnterior,
+          contadorOutDigital: outAnterior,
+          contadorOutAnterior: outAnterior,
+          contadorMaquina: contadorMaquina ?? null,
+          quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
+            ? notasEntradaValor
+            : null,
+          valor_entrada_maquininha_pix: possuiNumero(
+            valor_entrada_maquininha_pix,
+          )
+            ? pixEntradaValor
+            : null,
+          observacoes,
+          tipoOcorrencia: tipoOcorrencia || "Normal",
+          retiradaEstoque: retiradaEstoque || false,
+          retiradaDinheiro: retiradaDinheiroNormalizada,
+          produtoNaMaquinaId: produtoNaMaquinaIdFinal,
+          roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
+          justificativa_ordem: justificativaPendente?.justificativa ?? null,
+          totalPos: totalPrePadraoPrimeira,
+        },
+        { transaction },
+      );
 
       console.log(
         "🧭 [registrarMovimentacao] Primeira movimentação detectada. Registro de contadores anteriores criado:",
@@ -680,36 +703,39 @@ export const registrarMovimentacao = async (req, res) => {
       );
     }
 
-    const movimentacao = await Movimentacao.create({
-      maquinaId,
-      usuarioId: req.usuario.id,
-      dataColeta: dataColeta || new Date(),
-      totalPre: totalPrePrincipal,
-      sairam: sairamPrincipal,
-      abastecidas: abastecidasPrincipal,
-      fichas: fichasQtd,
-      valorFaturado: parseFloat(valorFaturado.toFixed(2)),
-      contadorIn: contadorInSanitizado,
-      contadorInDigital: contadorInDigitalSanitizado,
-      contadorInAnterior: contadorInAnteriorSanitizado,
-      contadorOut: contadorOutSanitizado,
-      contadorOutDigital: contadorOutDigitalSanitizado,
-      contadorOutAnterior: contadorOutAnteriorSanitizado,
-      contadorMaquina: contadorMaquina ?? null,
-      quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
-        ? notasEntradaValor
-        : null,
-      valor_entrada_maquininha_pix: possuiNumero(valor_entrada_maquininha_pix)
-        ? pixEntradaValor
-        : null,
-      observacoes,
-      tipoOcorrencia: tipoOcorrencia || "Normal",
-      retiradaEstoque: retiradaEstoque || false,
-      retiradaDinheiro: retiradaDinheiro || false,
-      produtoNaMaquinaId: produtoNaMaquinaIdFinal,
-      roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
-      justificativa_ordem: justificativaPendente?.justificativa ?? null,
-    }, { transaction });
+    const movimentacao = await Movimentacao.create(
+      {
+        maquinaId,
+        usuarioId: req.usuario.id,
+        dataColeta: dataColeta || new Date(),
+        totalPre: totalPrePrincipal,
+        sairam: sairamPrincipal,
+        abastecidas: abastecidasPrincipal,
+        fichas: fichasQtd,
+        valorFaturado: parseFloat(valorFaturado.toFixed(2)),
+        contadorIn: contadorInSanitizado,
+        contadorInDigital: contadorInDigitalSanitizado,
+        contadorInAnterior: contadorInAnteriorSanitizado,
+        contadorOut: contadorOutSanitizado,
+        contadorOutDigital: contadorOutDigitalSanitizado,
+        contadorOutAnterior: contadorOutAnteriorSanitizado,
+        contadorMaquina: contadorMaquina ?? null,
+        quantidade_notas_entrada: possuiNumero(quantidade_notas_entrada)
+          ? notasEntradaValor
+          : null,
+        valor_entrada_maquininha_pix: possuiNumero(valor_entrada_maquininha_pix)
+          ? pixEntradaValor
+          : null,
+        observacoes,
+        tipoOcorrencia: tipoOcorrencia || "Normal",
+        retiradaEstoque: retiradaEstoque || false,
+        retiradaDinheiro: retiradaDinheiroNormalizada,
+        produtoNaMaquinaId: produtoNaMaquinaIdFinal,
+        roteiroId: roteiroId ?? justificativaPendente?.roteiroId ?? null,
+        justificativa_ordem: justificativaPendente?.justificativa ?? null,
+      },
+      { transaction },
+    );
 
     // Consumir justificativa pendente após usá-la
     if (justificativaPendente && maquina.lojaId) {
@@ -717,7 +743,7 @@ export const registrarMovimentacao = async (req, res) => {
     }
 
     // Se a movimentação é marcada como retirada de dinheiro, criar registro no FluxoCaixa
-    if (retiradaDinheiro) {
+    if (retiradaDinheiroNormalizada) {
       const valorEsperadoCalculadoInicial =
         await calcularValorEsperadoInicialRetirada({
           movimentacaoAtual: movimentacao,
@@ -726,11 +752,29 @@ export const registrarMovimentacao = async (req, res) => {
           contadorOutAnteriorFallback: contadorOutAnteriorSanitizado,
         });
 
-      await FluxoCaixa.create({
-        movimentacaoId: movimentacao.id,
-        valorEsperado: valorEsperadoCalculadoInicial,
-        conferencia: "pendente",
-      }, { transaction });
+      await FluxoCaixa.create(
+        {
+          movimentacaoId: movimentacao.id,
+          valorEsperado: valorEsperadoCalculadoInicial,
+          conferencia: "pendente",
+        },
+        { transaction },
+      );
+
+      // Salvar valor esperado na tabela dedicada para uso nos relatórios
+      const valorParaSalvar =
+        valorEsperadoCalculadoInicial ?? movimentacao.valorFaturado ?? 0;
+      await ValorEsperadoMovimentacao.create(
+        {
+          movimentacaoId: movimentacao.id,
+          maquinaId: movimentacao.maquinaId,
+          lojaId: maquina.lojaId,
+          roteiroId: movimentacao.roteiroId ?? null,
+          valorEsperado: parseFloat(Number(valorParaSalvar).toFixed(2)),
+          dataColeta: movimentacao.dataColeta,
+        },
+        { transaction },
+      );
       console.log(
         "✅ [registrarMovimentacao] Registro de FluxoCaixa criado para movimentação:",
         {
@@ -746,11 +790,9 @@ export const registrarMovimentacao = async (req, res) => {
       Array.isArray(req.body.pecasUsadas) &&
       req.body.pecasUsadas.length > 0
     ) {
-      await registrarMovimentacaoPecas(
-        movimentacao.id,
-        req.body.pecasUsadas,
-        { transaction },
-      );
+      await registrarMovimentacaoPecas(movimentacao.id, req.body.pecasUsadas, {
+        transaction,
+      });
     }
 
     console.log("✅ [registrarMovimentacao] Movimentação criada:", {
@@ -813,7 +855,10 @@ export const registrarMovimentacao = async (req, res) => {
                   0,
                   estoqueLoja.quantidade - produto.quantidadeAbastecida,
                 );
-                await estoqueLoja.update({ quantidade: novaQuantidade }, { transaction });
+                await estoqueLoja.update(
+                  { quantidade: novaQuantidade },
+                  { transaction },
+                );
                 produtoIdsAjustadosNoEstoqueLoja.add(produto.produtoId);
               }
             } else {
@@ -829,7 +874,10 @@ export const registrarMovimentacao = async (req, res) => {
                   0,
                   estoqueUsuario.quantidade - produto.quantidadeAbastecida,
                 );
-                await estoqueUsuario.update({ quantidade: novaQuantidade }, { transaction });
+                await estoqueUsuario.update(
+                  { quantidade: novaQuantidade },
+                  { transaction },
+                );
               }
             }
           }
@@ -859,7 +907,10 @@ export const registrarMovimentacao = async (req, res) => {
         if (estoqueLoja) {
           const quantidadeAnterior = estoqueLoja.quantidade;
           const novaQuantidade = quantidadeAnterior + produto.retiradaProduto;
-          await estoqueLoja.update({ quantidade: novaQuantidade }, { transaction });
+          await estoqueLoja.update(
+            { quantidade: novaQuantidade },
+            { transaction },
+          );
           produtoIdsAjustadosNoEstoqueLoja.add(produto.produtoId);
           console.log(
             "✅ [registrarMovimentacao] Devolução: retirada devolvida ao estoque da loja:",
@@ -1020,31 +1071,34 @@ export const registrarMovimentacao = async (req, res) => {
     });
 
     try {
-      const movimentacaoCompleta = await Movimentacao.findByPk(movimentacao.id, {
-        include: [
-          {
-            model: Maquina,
-            as: "maquina",
-            attributes: ["id", "codigo", "nome", "lojaId"],
-          },
-          {
-            model: Usuario,
-            as: "usuario",
-            attributes: ["id", "nome", "email"],
-          },
-          {
-            model: MovimentacaoProduto,
-            as: "detalhesProdutos",
-            include: [
-              {
-                model: Produto,
-                as: "produto",
-                attributes: ["id", "nome", "categoria"],
-              },
-            ],
-          },
-        ],
-      });
+      const movimentacaoCompleta = await Movimentacao.findByPk(
+        movimentacao.id,
+        {
+          include: [
+            {
+              model: Maquina,
+              as: "maquina",
+              attributes: ["id", "codigo", "nome", "lojaId"],
+            },
+            {
+              model: Usuario,
+              as: "usuario",
+              attributes: ["id", "nome", "email"],
+            },
+            {
+              model: MovimentacaoProduto,
+              as: "detalhesProdutos",
+              include: [
+                {
+                  model: Produto,
+                  as: "produto",
+                  attributes: ["id", "nome", "categoria"],
+                },
+              ],
+            },
+          ],
+        },
+      );
 
       if (movimentacaoCompleta) {
         payloadResposta = {

@@ -612,6 +612,7 @@ import {
   Produto,
   AlertaIgnorado,
   FluxoCaixa,
+  ValorEsperadoMovimentacao,
 } from "../models/index.js";
 
 // --- DASHBOARD GERAL ---
@@ -2278,14 +2279,14 @@ export const relatorioImpressao = async (req, res) => {
       0,
     );
 
-    // Valor esperado: soma da coluna valor_esperado dos fluxos associados
-    // exatamente às movimentações que entraram neste relatório.
+    // Valor esperado: soma diretamente da tabela valor_esperado_movimentacao
+    // filtrando pelas movimentações já carregadas neste relatório.
     const movimentacaoIdsNoRelatorio = movimentacoes
       .map((mov) => mov?.id)
       .filter(Boolean);
 
     const valorEsperadoSomado = movimentacaoIdsNoRelatorio.length
-      ? await FluxoCaixa.sum("valorEsperado", {
+      ? await ValorEsperadoMovimentacao.sum("valorEsperado", {
           where: {
             movimentacaoId: {
               [Op.in]: movimentacaoIdsNoRelatorio,

@@ -50,6 +50,7 @@ import GastoRoteiro from "./GastoRoteiro.js";
 import RoteiroLoja from "./RoteiroLoja.js";
 import LogOrdemRoteiro from "./LogOrdemRoteiro.js";
 import FluxoCaixa from "./FluxoCaixa.js";
+import ValorEsperadoMovimentacao from "./ValorEsperadoMovimentacao.js";
 import ManutencaoWhatsAppPrompt from "./ManutencaoWhatsAppPrompt.js";
 import PecaDefeituosaPendente from "./PecaDefeituosaPendente.js";
 import PecaDefeituosaBase from "./PecaDefeituosaBase.js";
@@ -407,6 +408,28 @@ Movimentacao.hasOne(FluxoCaixa, {
   as: "fluxoCaixa",
 });
 
+// ValorEsperadoMovimentacao
+ValorEsperadoMovimentacao.belongsTo(Movimentacao, {
+  foreignKey: "movimentacaoId",
+  as: "movimentacao",
+});
+Movimentacao.hasOne(ValorEsperadoMovimentacao, {
+  foreignKey: "movimentacaoId",
+  as: "valorEsperadoMovimentacao",
+});
+ValorEsperadoMovimentacao.belongsTo(Maquina, {
+  foreignKey: "maquinaId",
+  as: "maquina",
+});
+ValorEsperadoMovimentacao.belongsTo(Loja, {
+  foreignKey: "lojaId",
+  as: "loja",
+});
+ValorEsperadoMovimentacao.belongsTo(Roteiro, {
+  foreignKey: "roteiroId",
+  as: "roteiro",
+});
+
 FluxoCaixa.belongsTo(Usuario, {
   foreignKey: "conferidoPor",
   as: "conferidoPorUsuario",
@@ -448,6 +471,7 @@ export {
   RoteiroLoja,
   LogOrdemRoteiro,
   FluxoCaixa,
+  ValorEsperadoMovimentacao,
   ManutencaoWhatsAppPrompt,
   PecaDefeituosaPendente,
   PecaDefeituosaBase,
