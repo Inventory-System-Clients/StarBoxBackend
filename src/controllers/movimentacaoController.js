@@ -55,6 +55,7 @@ const calcularValorEsperadoInicialRetirada = async ({
   valorJogada,
   contadorInAnteriorFallback,
   contadorOutAnteriorFallback,
+  transaction,
 }) => {
   const calculo = await calcularEsperadoMovimentacaoRetirada({
     movimentacaoAtual,
@@ -62,6 +63,7 @@ const calcularValorEsperadoInicialRetirada = async ({
     contadorInAnteriorFallback,
     contadorOutAnteriorFallback,
     permitirFallbackDeltaOut: false,
+    transaction,
   });
 
   return calculo.valorEsperadoCalculado;
@@ -750,6 +752,7 @@ export const registrarMovimentacao = async (req, res) => {
           valorJogada: maquina.valorFicha,
           contadorInAnteriorFallback: contadorInAnteriorSanitizado,
           contadorOutAnteriorFallback: contadorOutAnteriorSanitizado,
+          transaction,
         });
 
       await FluxoCaixa.create(

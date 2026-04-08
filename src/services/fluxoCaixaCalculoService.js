@@ -249,6 +249,7 @@ export const calcularEsperadoMovimentacaoRetirada = async ({
   contadorInAnteriorFallback = null,
   contadorOutAnteriorFallback = null,
   permitirFallbackDeltaOut = false,
+  transaction,
 }) => {
   const atual = normalizarMovimentacao(movimentacaoAtual || {});
 
@@ -279,6 +280,7 @@ export const calcularEsperadoMovimentacaoRetirada = async ({
       "contadorInAnterior",
       "contadorOutAnterior",
     ],
+    transaction,
   });
 
   return calcularEsperadoComHistorico({
