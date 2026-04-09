@@ -1,5 +1,11 @@
 import express from "express";
-import { lucroDiario, faturamentoSemanal, comparacaoLucro } from "../controllers/dashboardController.js";
+import {
+  lucroDiario,
+  faturamentoSemanal,
+  comparacaoLucro,
+  listarBasesSecundariasDashboard,
+  salvarBaseSecundariaDashboard,
+} from "../controllers/dashboardController.js";
 import { listarGastosRoteirosDashboard } from "../controllers/gastoRoteiroController.js";
 import { listarMinhasPecasDefeituosasDashboard } from "../controllers/pecaDefeituosaController.js";
 import { autenticar, autorizar } from "../middlewares/auth.js";
@@ -14,6 +20,15 @@ router.get("/faturamento-semanal", autenticar, faturamentoSemanal);
 
 // GET /dashboard/comparacao-lucro?lojaId=...
 router.get("/comparacao-lucro", autenticar, comparacaoLucro);
+
+// GET /dashboard/bases-secundarias (ADMIN estrito)
+router.get("/bases-secundarias", autenticar, listarBasesSecundariasDashboard);
+
+// POST /dashboard/bases-secundarias (ADMIN estrito)
+router.post("/bases-secundarias", autenticar, salvarBaseSecundariaDashboard);
+
+// PUT /dashboard/bases-secundarias/:id (ADMIN estrito)
+router.put("/bases-secundarias/:id", autenticar, salvarBaseSecundariaDashboard);
 
 // GET /dashboard/pecas-defeituosas
 router.get("/pecas-defeituosas", autenticar, listarMinhasPecasDefeituosasDashboard);

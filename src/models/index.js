@@ -54,6 +54,7 @@ import ValorEsperadoMovimentacao from "./ValorEsperadoMovimentacao.js";
 import ManutencaoWhatsAppPrompt from "./ManutencaoWhatsAppPrompt.js";
 import PecaDefeituosaPendente from "./PecaDefeituosaPendente.js";
 import PecaDefeituosaBase from "./PecaDefeituosaBase.js";
+import BaseSecundariaDashboard from "./BaseSecundariaDashboard.js";
 Roteiro.associate({ Usuario, Loja, RoteiroLoja, Veiculo });
 Veiculo.hasMany(Roteiro, { foreignKey: "veiculoId", as: "roteiros" });
 // Movimentação de Veículo -> Veículo e Usuário
@@ -475,4 +476,5 @@ export {
   ManutencaoWhatsAppPrompt,
   PecaDefeituosaPendente,
   PecaDefeituosaBase,
+  BaseSecundariaDashboard,
 };

@@ -3,6 +3,7 @@ import {
   Movimentacao,
   Maquina,
   FluxoCaixa,
+  BaseSecundariaDashboard,
 } from "../models/index.js";
 
 // Renda bruta diária consolidada de todas as lojas para o mês informado
@@ -194,5 +195,133 @@ export const comparacaoLucro = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+};
+
+const validarAdminEstrito = (req, res) => {
+  if (req.usuario?.role !== "ADMIN") {
+    res.status(403).json({
+      error:
+        "Acesso restrito. Apenas usuários com role ADMIN podem gerenciar bases secundárias.",
+    });
+    return false;
+  }
+
+  return true;
+};
+
+// Lista as bases secundárias para o card de controle no dashboard
+export const listarBasesSecundariasDashboard = async (req, res) => {
+  try {
+    if (!validarAdminEstrito(req, res)) {
+      return;
+    }
+
+    const bases = await BaseSecundariaDashboard.findAll({
+      where: { ativo: true },
+      order: [["nomeBase", "ASC"]],
+      attributes: [
+        "id",
+        "nomeBase",
+        "quantidadeProdutos",
+        "modelosProdutos",
+        "ativo",
+        "createdAt",
+        "updatedAt",
+      ],
+    });
+
+    res.json(bases);
+  } catch (error) {
+    console.error("[dashboard.listarBasesSecundariasDashboard] Erro:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao listar bases secundárias do dashboard" });
+  }
+};
+
+// Cria ou atualiza uma base secundária de forma independente da lógica de estoque principal
+export const salvarBaseSecundariaDashboard = async (req, res) => {
+  try {
+    if (!validarAdminEstrito(req, res)) {
+      return;
+    }
+
+    const { id } = req.params;
+    const { nomeBase, quantidadeProdutos, modelosProdutos, ativo } = req.body;
+
+    if (!nomeBase || typeof nomeBase !== "string" || !nomeBase.trim()) {
+      return res
+        .status(400)
+        .json({ error: "nomeBase é obrigatório e deve ser um texto válido" });
+    }
+
+    const quantidadeNormalizada = Number(quantidadeProdutos ?? 0);
+
+    if (!Number.isInteger(quantidadeNormalizada) || quantidadeNormalizada < 0) {
+      return res.status(400).json({
+        error:
+          "quantidadeProdutos é obrigatório e deve ser um número inteiro maior ou igual a 0",
+      });
+    }
+
+    const payload = {
+      nomeBase: nomeBase.trim(),
+      quantidadeProdutos: quantidadeNormalizada,
+      modelosProdutos:
+        modelosProdutos === undefined || modelosProdutos === null
+          ? null
+          : String(modelosProdutos).trim(),
+    };
+
+    if (ativo !== undefined) {
+      payload.ativo = Boolean(ativo);
+    }
+
+    let base = null;
+    let mensagem = "Base secundária criada com sucesso";
+
+    if (id) {
+      base = await BaseSecundariaDashboard.findByPk(id);
+      if (!base) {
+        return res.status(404).json({ error: "Base secundária não encontrada" });
+      }
+
+      await base.update(payload);
+      mensagem = "Base secundária atualizada com sucesso";
+    } else {
+      const [registro, created] = await BaseSecundariaDashboard.findOrCreate({
+        where: { nomeBase: payload.nomeBase },
+        defaults: payload,
+      });
+
+      if (created) {
+        base = registro;
+      } else {
+        await registro.update(payload);
+        base = registro;
+        mensagem = "Base secundária atualizada com sucesso";
+      }
+    }
+
+    res.json({
+      message: mensagem,
+      base,
+      observacao:
+        "Este cadastro é apenas informativo e não movimenta nem desconta estoque de depósito principal ou usuários.",
+    });
+  } catch (error) {
+    console.error("[dashboard.salvarBaseSecundariaDashboard] Erro:", error);
+
+    if (error?.name === "SequelizeUniqueConstraintError") {
+      return res.status(409).json({
+        error:
+          "Já existe uma base secundária com este nome. Use outro nome ou edite o cadastro existente.",
+      });
+    }
+
+    res
+      .status(500)
+      .json({ error: "Erro ao salvar base secundária do dashboard" });
   }
 };
