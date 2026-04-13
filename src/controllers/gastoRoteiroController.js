@@ -486,7 +486,7 @@ export const listarGastosRoteirosDashboard = async (req, res) => {
         {
           model: Roteiro,
           as: "roteiro",
-          attributes: ["id", "nome"],
+          attributes: ["id", "nome", "orcamentoDiario"],
         },
         {
           model: Usuario,
@@ -502,10 +502,34 @@ export const listarGastosRoteirosDashboard = async (req, res) => {
       0,
     );
 
+    const totalOrcamentoPeriodo = gastos.reduce(
+      (acc, gasto) => {
+        const roteiro = gasto.roteiro;
+        if (!roteiro?.id || !gasto?.dataHora) return acc;
+
+        const data = new Date(gasto.dataHora);
+        if (Number.isNaN(data.getTime())) return acc;
+
+        const chave = `${roteiro.id}|${data.toISOString().slice(0, 10)}`;
+        if (!acc._chaves) acc._chaves = new Set();
+        if (acc._chaves.has(chave)) return acc;
+
+        acc._chaves.add(chave);
+        acc.valor += Number.parseFloat(roteiro.orcamentoDiario || 2000);
+        return acc;
+      },
+      { valor: 0, _chaves: null },
+    );
+
+    const saldoDisponivel = Number.parseFloat(
+      Math.max(0, totalOrcamentoPeriodo.valor - totalValor).toFixed(2),
+    );
+
     return res.json({
       categoriasDisponiveis: CATEGORIAS_GASTO,
       totalRegistros: gastos.length,
       totalValor: Number.parseFloat(totalValor.toFixed(2)),
+      saldoDisponivel,
       gastos: gastos.map(serializarGasto),
     });
   } catch (error) {
