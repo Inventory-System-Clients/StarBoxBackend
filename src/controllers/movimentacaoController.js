@@ -1431,9 +1431,8 @@ export const atualizarMovimentacao = async (req, res) => {
           : movimentacao.dataColeta,
     };
 
-    // Fórmula única: totalPos = totalPre - sairam + abastecidas
-    updateData.totalPos =
-      updateData.totalPre - updateData.sairam + updateData.abastecidas;
+    // Fórmula do negócio: totalPos = totalPre + abastecidas
+    updateData.totalPos = updateData.totalPre + updateData.abastecidas;
 
     const abastecidasAnteriores = Number(movimentacao.abastecidas || 0);
     const abastecidasNovas = Number(updateData.abastecidas || 0);

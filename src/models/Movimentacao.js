@@ -54,7 +54,7 @@ const Movimentacao = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      comment: "Quantidade final (totalPre - sairam + abastecidas)",
+      comment: "Quantidade final (totalPre + abastecidas)",
     },
 
     // US09 - Coleta de Fichas
@@ -193,11 +193,9 @@ const Movimentacao = sequelize.define(
     timestamps: true,
     hooks: {
       beforeSave: async (movimentacao) => {
-        // Fórmula única: totalPos = totalPre - sairam + abastecidas
+        // Fórmula do negócio: totalPos = totalPre + abastecidas
         movimentacao.totalPos =
-          movimentacao.totalPre -
-          movimentacao.sairam +
-          movimentacao.abastecidas;
+          movimentacao.totalPre + movimentacao.abastecidas;
 
         // Calcular média fichas/prêmio
         if (movimentacao.sairam > 0) {
