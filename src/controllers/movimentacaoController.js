@@ -1349,10 +1349,17 @@ export const obterMovimentacao = async (req, res) => {
 
 // Atualizar movimentação (permite editar campos principais)
 export const atualizarMovimentacao = async (req, res) => {
+  let transaction = null;
   try {
-    const movimentacao = await Movimentacao.findByPk(req.params.id);
+    transaction = await Movimentacao.sequelize.transaction();
+
+    const movimentacao = await Movimentacao.findByPk(req.params.id, {
+      include: [{ model: MovimentacaoProduto, as: "detalhesProdutos" }],
+      transaction,
+    });
 
     if (!movimentacao) {
+      await transaction.rollback();
       return res.status(404).json({ error: "Movimentação não encontrada" });
     }
 
@@ -1361,6 +1368,7 @@ export const atualizarMovimentacao = async (req, res) => {
       !["ADMIN", "GERENCIADOR"].includes(req.usuario.role) &&
       movimentacao.usuarioId !== req.usuario.id
     ) {
+      await transaction.rollback();
       return res
         .status(403)
         .json({ error: "Você não pode editar esta movimentação" });
@@ -1423,14 +1431,119 @@ export const atualizarMovimentacao = async (req, res) => {
           : movimentacao.dataColeta,
     };
 
-    // Recalcular totalPos baseado nos novos valores
-    // Para movimentações normais (não retirada de estoque)
-    if (!movimentacao.retiradaEstoque) {
-      updateData.totalPos = updateData.totalPre + updateData.abastecidas;
-    } else {
-      // Para retirada de estoque
-      updateData.totalPos =
-        updateData.totalPre - updateData.sairam + updateData.abastecidas;
+    // Fórmula única: totalPos = totalPre - sairam + abastecidas
+    updateData.totalPos =
+      updateData.totalPre - updateData.sairam + updateData.abastecidas;
+
+    const abastecidasAnteriores = Number(movimentacao.abastecidas || 0);
+    const abastecidasNovas = Number(updateData.abastecidas || 0);
+    const deltaAbastecidas = abastecidasNovas - abastecidasAnteriores;
+
+    if (abastecidas !== undefined && deltaAbastecidas !== 0) {
+      const detalhesProdutos = Array.isArray(movimentacao.detalhesProdutos)
+        ? movimentacao.detalhesProdutos
+        : [];
+      const detalheAlvo =
+        detalhesProdutos.find(
+          (item) => Number(item?.quantidadeAbastecida || 0) > 0,
+        ) || detalhesProdutos[0];
+
+      if (detalheAlvo?.produtoId) {
+        const quantidadeDetalheAtual = Number(
+          detalheAlvo.quantidadeAbastecida || 0,
+        );
+        const quantidadeDetalheNova = quantidadeDetalheAtual + deltaAbastecidas;
+
+        if (quantidadeDetalheNova < 0) {
+          await transaction.rollback();
+          return res.status(400).json({
+            error:
+              "Quantidade abastecida inválida para o produto da movimentação.",
+          });
+        }
+
+        await detalheAlvo.update(
+          { quantidadeAbastecida: quantidadeDetalheNova },
+          { transaction },
+        );
+
+        const maquinaMovimentacao = await Maquina.findByPk(
+          movimentacao.maquinaId,
+          {
+            attributes: ["id", "lojaId"],
+            transaction,
+          },
+        );
+
+        const estoqueUsuario = await EstoqueUsuario.findOne({
+          where: {
+            usuarioId: movimentacao.usuarioId,
+            produtoId: detalheAlvo.produtoId,
+          },
+          transaction,
+        });
+
+        if (estoqueUsuario) {
+          const saldoAtual = Number(estoqueUsuario.quantidade || 0);
+          const novoSaldo = saldoAtual - deltaAbastecidas;
+
+          if (novoSaldo < 0) {
+            await transaction.rollback();
+            return res.status(400).json({
+              error:
+                "Estoque do funcionário insuficiente para aumentar o abastecimento.",
+            });
+          }
+
+          await estoqueUsuario.update(
+            { quantidade: novoSaldo },
+            { transaction },
+          );
+        } else if (maquinaMovimentacao?.lojaId) {
+          const estoqueLoja = await EstoqueLoja.findOne({
+            where: {
+              lojaId: maquinaMovimentacao.lojaId,
+              produtoId: detalheAlvo.produtoId,
+            },
+            transaction,
+          });
+
+          if (!estoqueLoja) {
+            if (deltaAbastecidas < 0) {
+              await EstoqueUsuario.create(
+                {
+                  usuarioId: movimentacao.usuarioId,
+                  produtoId: detalheAlvo.produtoId,
+                  quantidade: Math.abs(deltaAbastecidas),
+                },
+                { transaction },
+              );
+            } else {
+              await transaction.rollback();
+              return res.status(400).json({
+                error:
+                  "Não foi possível ajustar estoque: nenhum saldo de origem encontrado para o produto.",
+              });
+            }
+          } else {
+            const saldoAtual = Number(estoqueLoja.quantidade || 0);
+            const novoSaldo = saldoAtual - deltaAbastecidas;
+
+            if (novoSaldo < 0) {
+              await transaction.rollback();
+              return res.status(400).json({
+                error:
+                  "Estoque da loja insuficiente para aumentar o abastecimento.",
+              });
+            }
+
+            await estoqueLoja.update(
+              { quantidade: novoSaldo },
+              { transaction },
+            );
+          }
+        }
+      }
     }
 
     // Se sairam > 0, recalcular média fichas/prêmio
@@ -1459,7 +1572,7 @@ export const atualizarMovimentacao = async (req, res) => {
       }
     }
 
-    await movimentacao.update(updateData);
+    await movimentacao.update(updateData, { transaction });
 
     // Retornar movimentação atualizada com dados completos
     const movimentacaoAtualizada = await Movimentacao.findByPk(req.params.id, {
@@ -1486,10 +1599,21 @@ export const atualizarMovimentacao = async (req, res) => {
           ],
         },
       ],
+      transaction,
     });
+
+    await transaction.commit();
+    transaction = null;
 
     res.json(movimentacaoAtualizada);
   } catch (error) {
+    if (transaction) {
+      try {
+        await transaction.rollback();
+      } catch {
+        // Sem ação adicional.
+      }
+    }
     console.error("Erro ao atualizar movimentação:", error);
     res.status(500).json({ error: "Erro ao atualizar movimentação" });
   }
