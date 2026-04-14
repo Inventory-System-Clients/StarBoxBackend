@@ -1387,7 +1387,147 @@ export const atualizarMovimentacao = async (req, res) => {
       quantidade_notas_entrada,
       valor_entrada_maquininha_pix,
       dataColeta,
+      produtoId,
     } = req.body;
+
+    // LÓGICA DE TROCA DE PRODUTO COM AJUSTE DE ESTOQUE
+    // Se produtoId for passado e for diferente do produto atual, fazer swap
+    if (produtoId) {
+      const detalhesProdutos = Array.isArray(movimentacao.detalhesProdutos)
+        ? movimentacao.detalhesProdutos
+        : [];
+      const detalheAtual = detalhesProdutos[0]; // Primeiro produto abastecido
+
+      if (
+        detalheAtual &&
+        Number(detalheAtual.produtoId) !== Number(produtoId)
+      ) {
+        // Devolver quantidade anterior do produto antigo
+        const quantidadeAntiga = Number(detalheAtual.quantidadeAbastecida || 0);
+
+        const maquinaMovimentacao = await Maquina.findByPk(
+          movimentacao.maquinaId,
+          {
+            attributes: ["id", "lojaId"],
+            transaction,
+          },
+        );
+
+        // Desfazer o debit do produto antigo
+        const estoqueUsuarioAntigo = await EstoqueUsuario.findOne({
+          where: {
+            usuarioId: movimentacao.usuarioId,
+            produtoId: detalheAtual.produtoId,
+          },
+          transaction,
+        });
+
+        if (estoqueUsuarioAntigo) {
+          const saldoAtual = Number(estoqueUsuarioAntigo.quantidade || 0);
+          await estoqueUsuarioAntigo.update(
+            { quantidade: saldoAtual + quantidadeAntiga },
+            { transaction },
+          );
+        } else if (maquinaMovimentacao?.lojaId) {
+          const estoqueLojaAntigo = await EstoqueLoja.findOne({
+            where: {
+              lojaId: maquinaMovimentacao.lojaId,
+              produtoId: detalheAtual.produtoId,
+            },
+            transaction,
+          });
+
+          if (estoqueLojaAntigo) {
+            const saldoAtual = Number(estoqueLojaAntigo.quantidade || 0);
+            await estoqueLojaAntigo.update(
+              { quantidade: saldoAtual + quantidadeAntiga },
+              { transaction },
+            );
+          }
+        }
+
+        // Descontar quantidade do novo produto
+        const quantidadeNova = Number(abastecidas || 0);
+
+        if (quantidadeNova > 0) {
+          const estoqueUsuarioNovo = await EstoqueUsuario.findOne({
+            where: {
+              usuarioId: movimentacao.usuarioId,
+              produtoId: produtoId,
+            },
+            transaction,
+          });
+
+          if (estoqueUsuarioNovo) {
+            const saldoAtual = Number(estoqueUsuarioNovo.quantidade || 0);
+            const novoSaldo = saldoAtual - quantidadeNova;
+
+            if (novoSaldo < 0) {
+              await transaction.rollback();
+              return res.status(400).json({
+                error:
+                  "Estoque do funcionário insuficiente para o novo produto.",
+              });
+            }
+
+            await estoqueUsuarioNovo.update(
+              { quantidade: novoSaldo },
+              { transaction },
+            );
+          } else if (maquinaMovimentacao?.lojaId) {
+            const estoqueLojaNovoItem = await EstoqueLoja.findOne({
+              where: {
+                lojaId: maquinaMovimentacao.lojaId,
+                produtoId: produtoId,
+              },
+              transaction,
+            });
+
+            if (estoqueLojaNovoItem) {
+              const saldoAtual = Number(estoqueLojaNovoItem.quantidade || 0);
+              const novoSaldo = saldoAtual - quantidadeNova;
+
+              if (novoSaldo < 0) {
+                await transaction.rollback();
+                return res.status(400).json({
+                  error: "Estoque da loja insuficiente para o novo produto.",
+                });
+              }
+
+              await estoqueLojaNovoItem.update(
+                { quantidade: novoSaldo },
+                { transaction },
+              );
+            } else {
+              await transaction.rollback();
+              return res.status(400).json({
+                error: "Novo produto não tem estoque na loja.",
+              });
+            }
+          }
+        }
+
+        // Atualizar ou criar entrada em MovimentacaoProduto
+        if (detalheAtual) {
+          await detalheAtual.update(
+            {
+              produtoId: produtoId,
+              quantidadeAbastecida: quantidadeNova,
+            },
+            { transaction },
+          );
+        } else {
+          await MovimentacaoProduto.create(
+            {
+              movimentacaoId: movimentacao.id,
+              produtoId: produtoId,
+              quantidadeAbastecida: quantidadeNova,
+            },
+            { transaction },
+          );
+        }
+      }
+    }
 
     // Preparar dados para atualização
     const updateData = {
