@@ -1758,6 +1758,168 @@ export const atualizarMovimentacao = async (req, res) => {
   }
 };
 
+// Registrar abastecimento extra (somente quantidade + produto, sem alterar contadores)
+export const registrarAbastecimentoExtra = async (req, res) => {
+  let transaction = null;
+  try {
+    const { produtoId, quantidadeAbastecida } = req.body;
+    const quantidadeExtra = Number(quantidadeAbastecida || 0);
+
+    if (!produtoId) {
+      return res.status(400).json({ error: "produtoId é obrigatório" });
+    }
+
+    if (!Number.isFinite(quantidadeExtra) || quantidadeExtra <= 0) {
+      return res
+        .status(400)
+        .json({ error: "quantidadeAbastecida deve ser maior que zero" });
+    }
+
+    transaction = await Movimentacao.sequelize.transaction();
+
+    const movimentacao = await Movimentacao.findByPk(req.params.id, {
+      include: [
+        {
+          model: MovimentacaoProduto,
+          as: "detalhesProdutos",
+          include: [
+            {
+              model: Produto,
+              as: "produto",
+              attributes: ["id", "nome"],
+            },
+          ],
+        },
+      ],
+      transaction,
+    });
+
+    if (!movimentacao) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Movimentação não encontrada" });
+    }
+
+    if (
+      !["ADMIN", "GERENCIADOR"].includes(req.usuario.role) &&
+      movimentacao.usuarioId !== req.usuario.id
+    ) {
+      await transaction.rollback();
+      return res
+        .status(403)
+        .json({ error: "Você não pode editar esta movimentação" });
+    }
+
+    const estoqueUsuario = await EstoqueUsuario.findOne({
+      where: {
+        usuarioId: movimentacao.usuarioId,
+        produtoId,
+      },
+      transaction,
+    });
+
+    if (!estoqueUsuario) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "Produto sem estoque no usuário para abastecimento extra.",
+      });
+    }
+
+    const saldoAtual = Number(estoqueUsuario.quantidade || 0);
+    if (saldoAtual < quantidadeExtra) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "Estoque do usuário insuficiente para abastecimento extra.",
+      });
+    }
+
+    await estoqueUsuario.update(
+      { quantidade: saldoAtual - quantidadeExtra },
+      { transaction },
+    );
+
+    const detalheExistente = Array.isArray(movimentacao.detalhesProdutos)
+      ? movimentacao.detalhesProdutos.find(
+          (item) => String(item?.produtoId || "") === String(produtoId),
+        )
+      : null;
+
+    if (detalheExistente) {
+      const novaQtdDetalhe =
+        Number(detalheExistente.quantidadeAbastecida || 0) + quantidadeExtra;
+      await detalheExistente.update(
+        { quantidadeAbastecida: novaQtdDetalhe },
+        { transaction },
+      );
+    } else {
+      await MovimentacaoProduto.create(
+        {
+          movimentacaoId: movimentacao.id,
+          produtoId,
+          quantidadeSaiu: 0,
+          quantidadeAbastecida: quantidadeExtra,
+          retiradaProduto: 0,
+        },
+        { transaction },
+      );
+    }
+
+    const abastecidasAtuais = Number(movimentacao.abastecidas || 0);
+    const abastecidasNovas = abastecidasAtuais + quantidadeExtra;
+
+    await movimentacao.update(
+      {
+        abastecidas: abastecidasNovas,
+        totalPos: Number(movimentacao.totalPre || 0) + abastecidasNovas,
+      },
+      { transaction },
+    );
+
+    const movimentacaoAtualizada = await Movimentacao.findByPk(req.params.id, {
+      include: [
+        {
+          model: Maquina,
+          as: "maquina",
+          attributes: ["id", "codigo", "nome", "lojaId", "tipo"],
+        },
+        {
+          model: Usuario,
+          as: "usuario",
+          attributes: ["id", "nome", "email"],
+        },
+        {
+          model: MovimentacaoProduto,
+          as: "detalhesProdutos",
+          include: [
+            {
+              model: Produto,
+              as: "produto",
+              attributes: ["id", "nome"],
+            },
+          ],
+        },
+      ],
+      transaction,
+    });
+
+    await transaction.commit();
+    transaction = null;
+
+    return res.json(movimentacaoAtualizada);
+  } catch (error) {
+    if (transaction) {
+      try {
+        await transaction.rollback();
+      } catch {
+        // Sem ação adicional.
+      }
+    }
+    console.error("Erro ao registrar abastecimento extra:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro ao registrar abastecimento extra" });
+  }
+};
+
 // Deletar movimentação (apenas ADMIN)
 export const deletarMovimentacao = async (req, res) => {
   try {
