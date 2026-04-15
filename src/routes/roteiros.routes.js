@@ -74,48 +74,62 @@ router.get("/", async (req, res) => {
 });
 
 // Iniciar roteiro
-router.post("/:id/iniciar", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), async (req, res) => {
-  try {
-    const { funcionarioId, funcionarioNome, veiculoId } = req.body;
-    console.log("[INICIAR] body:", {
-      funcionarioId,
-      funcionarioNome,
-      veiculoId,
-    });
-    const roteiro = await Roteiro.findByPk(req.params.id);
-    if (!roteiro)
-      return res.status(404).json({ error: "Roteiro não encontrado" });
+router.post(
+  "/:id/iniciar",
+  autenticar,
+  autorizar(ROLES_GESTAO_ROTEIROS),
+  async (req, res) => {
+    try {
+      const { funcionarioId, funcionarioNome, veiculoId } = req.body;
+      console.log("[INICIAR] body:", {
+        funcionarioId,
+        funcionarioNome,
+        veiculoId,
+      });
+      const roteiro = await Roteiro.findByPk(req.params.id);
+      if (!roteiro)
+        return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId;
-    if (veiculoIdNormalizado) {
-      const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
-      if (!veiculo)
-        return res.status(404).json({ error: "Veículo não encontrado" });
+      const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId;
+      if (veiculoIdNormalizado) {
+        const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
+        if (!veiculo)
+          return res.status(404).json({ error: "Veículo não encontrado" });
+      }
+
+      const update = {};
+      if (funcionarioId !== undefined) update.funcionarioId = funcionarioId;
+      if (funcionarioNome !== undefined)
+        update.funcionarioNome = funcionarioNome;
+      if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
+
+      const result = await roteiro.update(update);
+      console.log("[INICIAR] após update:", {
+        funcionarioId: result.funcionarioId,
+        funcionarioNome: result.funcionarioNome,
+        veiculoId: result.veiculoId,
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[INICIAR] erro:", error);
+      res.status(500).json({ error: "Erro ao iniciar roteiro" });
     }
+  },
+);
 
-    const update = {};
-    if (funcionarioId !== undefined) update.funcionarioId = funcionarioId;
-    if (funcionarioNome !== undefined) update.funcionarioNome = funcionarioNome;
-    if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
-
-    const result = await roteiro.update(update);
-    console.log("[INICIAR] após update:", {
-      funcionarioId: result.funcionarioId,
-      funcionarioNome: result.funcionarioNome,
-      veiculoId: result.veiculoId,
-    });
-    res.json({ success: true });
-  } catch (error) {
-    console.error("[INICIAR] erro:", error);
-    res.status(500).json({ error: "Erro ao iniciar roteiro" });
-  }
-});
-
-// Gastos diários no roteiro (execução)
+// Gastos semanais no roteiro (execução)
 router.get("/:id/gastos", autenticar, listarGastosRoteiro);
 router.post("/:id/gastos", autenticar, registrarGastoRoteiro);
 
-// Orçamento diário do roteiro (ADMIN e GERENCIADOR)
+// Orçamento semanal do roteiro (ADMIN e GERENCIADOR)
+router.patch(
+  "/:id/orcamento-semanal",
+  autenticar,
+  autorizar(ROLES_GESTAO_ROTEIROS),
+  atualizarOrcamentoDiarioRoteiro,
+);
+
+// Compatibilidade: endpoint legado de orçamento diário
 router.patch(
   "/:id/orcamento-diario",
   autenticar,
@@ -126,129 +140,137 @@ router.patch(
 router.post("/:id/finalizar", autenticar, finalizarRoteiro);
 
 // Mover loja entre roteiros
-router.post("/mover-loja", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), async (req, res) => {
-  try {
-    const { lojaId, roteiroOrigemId, roteiroDestinoId } = req.body;
-    console.log("[MOVER-LOJA] body:", {
-      lojaId,
-      roteiroOrigemId,
-      roteiroDestinoId,
-    });
-
-    const roteiroDestino = await Roteiro.findByPk(roteiroDestinoId);
-    console.log(
-      "[MOVER-LOJA] roteiroDestino:",
-      roteiroDestino?.id ?? "NÃO ENCONTRADO",
-    );
-    if (!roteiroDestino)
-      return res
-        .status(404)
-        .json({ error: "Roteiro de destino não encontrado" });
-
-    await sequelize.transaction(async (t) => {
-      const destinoFinalizado = await roteiroFoiFinalizadoHoje(
+router.post(
+  "/mover-loja",
+  autenticar,
+  autorizar(ROLES_GESTAO_ROTEIROS),
+  async (req, res) => {
+    try {
+      const { lojaId, roteiroOrigemId, roteiroDestinoId } = req.body;
+      console.log("[MOVER-LOJA] body:", {
+        lojaId,
+        roteiroOrigemId,
         roteiroDestinoId,
-        t,
-      );
-      if (destinoFinalizado) {
-        throw Object.assign(
-          new Error(
-            "Roteiro de destino finalizado: não é permitido adicionar lojas.",
-          ),
-          { status: 409 },
-        );
-      }
+      });
 
-      if (roteiroOrigemId) {
-        const origemFinalizado = await roteiroFoiFinalizadoHoje(
-          roteiroOrigemId,
+      const roteiroDestino = await Roteiro.findByPk(roteiroDestinoId);
+      console.log(
+        "[MOVER-LOJA] roteiroDestino:",
+        roteiroDestino?.id ?? "NÃO ENCONTRADO",
+      );
+      if (!roteiroDestino)
+        return res
+          .status(404)
+          .json({ error: "Roteiro de destino não encontrado" });
+
+      await sequelize.transaction(async (t) => {
+        const destinoFinalizado = await roteiroFoiFinalizadoHoje(
+          roteiroDestinoId,
           t,
         );
-        if (origemFinalizado) {
+        if (destinoFinalizado) {
           throw Object.assign(
             new Error(
-              "Roteiro de origem finalizado: não é permitido remover ou mover lojas.",
+              "Roteiro de destino finalizado: não é permitido adicionar lojas.",
             ),
             { status: 409 },
           );
         }
 
-        const roteiroOrigem = await Roteiro.findByPk(roteiroOrigemId);
-        console.log(
-          "[MOVER-LOJA] roteiroOrigem:",
-          roteiroOrigem?.id ?? "NÃO ENCONTRADO",
-        );
-        if (!roteiroOrigem)
-          throw Object.assign(new Error("Roteiro de origem não encontrado"), {
-            status: 404,
+        if (roteiroOrigemId) {
+          const origemFinalizado = await roteiroFoiFinalizadoHoje(
+            roteiroOrigemId,
+            t,
+          );
+          if (origemFinalizado) {
+            throw Object.assign(
+              new Error(
+                "Roteiro de origem finalizado: não é permitido remover ou mover lojas.",
+              ),
+              { status: 409 },
+            );
+          }
+
+          const roteiroOrigem = await Roteiro.findByPk(roteiroOrigemId);
+          console.log(
+            "[MOVER-LOJA] roteiroOrigem:",
+            roteiroOrigem?.id ?? "NÃO ENCONTRADO",
+          );
+          if (!roteiroOrigem)
+            throw Object.assign(new Error("Roteiro de origem não encontrado"), {
+              status: 404,
+            });
+
+          const destroyResult = await RoteiroLoja.destroy({
+            where: { RoteiroId: roteiroOrigemId, LojaId: lojaId },
+            transaction: t,
           });
+          console.log(
+            "[MOVER-LOJA] registros removidos da origem:",
+            destroyResult,
+          );
 
-        const destroyResult = await RoteiroLoja.destroy({
-          where: { RoteiroId: roteiroOrigemId, LojaId: lojaId },
-          transaction: t,
-        });
-        console.log(
-          "[MOVER-LOJA] registros removidos da origem:",
-          destroyResult,
-        );
-
-        const lojasOrigem = await RoteiroLoja.findAll({
-          where: { RoteiroId: roteiroOrigemId },
-          order: [["ordem", "ASC"]],
-          transaction: t,
-        });
-        console.log(
-          "[MOVER-LOJA] lojas restantes na origem:",
-          lojasOrigem.length,
-        );
-        for (let i = 0; i < lojasOrigem.length; i++) {
-          await lojasOrigem[i].update({ ordem: i }, { transaction: t });
+          const lojasOrigem = await RoteiroLoja.findAll({
+            where: { RoteiroId: roteiroOrigemId },
+            order: [["ordem", "ASC"]],
+            transaction: t,
+          });
+          console.log(
+            "[MOVER-LOJA] lojas restantes na origem:",
+            lojasOrigem.length,
+          );
+          for (let i = 0; i < lojasOrigem.length; i++) {
+            await lojasOrigem[i].update({ ordem: i }, { transaction: t });
+          }
         }
-      }
 
-      const maxOrdem = await RoteiroLoja.max("ordem", {
-        where: { RoteiroId: roteiroDestinoId },
-        transaction: t,
+        const maxOrdem = await RoteiroLoja.max("ordem", {
+          where: { RoteiroId: roteiroDestinoId },
+          transaction: t,
+        });
+        const novaOrdem = maxOrdem != null ? maxOrdem + 1 : 0;
+        console.log("[MOVER-LOJA] novaOrdem no destino:", novaOrdem);
+
+        const existente = await RoteiroLoja.findOne({
+          where: { RoteiroId: roteiroDestinoId, LojaId: lojaId },
+          transaction: t,
+        });
+        console.log("[MOVER-LOJA] loja já existe no destino?", !!existente);
+
+        if (existente) {
+          await existente.update({ ordem: novaOrdem }, { transaction: t });
+        } else {
+          const criado = await RoteiroLoja.create(
+            { RoteiroId: roteiroDestinoId, LojaId: lojaId, ordem: novaOrdem },
+            { transaction: t },
+          );
+          console.log(
+            "[MOVER-LOJA] registro criado:",
+            criado?.RoteiroId,
+            criado?.LojaId,
+          );
+        }
       });
-      const novaOrdem = maxOrdem != null ? maxOrdem + 1 : 0;
-      console.log("[MOVER-LOJA] novaOrdem no destino:", novaOrdem);
 
-      const existente = await RoteiroLoja.findOne({
-        where: { RoteiroId: roteiroDestinoId, LojaId: lojaId },
-        transaction: t,
-      });
-      console.log("[MOVER-LOJA] loja já existe no destino?", !!existente);
-
-      if (existente) {
-        await existente.update({ ordem: novaOrdem }, { transaction: t });
-      } else {
-        const criado = await RoteiroLoja.create(
-          { RoteiroId: roteiroDestinoId, LojaId: lojaId, ordem: novaOrdem },
-          { transaction: t },
-        );
-        console.log(
-          "[MOVER-LOJA] registro criado:",
-          criado?.RoteiroId,
-          criado?.LojaId,
-        );
-      }
-    });
-
-    console.log("[MOVER-LOJA] sucesso");
-    res.json({ success: true });
-  } catch (error) {
-    if (error.status === 404)
-      return res.status(404).json({ error: error.message });
-    if (error.status === 409)
-      return res.status(409).json({ error: error.message });
-    console.error("[MOVER-LOJA] ERRO COMPLETO:", error);
-    console.error("[MOVER-LOJA] message:", error.message);
-    console.error("[MOVER-LOJA] stack:", error.stack);
-    res
-      .status(500)
-      .json({ error: "Erro ao mover/adicionar loja", detalhe: error.message });
-  }
-});
+      console.log("[MOVER-LOJA] sucesso");
+      res.json({ success: true });
+    } catch (error) {
+      if (error.status === 404)
+        return res.status(404).json({ error: error.message });
+      if (error.status === 409)
+        return res.status(409).json({ error: error.message });
+      console.error("[MOVER-LOJA] ERRO COMPLETO:", error);
+      console.error("[MOVER-LOJA] message:", error.message);
+      console.error("[MOVER-LOJA] stack:", error.stack);
+      res
+        .status(500)
+        .json({
+          error: "Erro ao mover/adicionar loja",
+          detalhe: error.message,
+        });
+    }
+  },
+);
 
 // Reordenar loja dentro do roteiro (ADMIN e GERENCIADOR)
 router.patch(
@@ -335,7 +357,9 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
     const statusConcluido = await MovimentacaoStatusDiario.findAll({
       where: { roteiro_id: roteiroId, concluida: true },
     });
-    const maquinasConcluidas = new Set(statusConcluido.map((s) => s.maquina_id));
+    const maquinasConcluidas = new Set(
+      statusConcluido.map((s) => s.maquina_id),
+    );
 
     let lojaEsperadaId = null;
     let lojaEsperadaNome = null;
@@ -345,10 +369,7 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
       const loja = await Loja.findByPk(rel.LojaId, {
         include: [{ model: Maquina, as: "maquinas", attributes: ["id"] }],
       });
-      if (
-        loja &&
-        loja.maquinas.some((m) => !maquinasConcluidas.has(m.id))
-      ) {
+      if (loja && loja.maquinas.some((m) => !maquinasConcluidas.has(m.id))) {
         lojaEsperadaId = loja.id;
         lojaEsperadaNome = loja.nome;
         break;
@@ -395,53 +416,65 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
 });
 
 // Atualizar campos do roteiro (diasSemana, nome, observacao, funcionarioId, funcionarioNome, veiculoId)
-router.patch("/:id", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), async (req, res) => {
-  try {
-    const roteiro = await Roteiro.findByPk(req.params.id);
-    if (!roteiro)
-      return res.status(404).json({ error: "Roteiro não encontrado" });
+router.patch(
+  "/:id",
+  autenticar,
+  autorizar(ROLES_GESTAO_ROTEIROS),
+  async (req, res) => {
+    try {
+      const roteiro = await Roteiro.findByPk(req.params.id);
+      if (!roteiro)
+        return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    const camposPermitidos = [
-      "diasSemana",
-      "nome",
-      "observacao",
-      "funcionarioId",
-      "funcionarioNome",
-      "veiculoId",
-    ];
-    const update = {};
-    camposPermitidos.forEach((c) => {
-      if (req.body[c] !== undefined) update[c] = req.body[c];
-    });
+      const camposPermitidos = [
+        "diasSemana",
+        "nome",
+        "observacao",
+        "funcionarioId",
+        "funcionarioNome",
+        "veiculoId",
+      ];
+      const update = {};
+      camposPermitidos.forEach((c) => {
+        if (req.body[c] !== undefined) update[c] = req.body[c];
+      });
 
-    if (update.observacao !== undefined) {
-      if (typeof update.observacao !== "string") {
-        return res.status(400).json({ error: "observacao deve ser um texto" });
+      if (update.observacao !== undefined) {
+        if (typeof update.observacao !== "string") {
+          return res
+            .status(400)
+            .json({ error: "observacao deve ser um texto" });
+        }
+        update.observacao = update.observacao.trim() || null;
       }
-      update.observacao = update.observacao.trim() || null;
-    }
 
-    if (update.veiculoId !== undefined) {
-      const veiculoIdNormalizado =
-        update.veiculoId === "" ? null : update.veiculoId;
-      if (veiculoIdNormalizado) {
-        const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
-        if (!veiculo)
-          return res.status(404).json({ error: "Veículo não encontrado" });
+      if (update.veiculoId !== undefined) {
+        const veiculoIdNormalizado =
+          update.veiculoId === "" ? null : update.veiculoId;
+        if (veiculoIdNormalizado) {
+          const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
+          if (!veiculo)
+            return res.status(404).json({ error: "Veículo não encontrado" });
+        }
+        update.veiculoId = veiculoIdNormalizado;
       }
-      update.veiculoId = veiculoIdNormalizado;
-    }
 
-    await roteiro.update(update);
-    res.json(roteiro);
-  } catch (error) {
-    console.error("Erro ao atualizar roteiro:", error);
-    res.status(500).json({ error: "Erro ao atualizar roteiro" });
-  }
-});
+      await roteiro.update(update);
+      res.json(roteiro);
+    } catch (error) {
+      console.error("Erro ao atualizar roteiro:", error);
+      res.status(500).json({ error: "Erro ao atualizar roteiro" });
+    }
+  },
+);
 
 // Apagar roteiro (ADMIN e GERENCIADOR)
-router.delete("/:id", autenticar, autorizar(ROLES_GESTAO_ROTEIROS), apagarRoteiro);
+router.delete(
+  "/:id",
+  autenticar,
+  autorizar(ROLES_GESTAO_ROTEIROS),
+  apagarRoteiro,
+);
 
 // Roteiros do dia corrente: GET /roteiros/do-dia?dia=SEG
 router.get("/do-dia", autenticar, async (req, res) => {

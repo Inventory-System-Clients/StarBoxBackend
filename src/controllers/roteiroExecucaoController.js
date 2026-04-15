@@ -12,6 +12,24 @@ import {
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
+const obterFaixaSemanaAtualUtc = () => {
+  const referencia = new Date();
+  const inicioSemana = new Date(referencia);
+  inicioSemana.setUTCDate(inicioSemana.getUTCDate() - inicioSemana.getUTCDay());
+  inicioSemana.setUTCHours(0, 0, 0, 0);
+
+  const fimSemana = new Date(inicioSemana);
+  fimSemana.setUTCDate(fimSemana.getUTCDate() + 6);
+  fimSemana.setUTCHours(23, 59, 59, 999);
+
+  return {
+    inicio: inicioSemana,
+    fim: fimSemana,
+    inicioSemana: inicioSemana.toISOString().slice(0, 10),
+    fimSemana: fimSemana.toISOString().slice(0, 10),
+  };
+};
+
 const obterTotalEstoqueUsuario = async (usuarioId) => {
   if (!usuarioId) return null;
 
@@ -61,6 +79,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
     const dataHoje = new Date().toISOString().slice(0, 10);
     const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
     const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
+    const faixaSemanaAtual = obterFaixaSemanaAtualUtc();
 
     // Buscar status das máquinas concluídas para o roteiro (sem filtro diário)
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
@@ -171,11 +190,11 @@ async function getRoteiroExecucaoComStatus(req, res) {
       roteiroFinalizado = false;
     }
 
-    const gastosHoje = await GastoRoteiro.findAll({
+    const gastosSemana = await GastoRoteiro.findAll({
       where: {
         roteiroId: roteiro.id,
         dataHora: {
-          [Op.between]: [inicioDia, fimDia],
+          [Op.between]: [faixaSemanaAtual.inicio, faixaSemanaAtual.fim],
         },
       },
       include: [
@@ -188,13 +207,13 @@ async function getRoteiroExecucaoComStatus(req, res) {
       order: [["dataHora", "DESC"]],
     });
 
-    const totalGastoHoje = gastosHoje.reduce(
+    const totalGastoSemana = gastosSemana.reduce(
       (acc, gasto) => acc + Number.parseFloat(gasto.valor || 0),
       0,
     );
     const orcamentoDiario = Number.parseFloat(roteiro.orcamentoDiario || 2000);
-    const saldoGastoHoje = Number.parseFloat(
-      (orcamentoDiario - totalGastoHoje).toFixed(2),
+    const saldoGastoSemana = Number.parseFloat(
+      (orcamentoDiario - totalGastoSemana).toFixed(2),
     );
 
     res.json({
@@ -212,9 +231,34 @@ async function getRoteiroExecucaoComStatus(req, res) {
           }
         : null,
       orcamentoDiario,
-      totalGastoHoje: Number.parseFloat(totalGastoHoje.toFixed(2)),
-      saldoGastoHoje,
-      gastosHoje: gastosHoje.map((gasto) => ({
+      orcamentoSemanal: orcamentoDiario,
+      periodoGastos: {
+        tipo: "semanal",
+        inicioSemana: faixaSemanaAtual.inicioSemana,
+        fimSemana: faixaSemanaAtual.fimSemana,
+      },
+      totalGastoHoje: Number.parseFloat(totalGastoSemana.toFixed(2)),
+      totalGastoSemana: Number.parseFloat(totalGastoSemana.toFixed(2)),
+      saldoGastoHoje: saldoGastoSemana,
+      saldoGastoSemana,
+      gastosHoje: gastosSemana.map((gasto) => ({
+        id: gasto.id,
+        categoria: gasto.categoria,
+        valor: Number.parseFloat(gasto.valor || 0),
+        quilometragem:
+          gasto.quilometragem !== null && gasto.quilometragem !== undefined
+            ? Number.parseInt(gasto.quilometragem, 10)
+            : null,
+        observacao: gasto.observacao,
+        dataHora: gasto.dataHora,
+        usuario: gasto.usuario
+          ? {
+              id: gasto.usuario.id,
+              nome: gasto.usuario.nome,
+            }
+          : null,
+      })),
+      gastosSemana: gastosSemana.map((gasto) => ({
         id: gasto.id,
         categoria: gasto.categoria,
         valor: Number.parseFloat(gasto.valor || 0),
@@ -364,6 +408,7 @@ async function getTodosRoteirosComStatus(req, res) {
         nome: roteiro.nome,
         observacao: roteiro.observacao,
         orcamentoDiario: Number.parseFloat(roteiro.orcamentoDiario || 2000),
+        orcamentoSemanal: Number.parseFloat(roteiro.orcamentoDiario || 2000),
         funcionarioId: roteiro.funcionarioId,
         funcionarioNome: roteiro.funcionarioNome,
         veiculoId: roteiro.veiculoId ?? null,

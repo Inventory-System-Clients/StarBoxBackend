@@ -35,16 +35,33 @@ const parseLitros = (valor) => {
   return Number.NaN;
 };
 
-const getFaixaDia = (dataParam) => {
-  const data = dataParam || new Date().toISOString().slice(0, 10);
-  const inicio = new Date(`${data}T00:00:00.000Z`);
-  const fim = new Date(`${data}T23:59:59.999Z`);
+const getFaixaSemana = (dataParam) => {
+  const dataReferencia = dataParam || new Date().toISOString().slice(0, 10);
+  const referencia = new Date(`${dataReferencia}T00:00:00.000Z`);
+
+  if (Number.isNaN(referencia.getTime())) {
+    return null;
+  }
+
+  const inicio = new Date(referencia);
+  inicio.setUTCDate(inicio.getUTCDate() - inicio.getUTCDay());
+  inicio.setUTCHours(0, 0, 0, 0);
+
+  const fim = new Date(inicio);
+  fim.setUTCDate(fim.getUTCDate() + 6);
+  fim.setUTCHours(23, 59, 59, 999);
 
   if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) {
     return null;
   }
 
-  return { data, inicio, fim };
+  return {
+    dataReferencia,
+    inicio,
+    fim,
+    inicioSemana: inicio.toISOString().slice(0, 10),
+    fimSemana: fim.toISOString().slice(0, 10),
+  };
 };
 
 const serializarGasto = (gasto) => ({
@@ -79,7 +96,7 @@ const validarPermissaoLancamento = (roteiro, usuario) => {
   return roteiro.funcionarioId === usuario.id;
 };
 
-const calcularTotalDia = async (roteiroId, inicio, fim) => {
+const calcularTotalSemana = async (roteiroId, inicio, fim) => {
   const total = await GastoRoteiro.sum("valor", {
     where: {
       roteiroId,
@@ -125,9 +142,9 @@ const obterReferenciaKmVeiculo = async (veiculoId, transaction) => {
 export const listarGastosRoteiro = async (req, res) => {
   try {
     const roteiroId = req.params.id;
-    const faixaDia = getFaixaDia(req.query.data);
+    const faixaSemana = getFaixaSemana(req.query.data);
 
-    if (!faixaDia) {
+    if (!faixaSemana) {
       return res.status(400).json({ error: "Data inválida. Use AAAA-MM-DD." });
     }
 
@@ -146,7 +163,7 @@ export const listarGastosRoteiro = async (req, res) => {
       where: {
         roteiroId,
         dataHora: {
-          [Op.between]: [faixaDia.inicio, faixaDia.fim],
+          [Op.between]: [faixaSemana.inicio, faixaSemana.fim],
         },
       },
       include: [
@@ -173,9 +190,14 @@ export const listarGastosRoteiro = async (req, res) => {
         id: roteiro.id,
         nome: roteiro.nome,
       },
-      data: faixaDia.data,
+      periodo: "semanal",
+      data: faixaSemana.dataReferencia,
+      dataReferencia: faixaSemana.dataReferencia,
+      inicioSemana: faixaSemana.inicioSemana,
+      fimSemana: faixaSemana.fimSemana,
       categoriasDisponiveis: CATEGORIAS_GASTO,
       orcamentoDiario,
+      orcamentoSemanal: orcamentoDiario,
       totalGasto: Number.parseFloat(totalGasto.toFixed(2)),
       saldoDisponivel,
       gastos: gastos.map(serializarGasto),
@@ -275,11 +297,11 @@ export const registrarGastoRoteiro = async (req, res) => {
       });
     }
 
-    const faixaHoje = getFaixaDia();
-    const totalGastoAtual = await calcularTotalDia(
+    const faixaSemanaAtual = getFaixaSemana();
+    const totalGastoAtual = await calcularTotalSemana(
       roteiroId,
-      faixaHoje.inicio,
-      faixaHoje.fim,
+      faixaSemanaAtual.inicio,
+      faixaSemanaAtual.fim,
     );
     const orcamentoDiario = Number.parseFloat(roteiro.orcamentoDiario || 2000);
     const saldoDisponivelAntes = Number.parseFloat(
@@ -288,7 +310,7 @@ export const registrarGastoRoteiro = async (req, res) => {
 
     if (valorNumerico > saldoDisponivelAntes) {
       return res.status(400).json({
-        error: "Saldo diário insuficiente para este lançamento",
+        error: "Saldo semanal insuficiente para este lançamento",
         orcamentoDiario,
         totalGastoAtual: Number.parseFloat(totalGastoAtual.toFixed(2)),
         saldoDisponivel: saldoDisponivelAntes,
@@ -385,11 +407,22 @@ export const registrarGastoRoteiro = async (req, res) => {
     );
 
     return res.status(201).json({
-      message: "Gasto diário registrado com sucesso",
+      message: "Gasto semanal registrado com sucesso",
       gasto: serializarGasto(gastoCompleto),
       movimentacaoVeiculoId: movimentacaoVeiculo?.id || null,
+      resumoSemana: {
+        dataReferencia: faixaSemanaAtual.dataReferencia,
+        inicioSemana: faixaSemanaAtual.inicioSemana,
+        fimSemana: faixaSemanaAtual.fimSemana,
+        orcamentoDiario,
+        orcamentoSemanal: orcamentoDiario,
+        totalGasto: totalGastoApos,
+        saldoDisponivel: Number.parseFloat(
+          (orcamentoDiario - totalGastoApos).toFixed(2),
+        ),
+      },
       resumoDia: {
-        data: faixaHoje.data,
+        data: faixaSemanaAtual.dataReferencia,
         orcamentoDiario,
         totalGasto: totalGastoApos,
         saldoDisponivel: Number.parseFloat(
@@ -411,13 +444,15 @@ export const registrarGastoRoteiro = async (req, res) => {
 export const atualizarOrcamentoDiarioRoteiro = async (req, res) => {
   try {
     const roteiroId = req.params.id;
-    const { orcamentoDiario } = req.body;
+    const { orcamentoSemanal, orcamentoDiario } = req.body;
+    const orcamentoRecebido =
+      orcamentoSemanal !== undefined ? orcamentoSemanal : orcamentoDiario;
 
-    const valorNumerico = parseValor(orcamentoDiario);
+    const valorNumerico = parseValor(orcamentoRecebido);
     if (!Number.isFinite(valorNumerico) || valorNumerico <= 0) {
       return res
         .status(400)
-        .json({ error: "orcamentoDiario deve ser um número maior que zero" });
+        .json({ error: "orcamentoSemanal deve ser um número maior que zero" });
     }
 
     const roteiro = await Roteiro.findByPk(roteiroId);
@@ -429,19 +464,22 @@ export const atualizarOrcamentoDiarioRoteiro = async (req, res) => {
       orcamentoDiario: Number.parseFloat(valorNumerico.toFixed(2)),
     });
 
+    const orcamentoAtualizado = Number.parseFloat(roteiro.orcamentoDiario || 0);
+
     return res.json({
-      message: "Orçamento diário atualizado com sucesso",
+      message: "Orçamento semanal atualizado com sucesso",
       roteiro: {
         id: roteiro.id,
         nome: roteiro.nome,
-        orcamentoDiario: Number.parseFloat(roteiro.orcamentoDiario || 0),
+        orcamentoDiario: orcamentoAtualizado,
+        orcamentoSemanal: orcamentoAtualizado,
       },
     });
   } catch (error) {
-    console.error("Erro ao atualizar orçamento diário do roteiro:", error);
+    console.error("Erro ao atualizar orçamento semanal do roteiro:", error);
     return res
       .status(500)
-      .json({ error: "Erro ao atualizar orçamento diário" });
+      .json({ error: "Erro ao atualizar orçamento semanal" });
   }
 };
 
