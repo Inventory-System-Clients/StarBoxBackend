@@ -1,4 +1,4 @@
-import { Produto } from "../models/index.js";
+import { Produto, EstoqueUsuario, EstoqueLoja } from "../models/index.js";
 
 // US06 - Listar produtos
 export const listarProdutos = async (req, res) => {
@@ -25,6 +25,69 @@ export const listarProdutos = async (req, res) => {
   } catch (error) {
     console.error("Erro ao listar produtos:", error);
     res.status(500).json({ error: "Erro ao listar produtos" });
+  }
+};
+
+// Listar produtos com estoque disponível (para usuário específico e/ou loja)
+export const listarProdutosComEstoque = async (req, res) => {
+  try {
+    const { usuarioId, lojaId } = req.query;
+
+    if (!usuarioId && !lojaId) {
+      return res
+        .status(400)
+        .json({ error: "usuarioId ou lojaId é obrigatório" });
+    }
+
+    // Buscar todos os produtos ativos
+    const produtos = await Produto.findAll({
+      where: { ativo: true },
+      order: [["nome", "ASC"]],
+    });
+
+    // Para cada produto, verificar se tem estoque
+    const produtosComEstoque = [];
+
+    for (const produto of produtos) {
+      let temEstoque = false;
+
+      // Verificar estoque do usuário
+      if (usuarioId) {
+        const estoqueUsuario = await EstoqueUsuario.findOne({
+          where: {
+            usuarioId: usuarioId,
+            produtoId: produto.id,
+          },
+        });
+
+        if (estoqueUsuario && Number(estoqueUsuario.quantidade || 0) > 0) {
+          temEstoque = true;
+        }
+      }
+
+      // Se não tem estoque do usuário, verificar estoque da loja
+      if (!temEstoque && lojaId) {
+        const estoqueLoja = await EstoqueLoja.findOne({
+          where: {
+            lojaId: lojaId,
+            produtoId: produto.id,
+          },
+        });
+
+        if (estoqueLoja && Number(estoqueLoja.quantidade || 0) > 0) {
+          temEstoque = true;
+        }
+      }
+
+      if (temEstoque) {
+        produtosComEstoque.push(produto);
+      }
+    }
+
+    res.json(produtosComEstoque);
+  } catch (error) {
+    console.error("Erro ao listar produtos com estoque:", error);
+    res.status(500).json({ error: "Erro ao listar produtos com estoque" });
   }
 };
 

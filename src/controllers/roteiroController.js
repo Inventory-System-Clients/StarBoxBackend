@@ -22,7 +22,10 @@ import { randomUUID } from "crypto";
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
 const ROLES_ADMIN_EQUIVALENTES = new Set(["ADMIN", "GERENCIADOR"]);
-const ROLES_FUNCIONARIO_ROTEIRO = new Set(["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"]);
+const ROLES_FUNCIONARIO_ROTEIRO = new Set([
+  "FUNCIONARIO",
+  "FUNCIONARIO_TODAS_LOJAS",
+]);
 
 const getRequestId = (req) =>
   req.requestId || req.id || req.headers?.["x-request-id"] || randomUUID();
@@ -83,20 +86,26 @@ const obterTotalEstoqueUsuario = async (usuarioId) => {
 
 export const criarRoteiro = async (req, res) => {
   try {
-    const { nome, diasSemana, observacao, orcamentoDiario, veiculoId } =
-      req.body;
+    const {
+      nome,
+      diasSemana,
+      observacao,
+      orcamentoSemanal,
+      orcamentoDiario,
+      veiculoId,
+    } = req.body;
+    const orcamentoRecebido =
+      orcamentoSemanal !== undefined ? orcamentoSemanal : orcamentoDiario;
     if (!nome) return res.status(400).json({ error: "Nome é obrigatório" });
     if (observacao !== undefined && typeof observacao !== "string") {
-      return res
-        .status(400)
-        .json({ error: "observacao deve ser um texto" });
+      return res.status(400).json({ error: "observacao deve ser um texto" });
     }
-    if (orcamentoDiario !== undefined) {
-      const valorOrcamento = parseValorMonetario(orcamentoDiario);
+    if (orcamentoRecebido !== undefined) {
+      const valorOrcamento = parseValorMonetario(orcamentoRecebido);
       if (!Number.isFinite(valorOrcamento) || valorOrcamento <= 0) {
-        return res
-          .status(400)
-          .json({ error: "orcamentoDiario deve ser um número maior que zero" });
+        return res.status(400).json({
+          error: "orcamentoSemanal deve ser um número maior que zero",
+        });
       }
     }
     if (diasSemana !== undefined) {
@@ -109,7 +118,7 @@ export const criarRoteiro = async (req, res) => {
         });
     }
 
-    const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId ?? null;
+    const veiculoIdNormalizado = veiculoId === "" ? null : (veiculoId ?? null);
     if (veiculoIdNormalizado) {
       const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
       if (!veiculo)
@@ -120,8 +129,12 @@ export const criarRoteiro = async (req, res) => {
       diasSemana: diasSemana ?? [],
       observacao: observacao?.trim() || null,
       veiculoId: veiculoIdNormalizado,
-      ...(orcamentoDiario !== undefined
-        ? { orcamentoDiario: Number.parseFloat(parseValorMonetario(orcamentoDiario).toFixed(2)) }
+      ...(orcamentoRecebido !== undefined
+        ? {
+            orcamentoDiario: Number.parseFloat(
+              parseValorMonetario(orcamentoRecebido).toFixed(2),
+            ),
+          }
         : {}),
     });
     res.status(201).json(roteiro);
@@ -160,12 +173,17 @@ export const atualizarDiasSemana = async (req, res) => {
       updateData.observacao = outrosCampos.observacao.trim() || null;
     }
 
-    if (outrosCampos.orcamentoDiario !== undefined) {
-      const valorOrcamento = parseValorMonetario(outrosCampos.orcamentoDiario);
+    const orcamentoRecebido =
+      outrosCampos.orcamentoSemanal !== undefined
+        ? outrosCampos.orcamentoSemanal
+        : outrosCampos.orcamentoDiario;
+
+    if (orcamentoRecebido !== undefined) {
+      const valorOrcamento = parseValorMonetario(orcamentoRecebido);
       if (!Number.isFinite(valorOrcamento) || valorOrcamento <= 0) {
-        return res
-          .status(400)
-          .json({ error: "orcamentoDiario deve ser um número maior que zero" });
+        return res.status(400).json({
+          error: "orcamentoSemanal deve ser um número maior que zero",
+        });
       }
       updateData.orcamentoDiario = Number.parseFloat(valorOrcamento.toFixed(2));
     }
@@ -176,15 +194,15 @@ export const atualizarDiasSemana = async (req, res) => {
       if (veiculoIdNormalizado) {
         const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
         if (!veiculo)
-          return res
-            .status(404)
-            .json({ error: "Veículo não encontrado" });
+          return res.status(404).json({ error: "Veículo não encontrado" });
       }
       updateData.veiculoId = veiculoIdNormalizado;
     }
 
     if (Object.keys(updateData).length === 0)
-      return res.status(400).json({ error: "Nenhum campo válido para atualizar" });
+      return res
+        .status(400)
+        .json({ error: "Nenhum campo válido para atualizar" });
 
     await roteiro.update(updateData);
     res.json(roteiro);

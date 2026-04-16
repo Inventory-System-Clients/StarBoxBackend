@@ -54,7 +54,7 @@ const Movimentacao = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      comment: "Quantidade final (totalPre - sairam + abastecidas)",
+      comment: "Quantidade final (totalPre + abastecidas)",
     },
 
     // US09 - Coleta de Fichas
@@ -150,7 +150,8 @@ const Movimentacao = sequelize.define(
     justificativa_ordem: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "Justificativa quando funcionário pulou a ordem de lojas no roteiro",
+      comment:
+        "Justificativa quando funcionário pulou a ordem de lojas no roteiro",
     },
     status_justificativa: {
       type: DataTypes.STRING(20),
@@ -192,13 +193,9 @@ const Movimentacao = sequelize.define(
     timestamps: true,
     hooks: {
       beforeSave: async (movimentacao) => {
-        // Corrige cálculo para movimentações normais (não retirada de estoque)
-        if (!movimentacao.retiradaEstoque) {
-          movimentacao.totalPos = movimentacao.totalPre + movimentacao.abastecidas;
-        } else {
-          // Para retirada de estoque, mantém lógica anterior
-          movimentacao.totalPos = movimentacao.totalPre - movimentacao.sairam + movimentacao.abastecidas;
-        }
+        // Fórmula do negócio: totalPos = totalPre + abastecidas
+        movimentacao.totalPos =
+          movimentacao.totalPre + movimentacao.abastecidas;
 
         // Calcular média fichas/prêmio
         if (movimentacao.sairam > 0) {
@@ -211,7 +208,7 @@ const Movimentacao = sequelize.define(
         // movimentacao.valorFaturado é calculado na controller com o valorFicha atual da máquina
       },
     },
-  }
+  },
 );
 
 export default Movimentacao;

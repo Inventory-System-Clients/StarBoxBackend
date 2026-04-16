@@ -1349,10 +1349,17 @@ export const obterMovimentacao = async (req, res) => {
 
 // Atualizar movimentação (permite editar campos principais)
 export const atualizarMovimentacao = async (req, res) => {
+  let transaction = null;
   try {
-    const movimentacao = await Movimentacao.findByPk(req.params.id);
+    transaction = await Movimentacao.sequelize.transaction();
+
+    const movimentacao = await Movimentacao.findByPk(req.params.id, {
+      include: [{ model: MovimentacaoProduto, as: "detalhesProdutos" }],
+      transaction,
+    });
 
     if (!movimentacao) {
+      await transaction.rollback();
       return res.status(404).json({ error: "Movimentação não encontrada" });
     }
 
@@ -1361,6 +1368,7 @@ export const atualizarMovimentacao = async (req, res) => {
       !["ADMIN", "GERENCIADOR"].includes(req.usuario.role) &&
       movimentacao.usuarioId !== req.usuario.id
     ) {
+      await transaction.rollback();
       return res
         .status(403)
         .json({ error: "Você não pode editar esta movimentação" });
@@ -1379,7 +1387,147 @@ export const atualizarMovimentacao = async (req, res) => {
       quantidade_notas_entrada,
       valor_entrada_maquininha_pix,
       dataColeta,
+      produtoId,
     } = req.body;
+
+    // LÓGICA DE TROCA DE PRODUTO COM AJUSTE DE ESTOQUE
+    // Se produtoId for passado e for diferente do produto atual, fazer swap
+    if (produtoId) {
+      const detalhesProdutos = Array.isArray(movimentacao.detalhesProdutos)
+        ? movimentacao.detalhesProdutos
+        : [];
+      const detalheAtual = detalhesProdutos[0]; // Primeiro produto abastecido
+
+      if (
+        detalheAtual &&
+        Number(detalheAtual.produtoId) !== Number(produtoId)
+      ) {
+        // Devolver quantidade anterior do produto antigo
+        const quantidadeAntiga = Number(detalheAtual.quantidadeAbastecida || 0);
+
+        const maquinaMovimentacao = await Maquina.findByPk(
+          movimentacao.maquinaId,
+          {
+            attributes: ["id", "lojaId"],
+            transaction,
+          },
+        );
+
+        // Desfazer o debit do produto antigo
+        const estoqueUsuarioAntigo = await EstoqueUsuario.findOne({
+          where: {
+            usuarioId: movimentacao.usuarioId,
+            produtoId: detalheAtual.produtoId,
+          },
+          transaction,
+        });
+
+        if (estoqueUsuarioAntigo) {
+          const saldoAtual = Number(estoqueUsuarioAntigo.quantidade || 0);
+          await estoqueUsuarioAntigo.update(
+            { quantidade: saldoAtual + quantidadeAntiga },
+            { transaction },
+          );
+        } else if (maquinaMovimentacao?.lojaId) {
+          const estoqueLojaAntigo = await EstoqueLoja.findOne({
+            where: {
+              lojaId: maquinaMovimentacao.lojaId,
+              produtoId: detalheAtual.produtoId,
+            },
+            transaction,
+          });
+
+          if (estoqueLojaAntigo) {
+            const saldoAtual = Number(estoqueLojaAntigo.quantidade || 0);
+            await estoqueLojaAntigo.update(
+              { quantidade: saldoAtual + quantidadeAntiga },
+              { transaction },
+            );
+          }
+        }
+
+        // Descontar quantidade do novo produto
+        const quantidadeNova = Number(abastecidas || 0);
+
+        if (quantidadeNova > 0) {
+          const estoqueUsuarioNovo = await EstoqueUsuario.findOne({
+            where: {
+              usuarioId: movimentacao.usuarioId,
+              produtoId: produtoId,
+            },
+            transaction,
+          });
+
+          if (estoqueUsuarioNovo) {
+            const saldoAtual = Number(estoqueUsuarioNovo.quantidade || 0);
+            const novoSaldo = saldoAtual - quantidadeNova;
+
+            if (novoSaldo < 0) {
+              await transaction.rollback();
+              return res.status(400).json({
+                error:
+                  "Estoque do funcionário insuficiente para o novo produto.",
+              });
+            }
+
+            await estoqueUsuarioNovo.update(
+              { quantidade: novoSaldo },
+              { transaction },
+            );
+          } else if (maquinaMovimentacao?.lojaId) {
+            const estoqueLojaNovoItem = await EstoqueLoja.findOne({
+              where: {
+                lojaId: maquinaMovimentacao.lojaId,
+                produtoId: produtoId,
+              },
+              transaction,
+            });
+
+            if (estoqueLojaNovoItem) {
+              const saldoAtual = Number(estoqueLojaNovoItem.quantidade || 0);
+              const novoSaldo = saldoAtual - quantidadeNova;
+
+              if (novoSaldo < 0) {
+                await transaction.rollback();
+                return res.status(400).json({
+                  error: "Estoque da loja insuficiente para o novo produto.",
+                });
+              }
+
+              await estoqueLojaNovoItem.update(
+                { quantidade: novoSaldo },
+                { transaction },
+              );
+            } else {
+              await transaction.rollback();
+              return res.status(400).json({
+                error: "Novo produto não tem estoque na loja.",
+              });
+            }
+          }
+        }
+
+        // Atualizar ou criar entrada em MovimentacaoProduto
+        if (detalheAtual) {
+          await detalheAtual.update(
+            {
+              produtoId: produtoId,
+              quantidadeAbastecida: quantidadeNova,
+            },
+            { transaction },
+          );
+        } else {
+          await MovimentacaoProduto.create(
+            {
+              movimentacaoId: movimentacao.id,
+              produtoId: produtoId,
+              quantidadeAbastecida: quantidadeNova,
+            },
+            { transaction },
+          );
+        }
+      }
+    }
 
     // Preparar dados para atualização
     const updateData = {
@@ -1423,14 +1571,118 @@ export const atualizarMovimentacao = async (req, res) => {
           : movimentacao.dataColeta,
     };
 
-    // Recalcular totalPos baseado nos novos valores
-    // Para movimentações normais (não retirada de estoque)
-    if (!movimentacao.retiradaEstoque) {
-      updateData.totalPos = updateData.totalPre + updateData.abastecidas;
-    } else {
-      // Para retirada de estoque
-      updateData.totalPos =
-        updateData.totalPre - updateData.sairam + updateData.abastecidas;
+    // Fórmula do negócio: totalPos = totalPre + abastecidas
+    updateData.totalPos = updateData.totalPre + updateData.abastecidas;
+
+    const abastecidasAnteriores = Number(movimentacao.abastecidas || 0);
+    const abastecidasNovas = Number(updateData.abastecidas || 0);
+    const deltaAbastecidas = abastecidasNovas - abastecidasAnteriores;
+
+    if (abastecidas !== undefined && deltaAbastecidas !== 0) {
+      const detalhesProdutos = Array.isArray(movimentacao.detalhesProdutos)
+        ? movimentacao.detalhesProdutos
+        : [];
+      const detalheAlvo =
+        detalhesProdutos.find(
+          (item) => Number(item?.quantidadeAbastecida || 0) > 0,
+        ) || detalhesProdutos[0];
+
+      if (detalheAlvo?.produtoId) {
+        const quantidadeDetalheAtual = Number(
+          detalheAlvo.quantidadeAbastecida || 0,
+        );
+        const quantidadeDetalheNova = quantidadeDetalheAtual + deltaAbastecidas;
+
+        if (quantidadeDetalheNova < 0) {
+          await transaction.rollback();
+          return res.status(400).json({
+            error:
+              "Quantidade abastecida inválida para o produto da movimentação.",
+          });
+        }
+
+        await detalheAlvo.update(
+          { quantidadeAbastecida: quantidadeDetalheNova },
+          { transaction },
+        );
+
+        const maquinaMovimentacao = await Maquina.findByPk(
+          movimentacao.maquinaId,
+          {
+            attributes: ["id", "lojaId"],
+            transaction,
+          },
+        );
+
+        const estoqueUsuario = await EstoqueUsuario.findOne({
+          where: {
+            usuarioId: movimentacao.usuarioId,
+            produtoId: detalheAlvo.produtoId,
+          },
+          transaction,
+        });
+
+        if (estoqueUsuario) {
+          const saldoAtual = Number(estoqueUsuario.quantidade || 0);
+          const novoSaldo = saldoAtual - deltaAbastecidas;
+
+          if (novoSaldo < 0) {
+            await transaction.rollback();
+            return res.status(400).json({
+              error:
+                "Estoque do funcionário insuficiente para aumentar o abastecimento.",
+            });
+          }
+
+          await estoqueUsuario.update(
+            { quantidade: novoSaldo },
+            { transaction },
+          );
+        } else if (maquinaMovimentacao?.lojaId) {
+          const estoqueLoja = await EstoqueLoja.findOne({
+            where: {
+              lojaId: maquinaMovimentacao.lojaId,
+              produtoId: detalheAlvo.produtoId,
+            },
+            transaction,
+          });
+
+          if (!estoqueLoja) {
+            if (deltaAbastecidas < 0) {
+              await EstoqueUsuario.create(
+                {
+                  usuarioId: movimentacao.usuarioId,
+                  produtoId: detalheAlvo.produtoId,
+                  quantidade: Math.abs(deltaAbastecidas),
+                },
+                { transaction },
+              );
+            } else {
+              await transaction.rollback();
+              return res.status(400).json({
+                error:
+                  "Não foi possível ajustar estoque: nenhum saldo de origem encontrado para o produto.",
+              });
+            }
+          } else {
+            const saldoAtual = Number(estoqueLoja.quantidade || 0);
+            const novoSaldo = saldoAtual - deltaAbastecidas;
+
+            if (novoSaldo < 0) {
+              await transaction.rollback();
+              return res.status(400).json({
+                error:
+                  "Estoque da loja insuficiente para aumentar o abastecimento.",
+              });
+            }
+
+            await estoqueLoja.update(
+              { quantidade: novoSaldo },
+              { transaction },
+            );
+          }
+        }
+      }
     }
 
     // Se sairam > 0, recalcular média fichas/prêmio
@@ -1459,7 +1711,7 @@ export const atualizarMovimentacao = async (req, res) => {
       }
     }
 
-    await movimentacao.update(updateData);
+    await movimentacao.update(updateData, { transaction });
 
     // Retornar movimentação atualizada com dados completos
     const movimentacaoAtualizada = await Movimentacao.findByPk(req.params.id, {
@@ -1486,12 +1738,185 @@ export const atualizarMovimentacao = async (req, res) => {
           ],
         },
       ],
+      transaction,
     });
+
+    await transaction.commit();
+    transaction = null;
 
     res.json(movimentacaoAtualizada);
   } catch (error) {
+    if (transaction) {
+      try {
+        await transaction.rollback();
+      } catch {
+        // Sem ação adicional.
+      }
+    }
     console.error("Erro ao atualizar movimentação:", error);
     res.status(500).json({ error: "Erro ao atualizar movimentação" });
+  }
+};
+
+// Registrar abastecimento extra (somente quantidade + produto, sem alterar contadores)
+export const registrarAbastecimentoExtra = async (req, res) => {
+  let transaction = null;
+  try {
+    const { produtoId, quantidadeAbastecida } = req.body;
+    const quantidadeExtra = Number(quantidadeAbastecida || 0);
+
+    if (!produtoId) {
+      return res.status(400).json({ error: "produtoId é obrigatório" });
+    }
+
+    if (!Number.isFinite(quantidadeExtra) || quantidadeExtra <= 0) {
+      return res
+        .status(400)
+        .json({ error: "quantidadeAbastecida deve ser maior que zero" });
+    }
+
+    transaction = await Movimentacao.sequelize.transaction();
+
+    const movimentacao = await Movimentacao.findByPk(req.params.id, {
+      include: [
+        {
+          model: MovimentacaoProduto,
+          as: "detalhesProdutos",
+          include: [
+            {
+              model: Produto,
+              as: "produto",
+              attributes: ["id", "nome"],
+            },
+          ],
+        },
+      ],
+      transaction,
+    });
+
+    if (!movimentacao) {
+      await transaction.rollback();
+      return res.status(404).json({ error: "Movimentação não encontrada" });
+    }
+
+    if (
+      !["ADMIN", "GERENCIADOR"].includes(req.usuario.role) &&
+      movimentacao.usuarioId !== req.usuario.id
+    ) {
+      await transaction.rollback();
+      return res
+        .status(403)
+        .json({ error: "Você não pode editar esta movimentação" });
+    }
+
+    const estoqueUsuario = await EstoqueUsuario.findOne({
+      where: {
+        usuarioId: movimentacao.usuarioId,
+        produtoId,
+      },
+      transaction,
+    });
+
+    if (!estoqueUsuario) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "Produto sem estoque no usuário para abastecimento extra.",
+      });
+    }
+
+    const saldoAtual = Number(estoqueUsuario.quantidade || 0);
+    if (saldoAtual < quantidadeExtra) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: "Estoque do usuário insuficiente para abastecimento extra.",
+      });
+    }
+
+    await estoqueUsuario.update(
+      { quantidade: saldoAtual - quantidadeExtra },
+      { transaction },
+    );
+
+    const detalheExistente = Array.isArray(movimentacao.detalhesProdutos)
+      ? movimentacao.detalhesProdutos.find(
+          (item) => String(item?.produtoId || "") === String(produtoId),
+        )
+      : null;
+
+    if (detalheExistente) {
+      const novaQtdDetalhe =
+        Number(detalheExistente.quantidadeAbastecida || 0) + quantidadeExtra;
+      await detalheExistente.update(
+        { quantidadeAbastecida: novaQtdDetalhe },
+        { transaction },
+      );
+    } else {
+      await MovimentacaoProduto.create(
+        {
+          movimentacaoId: movimentacao.id,
+          produtoId,
+          quantidadeSaiu: 0,
+          quantidadeAbastecida: quantidadeExtra,
+          retiradaProduto: 0,
+        },
+        { transaction },
+      );
+    }
+
+    const abastecidasAtuais = Number(movimentacao.abastecidas || 0);
+    const abastecidasNovas = abastecidasAtuais + quantidadeExtra;
+
+    await movimentacao.update(
+      {
+        abastecidas: abastecidasNovas,
+        totalPos: Number(movimentacao.totalPre || 0) + abastecidasNovas,
+      },
+      { transaction },
+    );
+
+    const movimentacaoAtualizada = await Movimentacao.findByPk(req.params.id, {
+      include: [
+        {
+          model: Maquina,
+          as: "maquina",
+          attributes: ["id", "codigo", "nome", "lojaId", "tipo"],
+        },
+        {
+          model: Usuario,
+          as: "usuario",
+          attributes: ["id", "nome", "email"],
+        },
+        {
+          model: MovimentacaoProduto,
+          as: "detalhesProdutos",
+          include: [
+            {
+              model: Produto,
+              as: "produto",
+              attributes: ["id", "nome"],
+            },
+          ],
+        },
+      ],
+      transaction,
+    });
+
+    await transaction.commit();
+    transaction = null;
+
+    return res.json(movimentacaoAtualizada);
+  } catch (error) {
+    if (transaction) {
+      try {
+        await transaction.rollback();
+      } catch {
+        // Sem ação adicional.
+      }
+    }
+    console.error("Erro ao registrar abastecimento extra:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro ao registrar abastecimento extra" });
   }
 };
 
