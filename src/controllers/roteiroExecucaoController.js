@@ -231,8 +231,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
             }
           : null,
       })),
-      status:
-        finalizacaoManual || roteiroFinalizado ? "finalizado" : "pendente",
+      status: finalizacaoManual ? "finalizado" : "pendente",
       lojas,
       lojasPendentesJustificadasIds,
       movimentacoesHoje: statusMaquinas.map((s) => ({
@@ -377,10 +376,9 @@ async function getTodosRoteirosComStatus(req, res) {
             }
           : null,
         diasSemana: roteiro.diasSemana ?? [],
-        status:
-          finalizacoesPorRoteiro.has(roteiro.id) || roteiroFinalizado
-            ? "finalizado"
-            : "pendente",
+        status: finalizacoesPorRoteiro.has(roteiro.id)
+          ? "finalizado"
+          : "pendente",
         lojas,
         movimentacoesHoje: statusMaquinasRoteiro.map((s) => ({
           maquina_id: s.maquina_id,

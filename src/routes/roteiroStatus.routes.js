@@ -1,5 +1,5 @@
 import express from "express";
-import { Roteiro, Loja, Maquina } from "../models/index.js";
+import { Roteiro, Loja, Maquina, RoteiroFinalizacaoDiaria } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 const router = express.Router();
@@ -34,7 +34,6 @@ router.get("/:id/status-execucao", async (req, res) => {
     });
 
     // Montar resposta
-    let roteiroFinalizado = true;
     const lojas = roteiro.lojas.map((loja) => {
       let lojaFinalizada = true;
       const maquinas = loja.maquinas.map((maquina) => {
@@ -46,7 +45,6 @@ router.get("/:id/status-execucao", async (req, res) => {
           status: concluida ? "finalizado" : "pendente",
         };
       });
-      if (!lojaFinalizada) roteiroFinalizado = false;
       return {
         id: loja.id,
         nome: loja.nome,
@@ -54,11 +52,20 @@ router.get("/:id/status-execucao", async (req, res) => {
         maquinas,
       };
     });
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    const finalizacaoManual = await RoteiroFinalizacaoDiaria.findOne({
+      where: {
+        roteiroId,
+        data: dataHoje,
+        finalizado: true,
+      },
+    });
+
     res.json({
       id: roteiro.id,
       nome: roteiro.nome,
-      status: roteiroFinalizado ? "finalizado" : "pendente",
-      data: new Date().toISOString().slice(0, 10),
+      status: finalizacaoManual ? "finalizado" : "pendente",
+      data: dataHoje,
       lojas,
     });
   } catch (error) {
