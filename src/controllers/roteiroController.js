@@ -18,6 +18,10 @@ import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
 import { sequelize } from "../database/connection.js";
 import { randomUUID } from "crypto";
+import {
+  fecharResumoExecucao,
+  montarMensagemResumoWhatsapp,
+} from "../services/roteiroResumoExecucaoService.js";
 
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -396,12 +400,44 @@ export const finalizarRoteiro = async (req, res) => {
       consumoTotalProdutos,
     });
 
+    const lojasResumo = roteiro.lojas.map((loja) => {
+      const maquinas = (loja.maquinas || []).map((maquina) => ({
+        nome: maquina.nome,
+        status: maquinasConcluidas.has(maquina.id) ? "finalizado" : "pendente",
+      }));
+
+      const lojaFinalizada =
+        maquinas.length > 0 && maquinas.every((maquina) => maquina.status === "finalizado");
+
+      return {
+        nome: loja.nome,
+        status: lojaFinalizada ? "finalizado" : "pendente",
+        maquinas,
+      };
+    });
+
+    const resumoExecucaoPersistido = await fecharResumoExecucao({
+      roteiroId,
+      data: dataHoje,
+      fechadoPorId: req.usuario?.id || null,
+      roteiroNome: roteiro.nome,
+      lojas: lojasResumo,
+      estoqueInicialTotal,
+      estoqueFinalTotal: totalEstoqueFinal,
+      consumoTotalProdutos,
+    });
+
+    const mensagemResumoWhatsapp = montarMensagemResumoWhatsapp(
+      resumoExecucaoPersistido,
+    );
+
     let alerta = null;
     if (maquinasPendentes.length > 0) {
       alerta = await criarAlertaRoteiroPendente({
         roteiroId,
         roteiroNome: roteiro.nome,
         maquinasPendentes,
+        resumoMensagem: mensagemResumoWhatsapp,
       });
     }
 
@@ -416,6 +452,8 @@ export const finalizarRoteiro = async (req, res) => {
         estoqueFinalTotal: totalEstoqueFinal,
         consumoTotalProdutos,
       },
+      resumoExecucaoPersistido,
+      mensagemResumoWhatsapp,
       alertaWhatsApp: alerta
         ? {
             id: alerta.id,

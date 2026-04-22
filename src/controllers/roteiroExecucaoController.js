@@ -11,6 +11,11 @@ import {
   LogOrdemRoteiro,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
+import {
+  obterResumoExecucao,
+  salvarSnapshotResumoExecucao,
+  montarMensagemResumoWhatsapp,
+} from "../services/roteiroResumoExecucaoService.js";
 
 const obterFaixaSemanaAtualUtc = () => {
   const referencia = new Date();
@@ -98,26 +103,27 @@ async function getRoteiroExecucaoComStatus(req, res) {
 
     const usuarioEstoqueId = roteiro.funcionarioId || req.usuario?.id || null;
     let estoqueInicialTotal = null;
+    let estoqueAtualTotal = null;
 
     if (usuarioEstoqueId) {
-      const estoqueAtual = await obterTotalEstoqueUsuario(usuarioEstoqueId);
+      estoqueAtualTotal = await obterTotalEstoqueUsuario(usuarioEstoqueId);
 
       if (!finalizacaoDia) {
         finalizacaoDia = await RoteiroFinalizacaoDiaria.create({
           roteiroId: roteiro.id,
           data: dataHoje,
           finalizado: false,
-          estoqueInicialTotal: estoqueAtual,
+          estoqueInicialTotal: estoqueAtualTotal,
         });
       } else if (finalizacaoDia.estoqueInicialTotal === null) {
         await finalizacaoDia.update({
-          estoqueInicialTotal: estoqueAtual,
+          estoqueInicialTotal: estoqueAtualTotal,
         });
       }
 
       estoqueInicialTotal =
         finalizacaoDia.estoqueInicialTotal === null
-          ? estoqueAtual
+          ? estoqueAtualTotal
           : Number(finalizacaoDia.estoqueInicialTotal);
     }
 
@@ -216,6 +222,32 @@ async function getRoteiroExecucaoComStatus(req, res) {
       (orcamentoDiario - totalGastoSemana).toFixed(2),
     );
 
+    const estoqueFinalSnapshot =
+      finalizacaoDia?.estoqueFinalTotal !== null &&
+      finalizacaoDia?.estoqueFinalTotal !== undefined
+        ? Number(finalizacaoDia.estoqueFinalTotal)
+        : estoqueAtualTotal;
+
+    const consumoSnapshot =
+      finalizacaoDia?.consumoTotalProdutos !== null &&
+      finalizacaoDia?.consumoTotalProdutos !== undefined
+        ? Number(finalizacaoDia.consumoTotalProdutos)
+        : estoqueInicialTotal !== null && estoqueFinalSnapshot !== null
+          ? Math.max(0, estoqueInicialTotal - estoqueFinalSnapshot)
+          : null;
+
+    const resumoPersistido = await salvarSnapshotResumoExecucao({
+      roteiroId: roteiro.id,
+      data: dataHoje,
+      roteiroNome: roteiro.nome,
+      lojas,
+      estoqueInicialTotal,
+      estoqueFinalTotal: estoqueFinalSnapshot,
+      consumoTotalProdutos: consumoSnapshot,
+    });
+
+    const mensagemResumoWhatsapp = montarMensagemResumoWhatsapp(resumoPersistido);
+
     res.json({
       id: roteiro.id,
       nome: roteiro.nome,
@@ -300,9 +332,35 @@ async function getRoteiroExecucaoComStatus(req, res) {
             ? Number(finalizacaoDia?.consumoTotalProdutos)
             : null,
       },
+      resumoExecucaoPersistido: resumoPersistido,
+      mensagemResumoWhatsapp,
     });
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar execução do roteiro" });
+  }
+}
+
+async function getResumoExecucaoPersistido(req, res) {
+  try {
+    const { id: roteiroId } = req.params;
+    const data = req.query.data || new Date().toISOString().slice(0, 10);
+
+    const resumo = await obterResumoExecucao({ roteiroId, data });
+    if (!resumo) {
+      return res.status(404).json({
+        error: "Resumo de execução não encontrado para esta rota/data",
+      });
+    }
+
+    const mensagemResumoWhatsapp = montarMensagemResumoWhatsapp(resumo);
+    return res.json({
+      resumo,
+      mensagemResumoWhatsapp,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Erro ao buscar resumo persistido da execução",
+    });
   }
 }
 
@@ -439,4 +497,8 @@ async function getTodosRoteirosComStatus(req, res) {
   }
 }
 
-export { getRoteiroExecucaoComStatus, getTodosRoteirosComStatus };
+export {
+  getRoteiroExecucaoComStatus,
+  getTodosRoteirosComStatus,
+  getResumoExecucaoPersistido,
+};

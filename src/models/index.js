@@ -49,6 +49,7 @@ import GastoFixoLoja from "./GastoFixoLoja.js";
 import GastoRoteiro from "./GastoRoteiro.js";
 import RoteiroLoja from "./RoteiroLoja.js";
 import LogOrdemRoteiro from "./LogOrdemRoteiro.js";
+import RoteiroResumoExecucao from "./RoteiroResumoExecucao.js";
 import FluxoCaixa from "./FluxoCaixa.js";
 import ValorEsperadoMovimentacao from "./ValorEsperadoMovimentacao.js";
 import ManutencaoWhatsAppPrompt from "./ManutencaoWhatsAppPrompt.js";
@@ -371,6 +372,24 @@ Usuario.hasMany(RoteiroFinalizacaoDiaria, {
   as: "roteirosFinalizados",
 });
 
+RoteiroResumoExecucao.belongsTo(Roteiro, {
+  foreignKey: "roteiroId",
+  as: "roteiro",
+});
+Roteiro.hasMany(RoteiroResumoExecucao, {
+  foreignKey: "roteiroId",
+  as: "resumosExecucao",
+});
+
+RoteiroResumoExecucao.belongsTo(Usuario, {
+  foreignKey: "fechadoPorId",
+  as: "fechadoPor",
+});
+Usuario.hasMany(RoteiroResumoExecucao, {
+  foreignKey: "fechadoPorId",
+  as: "resumosExecucaoFechados",
+});
+
 GastoRoteiro.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
 Roteiro.hasMany(GastoRoteiro, { foreignKey: "roteiroId", as: "gastosDiarios" });
 
@@ -467,6 +486,7 @@ export {
   Manutencao,
   WhatsAppAlerta,
   RoteiroFinalizacaoDiaria,
+  RoteiroResumoExecucao,
   GastoFixoLoja,
   GastoRoteiro,
   RoteiroLoja,

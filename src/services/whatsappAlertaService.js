@@ -25,11 +25,13 @@ export const criarAlertaRoteiroPendente = async ({
   roteiroNome,
   maquinasPendentes,
   destinatario,
+  resumoMensagem,
 }) => {
   return AlertManager.roteiroComPendencia({
     roteiroId,
     roteiroNome,
     maquinasPendentes,
     destinatario,
+    resumoMensagem,
   });
 };

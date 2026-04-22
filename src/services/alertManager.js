@@ -228,10 +228,15 @@ const dispatchAlert = async ({
 const montarMensagemRoteiroPendente = ({
   roteiroNome,
   maquinasPendentes = [],
+  resumoMensagem,
 }) => {
   const listaPendencias = maquinasPendentes
     .map((item) => `${item.maquinaNome} (${item.lojaNome})`)
     .join(", ");
+
+  if (resumoMensagem) {
+    return `⚠️ *ALERTA DE ROTEIRO*\n\n${resumoMensagem}\nMaquinas nao realizadas: ${listaPendencias || "Nenhuma informada"}.`;
+  }
 
   return `⚠️ *ALERTA DE ROTEIRO*\n\nRoteiro: *${roteiroNome}*\nMaquinas nao realizadas: ${listaPendencias || "Nenhuma informada"}.`;
 };
@@ -336,10 +341,12 @@ const AlertManager = {
     roteiroNome,
     maquinasPendentes,
     destinatario,
+    resumoMensagem,
   }) => {
     const mensagem = montarMensagemRoteiroPendente({
       roteiroNome,
       maquinasPendentes,
+      resumoMensagem,
     });
 
     return dispatchAlert({
