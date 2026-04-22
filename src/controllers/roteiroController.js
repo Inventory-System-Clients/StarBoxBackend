@@ -13,6 +13,7 @@ import {
   Movimentacao,
   MovimentacaoVeiculo,
   EstoqueUsuario,
+  RoteiroPontoPulado,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
@@ -426,6 +427,24 @@ export const finalizarRoteiro = async (req, res) => {
       estoqueFinalTotal: totalEstoqueFinal,
       consumoTotalProdutos,
     });
+
+    // Ao finalizar a rota, reseta o estado de quebra de ordem para todos os pontos.
+    await Promise.all(
+      roteiro.lojas.map((loja) =>
+        RoteiroPontoPulado.upsert({
+          roteiroId,
+          lojaId: loja.id,
+          data: dataHoje,
+          foiPulado: false,
+          justificativaEnviada: false,
+          justificativa: null,
+          primeiraQuebraEm: null,
+          ultimaQuebraEm: null,
+          primeiroUsuarioId: null,
+          ultimoUsuarioId: null,
+        }),
+      ),
+    );
 
     const mensagemResumoWhatsapp = montarMensagemResumoWhatsapp(
       resumoExecucaoPersistido,

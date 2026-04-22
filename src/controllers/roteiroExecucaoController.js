@@ -9,6 +9,7 @@ import {
   Usuario,
   Veiculo,
   LogOrdemRoteiro,
+  RoteiroPontoPulado,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import {
@@ -148,6 +149,33 @@ async function getRoteiroExecucaoComStatus(req, res) {
       attributes: ["lojaEsperadaId"],
       raw: true,
     });
+
+    const pontosPuladosHoje = await RoteiroPontoPulado.findAll({
+      where: {
+        roteiroId: roteiro.id,
+        data: dataHoje,
+      },
+      attributes: [
+        "lojaId",
+        "foiPulado",
+        "justificativaEnviada",
+        "justificativa",
+        "primeiraQuebraEm",
+        "ultimaQuebraEm",
+      ],
+      raw: true,
+    });
+
+    const pontosPuladosStatus = pontosPuladosHoje.reduce((acc, item) => {
+      acc[item.lojaId] = {
+        foiPulado: Boolean(item.foiPulado),
+        justificativaEnviada: Boolean(item.justificativaEnviada),
+        justificativa: item.justificativa || null,
+        primeiraQuebraEm: item.primeiraQuebraEm || null,
+        ultimaQuebraEm: item.ultimaQuebraEm || null,
+      };
+      return acc;
+    }, {});
 
     const lojasPendentesJustificadasIds = Array.from(
       new Set(
@@ -310,6 +338,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
       status: finalizacaoManual ? "finalizado" : "pendente",
       lojas,
       lojasPendentesJustificadasIds,
+      pontosPuladosStatus,
       movimentacoesHoje: statusMaquinas.map((s) => ({
         maquina_id: s.maquina_id,
         roteiro_id: s.roteiro_id,

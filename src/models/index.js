@@ -50,6 +50,7 @@ import GastoRoteiro from "./GastoRoteiro.js";
 import RoteiroLoja from "./RoteiroLoja.js";
 import LogOrdemRoteiro from "./LogOrdemRoteiro.js";
 import RoteiroResumoExecucao from "./RoteiroResumoExecucao.js";
+import RoteiroPontoPulado from "./RoteiroPontoPulado.js";
 import FluxoCaixa from "./FluxoCaixa.js";
 import ValorEsperadoMovimentacao from "./ValorEsperadoMovimentacao.js";
 import ManutencaoWhatsAppPrompt from "./ManutencaoWhatsAppPrompt.js";
@@ -390,6 +391,42 @@ Usuario.hasMany(RoteiroResumoExecucao, {
   as: "resumosExecucaoFechados",
 });
 
+RoteiroPontoPulado.belongsTo(Roteiro, {
+  foreignKey: "roteiroId",
+  as: "roteiro",
+});
+Roteiro.hasMany(RoteiroPontoPulado, {
+  foreignKey: "roteiroId",
+  as: "pontosPulados",
+});
+
+RoteiroPontoPulado.belongsTo(Loja, {
+  foreignKey: "lojaId",
+  as: "loja",
+});
+Loja.hasMany(RoteiroPontoPulado, {
+  foreignKey: "lojaId",
+  as: "historicoPontoPulado",
+});
+
+RoteiroPontoPulado.belongsTo(Usuario, {
+  foreignKey: "primeiroUsuarioId",
+  as: "primeiroUsuario",
+});
+Usuario.hasMany(RoteiroPontoPulado, {
+  foreignKey: "primeiroUsuarioId",
+  as: "primeirosRegistrosPontoPulado",
+});
+
+RoteiroPontoPulado.belongsTo(Usuario, {
+  foreignKey: "ultimoUsuarioId",
+  as: "ultimoUsuario",
+});
+Usuario.hasMany(RoteiroPontoPulado, {
+  foreignKey: "ultimoUsuarioId",
+  as: "ultimosRegistrosPontoPulado",
+});
+
 GastoRoteiro.belongsTo(Roteiro, { foreignKey: "roteiroId", as: "roteiro" });
 Roteiro.hasMany(GastoRoteiro, { foreignKey: "roteiroId", as: "gastosDiarios" });
 
@@ -487,6 +524,7 @@ export {
   WhatsAppAlerta,
   RoteiroFinalizacaoDiaria,
   RoteiroResumoExecucao,
+  RoteiroPontoPulado,
   GastoFixoLoja,
   GastoRoteiro,
   RoteiroLoja,

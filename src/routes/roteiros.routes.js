@@ -7,6 +7,7 @@ import {
   Veiculo,
   RoteiroLoja,
   LogOrdemRoteiro,
+  RoteiroPontoPulado,
   RoteiroFinalizacaoDiaria,
 } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
@@ -43,6 +44,44 @@ const roteiroFoiFinalizadoHoje = async (roteiroId, transaction) => {
   });
 
   return Boolean(finalizacao);
+};
+
+const getDataHoje = () => new Date().toISOString().slice(0, 10);
+
+const obterLojaEsperadaPendente = async (roteiroId) => {
+  const lojasRoteiro = await RoteiroLoja.findAll({
+    where: { RoteiroId: roteiroId },
+    order: [["ordem", "ASC"]],
+  });
+
+  const MovimentacaoStatusDiario = (
+    await import("../models/MovimentacaoStatusDiario.js")
+  ).default;
+
+  const statusConcluido = await MovimentacaoStatusDiario.findAll({
+    where: { roteiro_id: roteiroId, concluida: true },
+  });
+  const maquinasConcluidas = new Set(statusConcluido.map((s) => s.maquina_id));
+
+  for (const rel of lojasRoteiro) {
+    const loja = await Loja.findByPk(rel.LojaId, {
+      include: [{ model: Maquina, as: "maquinas", attributes: ["id", "nome"] }],
+    });
+
+    if (!loja) {
+      continue;
+    }
+
+    const lojaTemPendencia = (loja.maquinas || []).some(
+      (m) => !maquinasConcluidas.has(m.id),
+    );
+
+    if (lojaTemPendencia) {
+      return loja;
+    }
+  }
+
+  return null;
 };
 
 // Criar novo roteiro (aceita diasSemana opcionalmente)
@@ -344,37 +383,15 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
     if (!lojaId)
       return res.status(400).json({ error: "lojaId \u00e9 obrigat\u00f3rio" });
 
-    // Determinar loja esperada (primeira pendente na ordem)
-    const lojasRoteiro = await RoteiroLoja.findAll({
-      where: { RoteiroId: roteiroId },
-      order: [["ordem", "ASC"]],
-    });
-
-    // Importar aqui para evitar dependência circular — já está no models/index.js
-    const MovimentacaoStatusDiario = (
-      await import("../models/MovimentacaoStatusDiario.js")
-    ).default;
-    const statusConcluido = await MovimentacaoStatusDiario.findAll({
-      where: { roteiro_id: roteiroId, concluida: true },
-    });
-    const maquinasConcluidas = new Set(
-      statusConcluido.map((s) => s.maquina_id),
-    );
-
     let lojaEsperadaId = null;
     let lojaEsperadaNome = null;
     let lojaNome = null;
-    // Descobrir loja esperada (primeira pendente na ordem)
-    for (const rel of lojasRoteiro) {
-      const loja = await Loja.findByPk(rel.LojaId, {
-        include: [{ model: Maquina, as: "maquinas", attributes: ["id"] }],
-      });
-      if (loja && loja.maquinas.some((m) => !maquinasConcluidas.has(m.id))) {
-        lojaEsperadaId = loja.id;
-        lojaEsperadaNome = loja.nome;
-        break;
-      }
+    const lojaEsperada = await obterLojaEsperadaPendente(roteiroId);
+    if (lojaEsperada) {
+      lojaEsperadaId = lojaEsperada.id;
+      lojaEsperadaNome = lojaEsperada.nome;
     }
+
     // Nome da loja visitada
     const lojaSelecionada = await Loja.findByPk(lojaId);
     lojaNome = lojaSelecionada ? lojaSelecionada.nome : null;
@@ -389,6 +406,42 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
       lojaEsperadaNome,
       lojaNome,
     });
+
+    const dataHoje = getDataHoje();
+    if (lojaEsperadaId) {
+      const pontoPulado = await RoteiroPontoPulado.findOne({
+        where: {
+          roteiroId,
+          lojaId: lojaEsperadaId,
+          data: dataHoje,
+        },
+      });
+
+      if (!pontoPulado) {
+        await RoteiroPontoPulado.create({
+          roteiroId,
+          lojaId: lojaEsperadaId,
+          data: dataHoje,
+          foiPulado: true,
+          justificativaEnviada: true,
+          justificativa: justificativa.trim(),
+          primeiraQuebraEm: new Date(),
+          ultimaQuebraEm: new Date(),
+          primeiroUsuarioId: usuarioId,
+          ultimoUsuarioId: usuarioId,
+        });
+      } else {
+        await pontoPulado.update({
+          foiPulado: true,
+          justificativaEnviada: true,
+          justificativa: justificativa.trim(),
+          ultimaQuebraEm: new Date(),
+          ultimoUsuarioId: usuarioId,
+          primeiraQuebraEm: pontoPulado.primeiraQuebraEm || new Date(),
+          primeiroUsuarioId: pontoPulado.primeiroUsuarioId || usuarioId,
+        });
+      }
+    }
 
     // Armazenar para ser aplicada na próxima movimentação desta loja
     justificativasPendentes.set(lojaId, {
@@ -412,6 +465,66 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
   } catch (error) {
     console.error("Erro ao salvar justificativa:", error);
     res.status(500).json({ error: "Erro ao salvar justificativa" });
+  }
+});
+
+// Verificar se precisa pedir justificativa de quebra de ordem para a loja selecionada
+router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
+  try {
+    const { id: roteiroId } = req.params;
+    const { lojaId } = req.query;
+
+    if (!lojaId) {
+      return res.status(400).json({ error: "lojaId é obrigatório" });
+    }
+
+    const lojaEsperada = await obterLojaEsperadaPendente(roteiroId);
+    if (!lojaEsperada) {
+      return res.json({
+        precisaJustificativa: false,
+        motivo: "sem_pendencia_na_ordem",
+      });
+    }
+
+    if (String(lojaEsperada.id) === String(lojaId)) {
+      return res.json({
+        precisaJustificativa: false,
+        motivo: "na_ordem_correta",
+        lojaEsperadaId: lojaEsperada.id,
+        lojaEsperadaNome: lojaEsperada.nome,
+      });
+    }
+
+    const dataHoje = getDataHoje();
+    const pontoPulado = await RoteiroPontoPulado.findOne({
+      where: {
+        roteiroId,
+        lojaId: lojaEsperada.id,
+        data: dataHoje,
+      },
+    });
+
+    const justificativaJaEnviada = Boolean(
+      pontoPulado?.foiPulado && pontoPulado?.justificativaEnviada,
+    );
+
+    return res.json({
+      precisaJustificativa: !justificativaJaEnviada,
+      motivo: justificativaJaEnviada
+        ? "quebra_ja_justificada_para_o_ponto"
+        : "quebra_sem_justificativa",
+      lojaEsperadaId: lojaEsperada.id,
+      lojaEsperadaNome: lojaEsperada.nome,
+      lojaSelecionadaId: lojaId,
+      lojaSelecionadaNome: null,
+      data: dataHoje,
+      pontoPulado: pontoPulado || null,
+    });
+  } catch (error) {
+    console.error("Erro ao verificar status de quebra de ordem:", error);
+    return res
+      .status(500)
+      .json({ error: "Erro ao verificar status de quebra de ordem" });
   }
 });
 
