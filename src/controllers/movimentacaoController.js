@@ -478,15 +478,7 @@ export const registrarMovimentacao = async (req, res) => {
         });
       }
     }
-    if (
-      ultimaMov &&
-      totalPreQtd > inteiroSeguro(ultimaMov.totalPos, 0) &&
-      !isAdmin
-    ) {
-      return res.status(400).json({
-        error: `Não é permitido abastecer a máquina com uma quantidade maior (${totalPreQtd}) do que o total pós da última movimentação. Confira o que você digitou.`,
-      });
-    }
+    // Validação de totalPre > totalPos removida: permitido lançar mesmo quando totalPre ultrapassa totalPos anterior.
 
     // --- Recalcular saída (sairam) para garantir consistência ---
     // Regra de negócio: saída = totalPos da última movimentação - total atual informado.
