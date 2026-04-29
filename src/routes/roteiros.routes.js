@@ -561,7 +561,7 @@ router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
 
           return res.json({
             precisaJustificativa: true,
-            motivo: "novo_ponto_pulado_sem_justificativa",
+            motivo: "loja_pulada_sem_justificativa",
             lojaEsperadaId: proximaLojaPuladaSemJustificativa.id,
             lojaEsperadaNome: proximaLojaPuladaSemJustificativa.nome,
             lojaSelecionadaId: lojaId,
@@ -574,7 +574,7 @@ router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
 
         return res.json({
           precisaJustificativa: false,
-          motivo: "pontos_intermediarios_ja_justificados",
+          motivo: "ponto_selecionado_ja_justificado",
           lojaSelecionadaId: lojaId,
           lojaAtualId: lojaAtualId || null,
           data: dataHoje,
@@ -612,8 +612,8 @@ router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
     return res.json({
       precisaJustificativa: !justificativaJaEnviada,
       motivo: justificativaJaEnviada
-        ? "quebra_ja_justificada_para_o_ponto"
-        : "quebra_sem_justificativa",
+        ? "ponto_selecionado_ja_justificado"
+        : "loja_pulada_sem_justificativa",
       lojaEsperadaId: lojaEsperada.id,
       lojaEsperadaNome: lojaEsperada.nome,
       lojaSelecionadaId: lojaId,
