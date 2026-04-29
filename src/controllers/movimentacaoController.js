@@ -339,7 +339,11 @@ export const registrarMovimentacao = async (req, res) => {
     // --- REGRA DE SEGURANÇA: Não permitir total maior que totalPos da última movimentação, exceto para ADMIN ---
     const ultimaMov = await Movimentacao.findOne({
       where: { maquinaId },
-      order: [["createdAt", "DESC"]],
+      order: [
+        ["dataColeta", "DESC"],
+        ["createdAt", "DESC"],
+        ["id", "DESC"],
+      ],
     });
     const isPrimeiraMovimentacao = !ultimaMov;
 
@@ -1245,7 +1249,11 @@ export const listarMovimentacoes = async (req, res) => {
     const movimentacoes = await Movimentacao.findAll({
       where,
       include,
-      order: [["dataColeta", "DESC"]],
+      order: [
+        ["dataColeta", "DESC"],
+        ["createdAt", "DESC"],
+        ["id", "DESC"],
+      ],
       limit: parseInt(limite),
     });
 
