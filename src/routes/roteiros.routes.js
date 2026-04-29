@@ -48,6 +48,9 @@ const roteiroFoiFinalizadoHoje = async (roteiroId, transaction) => {
 
 const getDataHoje = () => new Date().toISOString().slice(0, 10);
 
+const pontoFoiJustificadoNoDia = (pontoPulado) =>
+  Boolean(pontoPulado?.foiPulado && pontoPulado?.justificativaEnviada);
+
 const obterLojaEsperadaPendente = async (roteiroId) => {
   const lojasRoteiro = await RoteiroLoja.findAll({
     where: { RoteiroId: roteiroId },
@@ -478,6 +481,25 @@ router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
       return res.status(400).json({ error: "lojaId é obrigatório" });
     }
 
+    const dataHoje = getDataHoje();
+    const pontoSelecionado = await RoteiroPontoPulado.findOne({
+      where: {
+        roteiroId,
+        lojaId,
+        data: dataHoje,
+      },
+    });
+
+    if (pontoFoiJustificadoNoDia(pontoSelecionado)) {
+      return res.json({
+        precisaJustificativa: false,
+        motivo: "ponto_selecionado_ja_justificado",
+        lojaSelecionadaId: lojaId,
+        data: dataHoje,
+        pontoPulado: pontoSelecionado,
+      });
+    }
+
     const lojaEsperada = await obterLojaEsperadaPendente(roteiroId);
     if (!lojaEsperada) {
       return res.json({
@@ -495,8 +517,7 @@ router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
       });
     }
 
-    const dataHoje = getDataHoje();
-    const pontoPulado = await RoteiroPontoPulado.findOne({
+    const pontoEsperado = await RoteiroPontoPulado.findOne({
       where: {
         roteiroId,
         lojaId: lojaEsperada.id,
@@ -504,9 +525,7 @@ router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
       },
     });
 
-    const justificativaJaEnviada = Boolean(
-      pontoPulado?.foiPulado && pontoPulado?.justificativaEnviada,
-    );
+    const justificativaJaEnviada = pontoFoiJustificadoNoDia(pontoEsperado);
 
     return res.json({
       precisaJustificativa: !justificativaJaEnviada,
@@ -518,7 +537,7 @@ router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
       lojaSelecionadaId: lojaId,
       lojaSelecionadaNome: null,
       data: dataHoje,
-      pontoPulado: pontoPulado || null,
+      pontoPulado: pontoEsperado || null,
     });
   } catch (error) {
     console.error("Erro ao verificar status de quebra de ordem:", error);
