@@ -51,11 +51,25 @@ const getDataHoje = () => new Date().toISOString().slice(0, 10);
 const pontoFoiJustificadoNoDia = (pontoPulado) =>
   Boolean(pontoPulado?.foiPulado && pontoPulado?.justificativaEnviada);
 
-const obterLojaEsperadaPendente = async (roteiroId) => {
+const normalizarId = (id) => String(id || "").trim();
+
+const obterContextoOrdemRoteiro = async (roteiroId) => {
   const lojasRoteiro = await RoteiroLoja.findAll({
     where: { RoteiroId: roteiroId },
     order: [["ordem", "ASC"]],
   });
+
+  const lojaIds = lojasRoteiro.map((rel) => rel.LojaId).filter(Boolean);
+  if (lojaIds.length === 0) {
+    return [];
+  }
+
+  const lojas = await Loja.findAll({
+    where: { id: lojaIds },
+    include: [{ model: Maquina, as: "maquinas", attributes: ["id", "nome"] }],
+  });
+
+  const lojasPorId = new Map(lojas.map((loja) => [normalizarId(loja.id), loja]));
 
   const MovimentacaoStatusDiario = (
     await import("../models/MovimentacaoStatusDiario.js")
@@ -66,25 +80,28 @@ const obterLojaEsperadaPendente = async (roteiroId) => {
   });
   const maquinasConcluidas = new Set(statusConcluido.map((s) => s.maquina_id));
 
-  for (const rel of lojasRoteiro) {
-    const loja = await Loja.findByPk(rel.LojaId, {
-      include: [{ model: Maquina, as: "maquinas", attributes: ["id", "nome"] }],
-    });
+  return lojasRoteiro
+    .map((rel) => {
+      const loja = lojasPorId.get(normalizarId(rel.LojaId));
+      if (!loja) return null;
 
-    if (!loja) {
-      continue;
-    }
+      const temPendencia = (loja.maquinas || []).some(
+        (m) => !maquinasConcluidas.has(m.id),
+      );
 
-    const lojaTemPendencia = (loja.maquinas || []).some(
-      (m) => !maquinasConcluidas.has(m.id),
-    );
+      return {
+        id: loja.id,
+        nome: loja.nome,
+        ordem: rel.ordem,
+        temPendencia,
+      };
+    })
+    .filter(Boolean);
+};
 
-    if (lojaTemPendencia) {
-      return loja;
-    }
-  }
-
-  return null;
+const obterLojaEsperadaPendente = async (roteiroId) => {
+  const contexto = await obterContextoOrdemRoteiro(roteiroId);
+  return contexto.find((item) => item.temPendencia) || null;
 };
 
 // Criar novo roteiro (aceita diasSemana opcionalmente)
@@ -376,7 +393,7 @@ router.patch(
 router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
   try {
     const { id: roteiroId } = req.params;
-    const { lojaId, justificativa } = req.body;
+    const { lojaId, justificativa, lojaPuladaId } = req.body;
     const usuarioId = req.usuario.id;
 
     if (!justificativa || justificativa.trim() === "")
@@ -389,10 +406,22 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
     let lojaEsperadaId = null;
     let lojaEsperadaNome = null;
     let lojaNome = null;
-    const lojaEsperada = await obterLojaEsperadaPendente(roteiroId);
-    if (lojaEsperada) {
-      lojaEsperadaId = lojaEsperada.id;
-      lojaEsperadaNome = lojaEsperada.nome;
+    const contextoOrdem = await obterContextoOrdemRoteiro(roteiroId);
+    const lojaPuladaInfo = lojaPuladaId
+      ? contextoOrdem.find(
+          (item) => normalizarId(item.id) === normalizarId(lojaPuladaId),
+        )
+      : null;
+
+    if (lojaPuladaInfo?.temPendencia) {
+      lojaEsperadaId = lojaPuladaInfo.id;
+      lojaEsperadaNome = lojaPuladaInfo.nome;
+    } else {
+      const lojaEsperada = contextoOrdem.find((item) => item.temPendencia);
+      if (lojaEsperada) {
+        lojaEsperadaId = lojaEsperada.id;
+        lojaEsperadaNome = lojaEsperada.nome;
+      }
     }
 
     // Nome da loja visitada
@@ -475,29 +504,82 @@ router.post("/:id/justificar-ordem", autenticar, async (req, res) => {
 router.get("/:id/quebra-ordem/status", autenticar, async (req, res) => {
   try {
     const { id: roteiroId } = req.params;
-    const { lojaId } = req.query;
+    const { lojaId, lojaAtualId } = req.query;
 
     if (!lojaId) {
       return res.status(400).json({ error: "lojaId é obrigatório" });
     }
 
     const dataHoje = getDataHoje();
-    const pontoSelecionado = await RoteiroPontoPulado.findOne({
-      where: {
-        roteiroId,
-        lojaId,
-        data: dataHoje,
-      },
-    });
+    const contextoOrdem = await obterContextoOrdemRoteiro(roteiroId);
+    const idsOrdenados = contextoOrdem.map((item) => normalizarId(item.id));
+    const idDestino = normalizarId(lojaId);
+    const idAtual = normalizarId(lojaAtualId);
 
-    if (pontoFoiJustificadoNoDia(pontoSelecionado)) {
-      return res.json({
-        precisaJustificativa: false,
-        motivo: "ponto_selecionado_ja_justificado",
-        lojaSelecionadaId: lojaId,
-        data: dataHoje,
-        pontoPulado: pontoSelecionado,
-      });
+    if (idAtual) {
+      const indiceAtual = idsOrdenados.indexOf(idAtual);
+      const indiceDestino = idsOrdenados.indexOf(idDestino);
+
+      if (indiceAtual >= 0 && indiceDestino >= 0 && indiceDestino > indiceAtual + 1) {
+        const lojasIntermediarias = contextoOrdem.slice(
+          indiceAtual + 1,
+          indiceDestino,
+        );
+
+        const lojasIntermediariasComPendencia = lojasIntermediarias.filter(
+          (item) => item.temPendencia,
+        );
+
+        const pontosIntermediarios =
+          lojasIntermediariasComPendencia.length > 0
+            ? await RoteiroPontoPulado.findAll({
+                where: {
+                  roteiroId,
+                  data: dataHoje,
+                  lojaId: {
+                    [Op.in]: lojasIntermediariasComPendencia.map((item) => item.id),
+                  },
+                },
+              })
+            : [];
+
+        const pontoIntermediarioPorLojaId = new Map(
+          pontosIntermediarios.map((item) => [normalizarId(item.lojaId), item]),
+        );
+
+        const proximaLojaPuladaSemJustificativa = lojasIntermediariasComPendencia.find(
+          (item) => {
+            const ponto = pontoIntermediarioPorLojaId.get(normalizarId(item.id));
+            return !pontoFoiJustificadoNoDia(ponto);
+          },
+        );
+
+        if (proximaLojaPuladaSemJustificativa) {
+          const pontoPulado = pontoIntermediarioPorLojaId.get(
+            normalizarId(proximaLojaPuladaSemJustificativa.id),
+          );
+
+          return res.json({
+            precisaJustificativa: true,
+            motivo: "novo_ponto_pulado_sem_justificativa",
+            lojaEsperadaId: proximaLojaPuladaSemJustificativa.id,
+            lojaEsperadaNome: proximaLojaPuladaSemJustificativa.nome,
+            lojaSelecionadaId: lojaId,
+            lojaSelecionadaNome: null,
+            lojaAtualId: lojaAtualId || null,
+            data: dataHoje,
+            pontoPulado: pontoPulado || null,
+          });
+        }
+
+        return res.json({
+          precisaJustificativa: false,
+          motivo: "pontos_intermediarios_ja_justificados",
+          lojaSelecionadaId: lojaId,
+          lojaAtualId: lojaAtualId || null,
+          data: dataHoje,
+        });
+      }
     }
 
     const lojaEsperada = await obterLojaEsperadaPendente(roteiroId);
