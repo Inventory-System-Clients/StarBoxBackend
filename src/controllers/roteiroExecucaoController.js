@@ -68,7 +68,7 @@ const obterInicioContagemConsumoRota = async ({ roteiroId, dataHoje }) => {
   return retiradaRota?.dataHora || inicioDia;
 };
 
-const obterConsumoProdutosRota = async ({
+const obterEstoqueAdicionalRota = async ({
   usuarioId,
   roteiroId,
   dataHoje,
@@ -81,17 +81,17 @@ const obterConsumoProdutosRota = async ({
   });
   const fimContagem = new Date(`${dataHoje}T23:59:59.999Z`);
 
-  const consumo = await MovimentacaoEstoqueUsuario.sum("quantidade", {
+  const adicional = await MovimentacaoEstoqueUsuario.sum("quantidade", {
     where: {
       usuarioId,
-      tipoMovimentacao: "saida",
+      tipoMovimentacao: "entrada",
       dataMovimentacao: {
         [Op.between]: [inicioContagem, fimContagem],
       },
     },
   });
 
-  return Number(consumo) || 0;
+  return Number(adicional) || 0;
 };
 
 async function getRoteiroExecucaoComStatus(req, res) {
@@ -307,11 +307,20 @@ async function getRoteiroExecucaoComStatus(req, res) {
       finalizacaoDia?.consumoTotalProdutos !== null &&
       finalizacaoDia?.consumoTotalProdutos !== undefined
         ? Number(finalizacaoDia.consumoTotalProdutos)
-        : await obterConsumoProdutosRota({
-            usuarioId: usuarioEstoqueId,
-            roteiroId: roteiro.id,
-            dataHoje,
-          });
+        : estoqueInicialTotal !== null && estoqueFinalSnapshot !== null
+          ? Math.max(
+              0,
+              Number(estoqueInicialTotal) +
+                Number(
+                  (await obterEstoqueAdicionalRota({
+                    usuarioId: usuarioEstoqueId,
+                    roteiroId: roteiro.id,
+                    dataHoje,
+                  })) || 0,
+                ) -
+                Number(estoqueFinalSnapshot),
+            )
+          : null;
 
     const resumoPersistido = await salvarSnapshotResumoExecucao({
       roteiroId: roteiro.id,

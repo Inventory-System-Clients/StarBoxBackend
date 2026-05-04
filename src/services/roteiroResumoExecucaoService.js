@@ -437,16 +437,10 @@ export const montarMensagemResumoWhatsapp = async (resumo) => {
     : [];
 
   const estoqueInicial = resumo.estoqueInicialTotal ?? 0;
-  const consumoTotal = resumo.consumoTotalProdutos ?? 0;
-  const sobraEstoqueInicial = Math.max(0, estoqueInicial - consumoTotal);
-  const consumoDoAdicional = Math.max(0, consumoTotal - estoqueInicial);
-  const sobraEstoqueAdicional = Math.max(0, estoqueAdicional - consumoDoAdicional);
 
   const blocoEstoqueAdicional = estoqueAdicional > 0
     ? [
         `Estoque adicional: ${estoqueAdicional} produtos`,
-        `Sobra estoque inicial: ${sobraEstoqueInicial} produtos`,
-        `Sobra estoque adicional: ${sobraEstoqueAdicional} produtos`,
       ]
     : [];
 

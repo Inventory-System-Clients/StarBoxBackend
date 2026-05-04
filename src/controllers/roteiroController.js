@@ -143,7 +143,7 @@ const obterInicioContagemConsumoRota = async ({ roteiroId, dataHoje }) => {
   return retiradaRota?.dataHora || inicioDia;
 };
 
-const obterConsumoProdutosRota = async ({
+const obterEstoqueAdicionalRota = async ({
   usuarioId,
   roteiroId,
   dataHoje,
@@ -156,17 +156,17 @@ const obterConsumoProdutosRota = async ({
   });
   const fimContagem = new Date(`${dataHoje}T23:59:59.999Z`);
 
-  const consumo = await MovimentacaoEstoqueUsuario.sum("quantidade", {
+  const adicional = await MovimentacaoEstoqueUsuario.sum("quantidade", {
     where: {
       usuarioId,
-      tipoMovimentacao: "saida",
+      tipoMovimentacao: "entrada",
       dataMovimentacao: {
         [Op.between]: [inicioContagem, fimContagem],
       },
     },
   });
 
-  return Number(consumo) || 0;
+  return Number(adicional) || 0;
 };
 
 export const criarRoteiro = async (req, res) => {
@@ -534,11 +534,19 @@ export const finalizarRoteiro = async (req, res) => {
         ? Number(finalizacaoDia.estoqueInicialTotal)
         : totalEstoqueFinal;
 
-    const consumoTotalProdutos = await obterConsumoProdutosRota({
+    const estoqueAdicionalTotal = await obterEstoqueAdicionalRota({
       usuarioId: usuarioEstoqueId,
       roteiroId,
       dataHoje,
     });
+
+    const consumoTotalProdutos =
+      estoqueInicialTotal !== null && totalEstoqueFinal !== null
+        ? Math.max(
+            0,
+            Number(estoqueInicialTotal) + Number(estoqueAdicionalTotal || 0) - Number(totalEstoqueFinal),
+          )
+        : null;
 
     console.info({
       evento: "roteiro_consumo_produtos_resumo",
