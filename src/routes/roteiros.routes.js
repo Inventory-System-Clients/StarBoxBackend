@@ -31,6 +31,7 @@ import { Op, literal } from "sequelize";
 const router = express.Router();
 
 const ROLES_GESTAO_ROTEIROS = ["ADMIN", "GERENCIADOR"];
+const ROLES_OPERACAO_ROTEIRO = ["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"];
 
 const roteiroFoiFinalizadoHoje = async (roteiroId, transaction) => {
   if (!roteiroId) return false;
@@ -138,7 +139,7 @@ router.get("/", async (req, res) => {
 router.post(
   "/:id/iniciar",
   autenticar,
-  autorizar(ROLES_GESTAO_ROTEIROS),
+  autorizar([...ROLES_GESTAO_ROTEIROS, ...ROLES_OPERACAO_ROTEIRO]),
   async (req, res) => {
     try {
       const { funcionarioId, funcionarioNome, veiculoId, kmInicialVeiculo } = req.body;
@@ -152,7 +153,19 @@ router.post(
       if (!roteiro)
         return res.status(404).json({ error: "Roteiro não encontrado" });
 
+      const roleAtual = req.usuario?.role;
+      const usuarioEhGestor = ROLES_GESTAO_ROTEIROS.includes(roleAtual);
+      const usuarioEhOperacao = ROLES_OPERACAO_ROTEIRO.includes(roleAtual);
+
+      if (usuarioEhOperacao && String(roteiro.funcionarioId || "") !== String(req.usuario.id)) {
+        return res.status(403).json({
+          error: "Você não é o funcionário responsável por este roteiro",
+        });
+      }
+
       const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId;
+      const veiculoIdEfetivo =
+        veiculoId !== undefined ? veiculoIdNormalizado : roteiro.veiculoId;
       let kmInicialNumerico = null;
 
       if (
@@ -169,8 +182,8 @@ router.post(
         kmInicialNumerico = kmConvertido;
       }
 
-      if (veiculoIdNormalizado) {
-        const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
+      if (veiculoIdEfetivo) {
+        const veiculo = await Veiculo.findByPk(veiculoIdEfetivo);
         if (!veiculo)
           return res.status(404).json({ error: "Veículo não encontrado" });
 
@@ -178,7 +191,7 @@ router.post(
         const retiradaDia = await MovimentacaoVeiculo.findOne({
           where: {
             roteiroId: roteiro.id,
-            veiculoId: veiculoIdNormalizado,
+            veiculoId: veiculoIdEfetivo,
             tipo: "retirada",
             dataHora: {
               [Op.between]: [
@@ -200,7 +213,7 @@ router.post(
         if (kmInicialNumerico !== null) {
           const ultimaMovimentacaoComKm = await MovimentacaoVeiculo.findOne({
             where: {
-              veiculoId: veiculoIdNormalizado,
+              veiculoId: veiculoIdEfetivo,
               km: {
                 [Op.ne]: null,
               },
@@ -227,7 +240,7 @@ router.post(
           }
 
           await MovimentacaoVeiculo.create({
-            veiculoId: veiculoIdNormalizado,
+            veiculoId: veiculoIdEfetivo,
             usuarioId: req.usuario.id,
             tipo: "retirada",
             dataHora: new Date(),
@@ -243,12 +256,15 @@ router.post(
       }
 
       const update = {};
-      if (funcionarioId !== undefined) update.funcionarioId = funcionarioId;
-      if (funcionarioNome !== undefined)
-        update.funcionarioNome = funcionarioNome;
-      if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
+      if (usuarioEhGestor) {
+        if (funcionarioId !== undefined) update.funcionarioId = funcionarioId;
+        if (funcionarioNome !== undefined)
+          update.funcionarioNome = funcionarioNome;
+        if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
+      }
 
-      const result = await roteiro.update(update);
+      const result =
+        Object.keys(update).length > 0 ? await roteiro.update(update) : roteiro;
       console.log("[INICIAR] após update:", {
         funcionarioId: result.funcionarioId,
         funcionarioNome: result.funcionarioNome,
