@@ -2,6 +2,7 @@ import { Op } from "sequelize";
 import {
   GastoRoteiro,
   Manutencao,
+  MovimentacaoEstoqueUsuario,
   MovimentacaoVeiculo,
   Roteiro,
   RoteiroResumoExecucao,
@@ -55,13 +56,15 @@ const obterResumoQuilometragem = async (resumo) => {
       kmInicialRota: null,
       kmFinalRota: null,
       kmPercorridoRota: null,
+      funcionarioId: null,
+      retiradaDataHora: null,
     };
   }
 
   const { inicio, fim } = getFaixaDiaUtc(resumo.data);
 
   const roteiro = await Roteiro.findByPk(resumo.roteiroId, {
-    attributes: ["id", "veiculoId"],
+    attributes: ["id", "veiculoId", "funcionarioId"],
     include: [
       {
         model: Veiculo,
@@ -77,6 +80,8 @@ const obterResumoQuilometragem = async (resumo) => {
       kmInicialRota: null,
       kmFinalRota: null,
       kmPercorridoRota: null,
+      funcionarioId: roteiro?.funcionarioId || null,
+      retiradaDataHora: null,
     };
   }
 
@@ -122,7 +127,28 @@ const obterResumoQuilometragem = async (resumo) => {
     kmInicialRota,
     kmFinalRota,
     kmPercorridoRota,
+    funcionarioId: roteiro.funcionarioId || null,
+    retiradaDataHora: retirada?.dataHora || null,
   };
+};
+
+const obterEstoqueAdicional = async ({ funcionarioId, retiradaDataHora }) => {
+  if (!funcionarioId) return 0;
+
+  const whereClause = {
+    usuarioId: funcionarioId,
+    tipoMovimentacao: "entrada",
+  };
+
+  if (retiradaDataHora) {
+    whereClause.dataMovimentacao = { [Op.gt]: retiradaDataHora };
+  }
+
+  const soma = await MovimentacaoEstoqueUsuario.sum("quantidade", {
+    where: whereClause,
+  });
+
+  return Number.isFinite(soma) ? soma : 0;
 };
 
 const getFaixaSemanaAtualUtc = () => {
@@ -362,6 +388,11 @@ export const montarMensagemResumoWhatsapp = async (resumo) => {
 
   const resumoQuilometragem = await obterResumoQuilometragem(resumo);
 
+  const estoqueAdicional = await obterEstoqueAdicional({
+    funcionarioId: resumoQuilometragem.funcionarioId,
+    retiradaDataHora: resumoQuilometragem.retiradaDataHora,
+  });
+
   const manutencoesNaoRealizadasPorPonto = Array.isArray(
     resumo.manutencoesNaoRealizadasPorPonto,
   )
@@ -388,6 +419,7 @@ export const montarMensagemResumoWhatsapp = async (resumo) => {
   const totalPontosNaoFeitos = Array.isArray(resumo.pontosNaoFeitos)
     ? resumo.pontosNaoFeitos.length
     : 0;
+  const totalPontosNaRota = totalPontosFeitos + totalPontosNaoFeitos;
   const totalMaquinasFeitas = Array.isArray(resumo.maquinasFeitas)
     ? resumo.maquinasFeitas.length
     : 0;
@@ -404,14 +436,30 @@ export const montarMensagemResumoWhatsapp = async (resumo) => {
       ]
     : [];
 
+  const estoqueInicial = resumo.estoqueInicialTotal ?? 0;
+  const consumoTotal = resumo.consumoTotalProdutos ?? 0;
+  const sobraEstoqueInicial = Math.max(0, estoqueInicial - consumoTotal);
+  const consumoDoAdicional = Math.max(0, consumoTotal - estoqueInicial);
+  const sobraEstoqueAdicional = Math.max(0, estoqueAdicional - consumoDoAdicional);
+
+  const blocoEstoqueAdicional = estoqueAdicional > 0
+    ? [
+        `Estoque adicional: ${estoqueAdicional} produtos`,
+        `Sobra estoque inicial: ${sobraEstoqueInicial} produtos`,
+        `Sobra estoque adicional: ${sobraEstoqueAdicional} produtos`,
+      ]
+    : [];
+
   return [
     `Roteiro: ${resumo.roteiroNome || "Sem nome"}`,
     ...blocoVeiculo,
+    `Total de pontos na rota: ${totalPontosNaRota}`,
     `Pontos feitos: ${totalPontosFeitos}`,
     `Pontos nao feitos: ${totalPontosNaoFeitos}`,
     `Maquinas feitas: ${totalMaquinasFeitas}`,
     `Maquinas nao feitas: ${totalMaquinasNaoFeitas}`,
     `Estoque inicial: ${resumo.estoqueInicialTotal ?? "-"} produtos`,
+    ...blocoEstoqueAdicional,
     `Estoque final: ${resumo.estoqueFinalTotal ?? "-"} produtos`,
     `Total gasto na rota: ${resumo.consumoTotalProdutos ?? "-"} produtos`,
     `Despesa total: ${formatarMoeda(resumo.despesaTotal)}`,
