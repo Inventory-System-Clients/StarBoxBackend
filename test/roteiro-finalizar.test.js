@@ -9,6 +9,8 @@ import {
   Roteiro,
   RoteiroFinalizacaoDiaria,
   EstoqueUsuario,
+  MovimentacaoEstoqueUsuario,
+  MovimentacaoVeiculo,
 } from "../src/models/index.js";
 import MovimentacaoStatusDiario from "../src/models/MovimentacaoStatusDiario.js";
 
@@ -41,6 +43,8 @@ test("ADMIN finaliza roteiro com sucesso", async () => {
   const originalFindOne = RoteiroFinalizacaoDiaria.findOne;
   const originalUpsert = RoteiroFinalizacaoDiaria.upsert;
   const originalSum = EstoqueUsuario.sum;
+  const originalMovimentacaoVeiculoFindOne = MovimentacaoVeiculo.findOne;
+  const originalMovimentacaoEstoqueSum = MovimentacaoEstoqueUsuario.sum;
 
   let upsertPayload = null;
 
@@ -50,6 +54,8 @@ test("ADMIN finaliza roteiro com sucesso", async () => {
     estoqueInicialTotal: 100,
   });
   EstoqueUsuario.sum = async () => 70;
+  MovimentacaoVeiculo.findOne = async () => null;
+  MovimentacaoEstoqueUsuario.sum = async () => 30;
   RoteiroFinalizacaoDiaria.upsert = async (payload) => {
     upsertPayload = payload;
     return [payload, true];
@@ -80,6 +86,8 @@ test("ADMIN finaliza roteiro com sucesso", async () => {
     RoteiroFinalizacaoDiaria.findOne = originalFindOne;
     RoteiroFinalizacaoDiaria.upsert = originalUpsert;
     EstoqueUsuario.sum = originalSum;
+    MovimentacaoVeiculo.findOne = originalMovimentacaoVeiculoFindOne;
+    MovimentacaoEstoqueUsuario.sum = originalMovimentacaoEstoqueSum;
   }
 });
 
@@ -89,11 +97,15 @@ test("GERENCIADOR finaliza roteiro com sucesso", async () => {
   const originalFindOne = RoteiroFinalizacaoDiaria.findOne;
   const originalUpsert = RoteiroFinalizacaoDiaria.upsert;
   const originalSum = EstoqueUsuario.sum;
+  const originalMovimentacaoVeiculoFindOne = MovimentacaoVeiculo.findOne;
+  const originalMovimentacaoEstoqueSum = MovimentacaoEstoqueUsuario.sum;
 
   Roteiro.findByPk = async () => buildRoteiro({ funcionarioId: "func-alvo" });
   MovimentacaoStatusDiario.findAll = async () => [];
   RoteiroFinalizacaoDiaria.findOne = async () => ({ estoqueInicialTotal: 80 });
   EstoqueUsuario.sum = async () => 60;
+  MovimentacaoVeiculo.findOne = async () => null;
+  MovimentacaoEstoqueUsuario.sum = async () => 20;
   RoteiroFinalizacaoDiaria.upsert = async () => [null, true];
 
   try {
@@ -114,6 +126,8 @@ test("GERENCIADOR finaliza roteiro com sucesso", async () => {
     RoteiroFinalizacaoDiaria.findOne = originalFindOne;
     RoteiroFinalizacaoDiaria.upsert = originalUpsert;
     EstoqueUsuario.sum = originalSum;
+    MovimentacaoVeiculo.findOne = originalMovimentacaoVeiculoFindOne;
+    MovimentacaoEstoqueUsuario.sum = originalMovimentacaoEstoqueSum;
   }
 });
 
@@ -123,11 +137,15 @@ test("FUNCIONARIO atribuido finaliza roteiro com sucesso", async () => {
   const originalFindOne = RoteiroFinalizacaoDiaria.findOne;
   const originalUpsert = RoteiroFinalizacaoDiaria.upsert;
   const originalSum = EstoqueUsuario.sum;
+  const originalMovimentacaoVeiculoFindOne = MovimentacaoVeiculo.findOne;
+  const originalMovimentacaoEstoqueSum = MovimentacaoEstoqueUsuario.sum;
 
   Roteiro.findByPk = async () => buildRoteiro({ funcionarioId: "func-1" });
   MovimentacaoStatusDiario.findAll = async () => [];
   RoteiroFinalizacaoDiaria.findOne = async () => ({ estoqueInicialTotal: 55 });
   EstoqueUsuario.sum = async () => 40;
+  MovimentacaoVeiculo.findOne = async () => null;
+  MovimentacaoEstoqueUsuario.sum = async () => 15;
   RoteiroFinalizacaoDiaria.upsert = async () => [null, true];
 
   try {
@@ -148,6 +166,8 @@ test("FUNCIONARIO atribuido finaliza roteiro com sucesso", async () => {
     RoteiroFinalizacaoDiaria.findOne = originalFindOne;
     RoteiroFinalizacaoDiaria.upsert = originalUpsert;
     EstoqueUsuario.sum = originalSum;
+    MovimentacaoVeiculo.findOne = originalMovimentacaoVeiculoFindOne;
+    MovimentacaoEstoqueUsuario.sum = originalMovimentacaoEstoqueSum;
   }
 });
 

@@ -6,6 +6,8 @@ import {
   RoteiroFinalizacaoDiaria,
   GastoRoteiro,
   EstoqueUsuario,
+  MovimentacaoEstoqueUsuario,
+  MovimentacaoVeiculo,
   Usuario,
   Veiculo,
   LogOrdemRoteiro,
@@ -46,6 +48,50 @@ const obterTotalEstoqueUsuario = async (usuarioId) => {
   });
 
   return Number(total) || 0;
+};
+
+const obterInicioContagemConsumoRota = async ({ roteiroId, dataHoje }) => {
+  const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
+  const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
+
+  const retiradaRota = await MovimentacaoVeiculo.findOne({
+    where: {
+      roteiroId,
+      tipo: "retirada",
+      dataHora: {
+        [Op.between]: [inicioDia, fimDia],
+      },
+    },
+    order: [["dataHora", "ASC"]],
+  });
+
+  return retiradaRota?.dataHora || inicioDia;
+};
+
+const obterConsumoProdutosRota = async ({
+  usuarioId,
+  roteiroId,
+  dataHoje,
+}) => {
+  if (!usuarioId) return null;
+
+  const inicioContagem = await obterInicioContagemConsumoRota({
+    roteiroId,
+    dataHoje,
+  });
+  const fimContagem = new Date(`${dataHoje}T23:59:59.999Z`);
+
+  const consumo = await MovimentacaoEstoqueUsuario.sum("quantidade", {
+    where: {
+      usuarioId,
+      tipoMovimentacao: "saida",
+      dataMovimentacao: {
+        [Op.between]: [inicioContagem, fimContagem],
+      },
+    },
+  });
+
+  return Number(consumo) || 0;
 };
 
 async function getRoteiroExecucaoComStatus(req, res) {
@@ -261,9 +307,11 @@ async function getRoteiroExecucaoComStatus(req, res) {
       finalizacaoDia?.consumoTotalProdutos !== null &&
       finalizacaoDia?.consumoTotalProdutos !== undefined
         ? Number(finalizacaoDia.consumoTotalProdutos)
-        : estoqueInicialTotal !== null && estoqueFinalSnapshot !== null
-          ? Math.max(0, estoqueInicialTotal - estoqueFinalSnapshot)
-          : null;
+        : await obterConsumoProdutosRota({
+            usuarioId: usuarioEstoqueId,
+            roteiroId: roteiro.id,
+            dataHoje,
+          });
 
     const resumoPersistido = await salvarSnapshotResumoExecucao({
       roteiroId: roteiro.id,

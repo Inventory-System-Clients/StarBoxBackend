@@ -11,6 +11,7 @@ import {
   Manutencao,
   ManutencaoWhatsAppPrompt,
   Movimentacao,
+  MovimentacaoEstoqueUsuario,
   MovimentacaoVeiculo,
   EstoqueUsuario,
   RoteiroPontoPulado,
@@ -122,6 +123,50 @@ const obterTotalEstoqueUsuario = async (usuarioId) => {
   });
 
   return Number(total) || 0;
+};
+
+const obterInicioContagemConsumoRota = async ({ roteiroId, dataHoje }) => {
+  const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
+  const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
+
+  const retiradaRota = await MovimentacaoVeiculo.findOne({
+    where: {
+      roteiroId,
+      tipo: "retirada",
+      dataHora: {
+        [Op.between]: [inicioDia, fimDia],
+      },
+    },
+    order: [["dataHora", "ASC"]],
+  });
+
+  return retiradaRota?.dataHora || inicioDia;
+};
+
+const obterConsumoProdutosRota = async ({
+  usuarioId,
+  roteiroId,
+  dataHoje,
+}) => {
+  if (!usuarioId) return null;
+
+  const inicioContagem = await obterInicioContagemConsumoRota({
+    roteiroId,
+    dataHoje,
+  });
+  const fimContagem = new Date(`${dataHoje}T23:59:59.999Z`);
+
+  const consumo = await MovimentacaoEstoqueUsuario.sum("quantidade", {
+    where: {
+      usuarioId,
+      tipoMovimentacao: "saida",
+      dataMovimentacao: {
+        [Op.between]: [inicioContagem, fimContagem],
+      },
+    },
+  });
+
+  return Number(consumo) || 0;
 };
 
 export const criarRoteiro = async (req, res) => {
@@ -489,10 +534,11 @@ export const finalizarRoteiro = async (req, res) => {
         ? Number(finalizacaoDia.estoqueInicialTotal)
         : totalEstoqueFinal;
 
-    const consumoTotalProdutos =
-      totalEstoqueFinal !== null && estoqueInicialTotal !== null
-        ? Math.max(0, estoqueInicialTotal - totalEstoqueFinal)
-        : null;
+    const consumoTotalProdutos = await obterConsumoProdutosRota({
+      usuarioId: usuarioEstoqueId,
+      roteiroId,
+      dataHoje,
+    });
 
     console.info({
       evento: "roteiro_consumo_produtos_resumo",
