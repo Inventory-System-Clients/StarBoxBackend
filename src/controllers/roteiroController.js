@@ -19,6 +19,7 @@ import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
 import { sequelize } from "../database/connection.js";
 import { randomUUID } from "crypto";
+import { Op } from "sequelize";
 import {
   fecharResumoExecucao,
   montarMensagemResumoWhatsapp,
@@ -69,12 +70,46 @@ const responderForbiddenFinalizacao = (res, motivo) => {
   });
 };
 
+const validarPermissaoFinalizacao = ({
+  userId,
+  role,
+  roteiroFuncionarioId,
+}) => {
+  const usuarioEhAdminEquivalente = ROLES_ADMIN_EQUIVALENTES.has(role);
+  const usuarioEhFuncionarioDoRoteiro =
+    ROLES_FUNCIONARIO_ROTEIRO.has(role) &&
+    String(userId) === String(roteiroFuncionarioId);
+
+  if (usuarioEhAdminEquivalente || usuarioEhFuncionarioDoRoteiro) {
+    return { autorizado: true, motivo: null };
+  }
+
+  const motivo = ROLES_FUNCIONARIO_ROTEIRO.has(role)
+    ? "not_assigned_to_roteiro"
+    : "role_not_allowed";
+
+  return { autorizado: false, motivo };
+};
+
 const parseValorMonetario = (valor) => {
   if (typeof valor === "number") return valor;
   if (typeof valor === "string") {
     return Number.parseFloat(valor.replace(",", ".").trim());
   }
   return Number.NaN;
+};
+
+const parseKmNaoNegativo = (valor) => {
+  if (valor === null || valor === undefined || String(valor).trim() === "") {
+    return null;
+  }
+
+  const kmConvertido = Number.parseInt(valor, 10);
+  if (!Number.isInteger(kmConvertido) || kmConvertido < 0) {
+    return Number.NaN;
+  }
+
+  return kmConvertido;
 };
 
 const obterTotalEstoqueUsuario = async (usuarioId) => {
@@ -288,6 +323,13 @@ export const finalizarRoteiro = async (req, res) => {
     const requestId = getRequestId(req);
     const userId = req.usuario.id;
     const role = req.usuario.role;
+    const kmFinalRota = parseKmNaoNegativo(req.body?.kmFinalVeiculo);
+
+    if (Number.isNaN(kmFinalRota)) {
+      return res.status(400).json({
+        error: "kmFinalVeiculo deve ser um número inteiro maior ou igual a zero",
+      });
+    }
 
     const roteiro = await Roteiro.findByPk(roteiroId, {
       include: [
@@ -311,15 +353,13 @@ export const finalizarRoteiro = async (req, res) => {
     }
 
     const roteiroFuncionarioId = roteiro.funcionarioId || null;
-    const usuarioEhAdminEquivalente = ROLES_ADMIN_EQUIVALENTES.has(role);
-    const usuarioEhFuncionarioDoRoteiro =
-      ROLES_FUNCIONARIO_ROTEIRO.has(role) &&
-      String(userId) === String(roteiroFuncionarioId);
+    const { autorizado, motivo } = validarPermissaoFinalizacao({
+      userId,
+      role,
+      roteiroFuncionarioId,
+    });
 
-    if (!usuarioEhAdminEquivalente && !usuarioEhFuncionarioDoRoteiro) {
-      const motivo = ROLES_FUNCIONARIO_ROTEIRO.has(role)
-        ? "not_assigned_to_roteiro"
-        : "role_not_allowed";
+    if (!autorizado) {
 
       logFinalizacaoForbidden({
         requestId,
@@ -333,10 +373,85 @@ export const finalizarRoteiro = async (req, res) => {
       return responderForbiddenFinalizacao(res, motivo);
     }
 
+    if (roteiro.veiculoId) {
+      const veiculo = await Veiculo.findByPk(roteiro.veiculoId);
+
+      if (!veiculo) {
+        return res.status(404).json({ error: "Veículo do roteiro não encontrado" });
+      }
+
+      const movimentacaoDevolucaoDia = await MovimentacaoVeiculo.findOne({
+        where: {
+          roteiroId,
+          veiculoId: roteiro.veiculoId,
+          tipo: "devolucao",
+          dataHora: {
+            [Op.between]: [
+              new Date(`${dataHoje}T00:00:00.000Z`),
+              new Date(`${dataHoje}T23:59:59.999Z`),
+            ],
+          },
+        },
+        order: [["dataHora", "DESC"]],
+      });
+
+      if (kmFinalRota === null && !movimentacaoDevolucaoDia) {
+        return res.status(400).json({
+          error:
+            "kmFinalVeiculo é obrigatório para finalizar roteiro com veículo quando não existe devolução registrada no dia",
+        });
+      }
+
+      if (kmFinalRota !== null) {
+        const ultimaMovimentacaoComKm = await MovimentacaoVeiculo.findOne({
+          where: {
+            veiculoId: roteiro.veiculoId,
+            km: {
+              [Op.ne]: null,
+            },
+          },
+          order: [["dataHora", "DESC"]],
+        });
+
+        const kmAtualVeiculo = Number.parseInt(veiculo.km, 10);
+        const kmUltimaMovimentacao = Number.parseInt(
+          ultimaMovimentacaoComKm?.km,
+          10,
+        );
+
+        const kmReferencia = Math.max(
+          Number.isInteger(kmAtualVeiculo) ? kmAtualVeiculo : 0,
+          Number.isInteger(kmUltimaMovimentacao) ? kmUltimaMovimentacao : 0,
+        );
+
+        if (kmFinalRota < kmReferencia) {
+          return res.status(400).json({
+            error: `O KM final informado (${kmFinalRota}) não pode ser menor que o KM anterior (${kmReferencia}).`,
+            kmReferencia,
+          });
+        }
+
+        await MovimentacaoVeiculo.create({
+          veiculoId: roteiro.veiculoId,
+          usuarioId: req.usuario.id,
+          tipo: "devolucao",
+          dataHora: new Date(),
+          km: kmFinalRota,
+          roteiroId,
+          obs: "Devolução registrada na finalização do roteiro",
+        });
+
+        if (kmFinalRota > Number(veiculo.km || 0)) {
+          await veiculo.update({ km: kmFinalRota });
+        }
+      }
+    }
+
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         roteiro_id: roteiroId,
         concluida: true,
+        data: dataHoje,
       },
     });
 
@@ -446,7 +561,7 @@ export const finalizarRoteiro = async (req, res) => {
       ),
     );
 
-    const mensagemResumoWhatsapp = montarMensagemResumoWhatsapp(
+    const mensagemResumoWhatsapp = await montarMensagemResumoWhatsapp(
       resumoExecucaoPersistido,
     );
 
@@ -473,6 +588,7 @@ export const finalizarRoteiro = async (req, res) => {
       },
       resumoExecucaoPersistido,
       mensagemResumoWhatsapp,
+      resumoTextoCopiar: mensagemResumoWhatsapp,
       alertaWhatsApp: alerta
         ? {
             id: alerta.id,
@@ -484,6 +600,83 @@ export const finalizarRoteiro = async (req, res) => {
   } catch (error) {
     console.error("Erro ao finalizar roteiro:", error);
     return res.status(500).json({ error: "Erro ao finalizar roteiro" });
+  }
+};
+
+export const desfinalizarRoteiro = async (req, res) => {
+  try {
+    if (!req.usuario) {
+      return res.status(401).json({ error: "Usuário não autenticado" });
+    }
+
+    const roteiroId = req.params.id;
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    const requestId = getRequestId(req);
+    const userId = req.usuario.id;
+    const role = req.usuario.role;
+
+    const roteiro = await Roteiro.findByPk(roteiroId, {
+      attributes: ["id", "funcionarioId"],
+    });
+
+    if (!roteiro) {
+      return res.status(404).json({ error: "Roteiro não encontrado" });
+    }
+
+    const roteiroFuncionarioId = roteiro.funcionarioId || null;
+    const { autorizado, motivo } = validarPermissaoFinalizacao({
+      userId,
+      role,
+      roteiroFuncionarioId,
+    });
+
+    if (!autorizado) {
+      logFinalizacaoForbidden({
+        requestId,
+        userId,
+        role,
+        roteiroId,
+        roteiroFuncionarioId,
+        motivo,
+      });
+
+      return responderForbiddenFinalizacao(res, motivo);
+    }
+
+    const finalizacaoDia = await RoteiroFinalizacaoDiaria.findOne({
+      where: {
+        roteiroId,
+        data: dataHoje,
+        finalizado: true,
+      },
+    });
+
+    if (!finalizacaoDia) {
+      return res.status(409).json({
+        error: "Roteiro não está finalizado hoje",
+      });
+    }
+
+    await RoteiroFinalizacaoDiaria.upsert({
+      roteiroId,
+      data: dataHoje,
+      finalizado: false,
+      finalizadoPorId: null,
+      finalizadoEm: null,
+      estoqueInicialTotal: finalizacaoDia.estoqueInicialTotal,
+      estoqueFinalTotal: null,
+      consumoTotalProdutos: null,
+    });
+
+    return res.json({
+      success: true,
+      status: "pendente",
+      data: dataHoje,
+      message: "Roteiro desfinalizado com sucesso",
+    });
+  } catch (error) {
+    console.error("Erro ao desfinalizar roteiro:", error);
+    return res.status(500).json({ error: "Erro ao desfinalizar roteiro" });
   }
 };
 

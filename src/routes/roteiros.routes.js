@@ -9,12 +9,14 @@ import {
   LogOrdemRoteiro,
   RoteiroPontoPulado,
   RoteiroFinalizacaoDiaria,
+  MovimentacaoVeiculo,
 } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 import { autenticar, autorizar } from "../middlewares/auth.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
 import {
   finalizarRoteiro,
+  desfinalizarRoteiro,
   criarRoteiro,
   atualizarDiasSemana,
   apagarRoteiro,
@@ -139,21 +141,105 @@ router.post(
   autorizar(ROLES_GESTAO_ROTEIROS),
   async (req, res) => {
     try {
-      const { funcionarioId, funcionarioNome, veiculoId } = req.body;
+      const { funcionarioId, funcionarioNome, veiculoId, kmInicialVeiculo } = req.body;
       console.log("[INICIAR] body:", {
         funcionarioId,
         funcionarioNome,
         veiculoId,
+        kmInicialVeiculo,
       });
       const roteiro = await Roteiro.findByPk(req.params.id);
       if (!roteiro)
         return res.status(404).json({ error: "Roteiro não encontrado" });
 
       const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId;
+      let kmInicialNumerico = null;
+
+      if (
+        kmInicialVeiculo !== undefined &&
+        kmInicialVeiculo !== null &&
+        String(kmInicialVeiculo).trim() !== ""
+      ) {
+        const kmConvertido = Number.parseInt(kmInicialVeiculo, 10);
+        if (!Number.isInteger(kmConvertido) || kmConvertido < 0) {
+          return res.status(400).json({
+            error: "kmInicialVeiculo deve ser um número inteiro maior ou igual a zero",
+          });
+        }
+        kmInicialNumerico = kmConvertido;
+      }
+
       if (veiculoIdNormalizado) {
         const veiculo = await Veiculo.findByPk(veiculoIdNormalizado);
         if (!veiculo)
           return res.status(404).json({ error: "Veículo não encontrado" });
+
+        const dataHoje = getDataHoje();
+        const retiradaDia = await MovimentacaoVeiculo.findOne({
+          where: {
+            roteiroId: roteiro.id,
+            veiculoId: veiculoIdNormalizado,
+            tipo: "retirada",
+            dataHora: {
+              [Op.between]: [
+                new Date(`${dataHoje}T00:00:00.000Z`),
+                new Date(`${dataHoje}T23:59:59.999Z`),
+              ],
+            },
+          },
+          order: [["dataHora", "ASC"]],
+        });
+
+        if (kmInicialNumerico === null && !retiradaDia) {
+          return res.status(400).json({
+            error:
+              "kmInicialVeiculo é obrigatório para iniciar roteiro com veículo quando não existe retirada registrada no dia",
+          });
+        }
+
+        if (kmInicialNumerico !== null) {
+          const ultimaMovimentacaoComKm = await MovimentacaoVeiculo.findOne({
+            where: {
+              veiculoId: veiculoIdNormalizado,
+              km: {
+                [Op.ne]: null,
+              },
+            },
+            order: [["dataHora", "DESC"]],
+          });
+
+          const kmAtualVeiculo = Number.parseInt(veiculo.km, 10);
+          const kmUltimaMovimentacao = Number.parseInt(
+            ultimaMovimentacaoComKm?.km,
+            10,
+          );
+
+          const kmReferencia = Math.max(
+            Number.isInteger(kmAtualVeiculo) ? kmAtualVeiculo : 0,
+            Number.isInteger(kmUltimaMovimentacao) ? kmUltimaMovimentacao : 0,
+          );
+
+          if (kmInicialNumerico < kmReferencia) {
+            return res.status(400).json({
+              error: `O KM inicial informado (${kmInicialNumerico}) não pode ser menor que o KM anterior (${kmReferencia}).`,
+              kmReferencia,
+            });
+          }
+
+          await MovimentacaoVeiculo.create({
+            veiculoId: veiculoIdNormalizado,
+            usuarioId: req.usuario.id,
+            tipo: "retirada",
+            dataHora: new Date(),
+            km: kmInicialNumerico,
+            roteiroId: roteiro.id,
+            obs: "Retirada registrada no início do roteiro",
+          });
+
+          if (kmInicialNumerico > Number(veiculo.km || 0)) {
+            await veiculo.update({ km: kmInicialNumerico });
+          }
+        }
       }
 
       const update = {};
@@ -197,6 +283,7 @@ router.patch(
 );
 
 router.post("/:id/finalizar", autenticar, finalizarRoteiro);
+router.post("/:id/desfinalizar", autenticar, desfinalizarRoteiro);
 
 // Mover loja entre roteiros
 router.post(

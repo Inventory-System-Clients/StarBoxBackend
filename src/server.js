@@ -333,38 +333,89 @@ const startServer = async () => {
       console.log(`📍 http://localhost:${PORT}`);
       console.log(`🏥 Health check: http://localhost:${PORT}/health`);
 
+      // Agendar reset semanal dos roteiros (segunda 00:00 em horário de São Paulo)
+      iniciarResetRoteirosSemanal();
+
       // Agendar limpeza automática de dados antigos (diariamente às 3h da manhã)
       if (process.env.NODE_ENV === "production") {
         iniciarLimpezaAutomatica();
-        iniciarResetRoteirosSemanal();
       }
     });
 
-    // Função para resetar status dos roteiros semanalmente (domingo) às 00h
+    const getDataHoraSaoPaulo = () => {
+      const agora = new Date();
+      const formatter = new Intl.DateTimeFormat("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        weekday: "short",
+        hour12: false,
+      });
+
+      const partes = formatter.formatToParts(agora);
+      const obter = (type) => partes.find((parte) => parte.type === type)?.value;
+      const weekdayRaw = (obter("weekday") || "").toLowerCase();
+
+      const mapaDiaSemana = {
+        dom: 0,
+        seg: 1,
+        ter: 2,
+        qua: 3,
+        qui: 4,
+        sex: 5,
+        sab: 6,
+      };
+
+      return {
+        diaSemana: mapaDiaSemana[weekdayRaw.slice(0, 3)] ?? -1,
+        ano: Number.parseInt(obter("year"), 10),
+        mes: Number.parseInt(obter("month"), 10),
+        dia: Number.parseInt(obter("day"), 10),
+        hora: Number.parseInt(obter("hour"), 10),
+        minuto: Number.parseInt(obter("minute"), 10),
+      };
+    };
+
+    // Função para resetar status dos roteiros semanalmente (segunda) às 00h
     const iniciarResetRoteirosSemanal = async () => {
       const { resetarRoteirosDiarios } =
         await import("./utils/resetRoteiros.js");
 
+      let ultimaDataReset = null;
+
       const executarReset = async () => {
-        const agora = new Date();
-        const diaSemana = agora.getDay(); // 0 = domingo
-        const horas = agora.getHours();
-        const minutos = agora.getMinutes();
-        // Executar apenas no domingo à 00:00
-        if (diaSemana === 0 && horas === 0 && minutos < 5) {
-          // tolerância de 5 minutos
-          console.log("🔄 Resetando status semanal dos roteiros...");
+        const agoraSp = getDataHoraSaoPaulo();
+
+        const ehSegunda = agoraSp.diaSemana === 1;
+        const janelaMeiaNoite = agoraSp.hora === 0 && agoraSp.minuto < 5;
+        const chaveDataHoje = `${agoraSp.ano}-${String(agoraSp.mes).padStart(2, "0")}-${String(agoraSp.dia).padStart(2, "0")}`;
+
+        // Recuperação: se o servidor reiniciar na segunda, executa uma vez naquele dia.
+        if (ehSegunda && (janelaMeiaNoite || ultimaDataReset !== chaveDataHoje)) {
+          if (ultimaDataReset === chaveDataHoje) return;
+
+          console.log(
+            "🔄 Resetando status semanal dos roteiros e lojas para pendente (segunda-feira)...",
+          );
           try {
             await resetarRoteirosDiarios();
+            ultimaDataReset = chaveDataHoje;
           } catch (error) {
             console.error("❌ Erro no reset semanal dos roteiros:", error);
           }
         }
       };
-      // Executar a cada 5 minutos para garantir reset no domingo próximo da meia-noite
-      setInterval(executarReset, 5 * 60 * 1000);
+
+      // Executa no boot e verifica a cada minuto.
+      await executarReset();
+      setInterval(executarReset, 60 * 1000);
+
       console.log(
-        "⏰ Reset semanal dos roteiros agendado para domingo 00:00",
+        "⏰ Reset semanal dos roteiros agendado para segunda 00:00 (America/Sao_Paulo)",
       );
     };
   } catch (error) {

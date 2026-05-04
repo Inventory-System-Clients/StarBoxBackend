@@ -87,11 +87,12 @@ async function getRoteiroExecucaoComStatus(req, res) {
     const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
     const faixaSemanaAtual = obterFaixaSemanaAtualUtc();
 
-    // Buscar status das máquinas concluídas para o roteiro (sem filtro diário)
+    // Buscar status das máquinas concluídas para o roteiro (somente hoje)
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         roteiro_id: roteiro.id,
         concluida: true,
+        data: dataHoje,
       },
     });
 
@@ -274,7 +275,9 @@ async function getRoteiroExecucaoComStatus(req, res) {
       consumoTotalProdutos: consumoSnapshot,
     });
 
-    const mensagemResumoWhatsapp = montarMensagemResumoWhatsapp(resumoPersistido);
+    const mensagemResumoWhatsapp = await montarMensagemResumoWhatsapp(
+      resumoPersistido,
+    );
 
     res.json({
       id: roteiro.id,
@@ -381,7 +384,7 @@ async function getResumoExecucaoPersistido(req, res) {
       });
     }
 
-    const mensagemResumoWhatsapp = montarMensagemResumoWhatsapp(resumo);
+    const mensagemResumoWhatsapp = await montarMensagemResumoWhatsapp(resumo);
     return res.json({
       resumo,
       mensagemResumoWhatsapp,
@@ -430,11 +433,13 @@ async function getTodosRoteirosComStatus(req, res) {
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         concluida: true,
+        data: dataHoje,
       },
     });
     const finalizacoesManuais = await RoteiroFinalizacaoDiaria.findAll({
       where: {
         finalizado: true,
+        data: dataHoje,
       },
     });
     const finalizacoesPorRoteiro = new Set(

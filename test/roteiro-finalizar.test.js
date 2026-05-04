@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { finalizarRoteiro } from "../src/controllers/roteiroController.js";
+import {
+  finalizarRoteiro,
+  desfinalizarRoteiro,
+} from "../src/controllers/roteiroController.js";
 import {
   Roteiro,
   RoteiroFinalizacaoDiaria,
@@ -181,5 +184,95 @@ test("FUNCIONARIO nao atribuido recebe 403 com motivo explicito e log estruturad
   } finally {
     Roteiro.findByPk = originalFindByPk;
     console.warn = originalWarn;
+  }
+});
+
+test("ADMIN desfinaliza roteiro finalizado no dia com sucesso", async () => {
+  const originalFindByPk = Roteiro.findByPk;
+  const originalFindOne = RoteiroFinalizacaoDiaria.findOne;
+  const originalUpsert = RoteiroFinalizacaoDiaria.upsert;
+
+  let upsertPayload = null;
+
+  Roteiro.findByPk = async () => buildRoteiro({ funcionarioId: "func-alvo" });
+  RoteiroFinalizacaoDiaria.findOne = async () => ({
+    estoqueInicialTotal: 120,
+  });
+  RoteiroFinalizacaoDiaria.upsert = async (payload) => {
+    upsertPayload = payload;
+    return [payload, true];
+  };
+
+  try {
+    const req = {
+      params: { id: "roteiro-1" },
+      usuario: { id: "admin-1", role: "ADMIN" },
+      headers: {},
+    };
+    const res = createMockRes();
+
+    await desfinalizarRoteiro(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.equal(res.body?.status, "pendente");
+    assert.equal(upsertPayload?.roteiroId, "roteiro-1");
+    assert.equal(upsertPayload?.finalizado, false);
+    assert.equal(upsertPayload?.finalizadoPorId, null);
+    assert.equal(upsertPayload?.finalizadoEm, null);
+    assert.equal(upsertPayload?.estoqueInicialTotal, 120);
+    assert.equal(upsertPayload?.estoqueFinalTotal, null);
+    assert.equal(upsertPayload?.consumoTotalProdutos, null);
+  } finally {
+    Roteiro.findByPk = originalFindByPk;
+    RoteiroFinalizacaoDiaria.findOne = originalFindOne;
+    RoteiroFinalizacaoDiaria.upsert = originalUpsert;
+  }
+});
+
+test("desfinalizar retorna 409 quando roteiro nao esta finalizado hoje", async () => {
+  const originalFindByPk = Roteiro.findByPk;
+  const originalFindOne = RoteiroFinalizacaoDiaria.findOne;
+
+  Roteiro.findByPk = async () => buildRoteiro({ funcionarioId: "func-alvo" });
+  RoteiroFinalizacaoDiaria.findOne = async () => null;
+
+  try {
+    const req = {
+      params: { id: "roteiro-1" },
+      usuario: { id: "admin-1", role: "ADMIN" },
+      headers: {},
+    };
+    const res = createMockRes();
+
+    await desfinalizarRoteiro(req, res);
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body?.error, "Roteiro não está finalizado hoje");
+  } finally {
+    Roteiro.findByPk = originalFindByPk;
+    RoteiroFinalizacaoDiaria.findOne = originalFindOne;
+  }
+});
+
+test("FUNCIONARIO nao atribuido nao pode desfinalizar roteiro", async () => {
+  const originalFindByPk = Roteiro.findByPk;
+
+  Roteiro.findByPk = async () => buildRoteiro({ funcionarioId: "func-do-roteiro" });
+
+  try {
+    const req = {
+      params: { id: "roteiro-1" },
+      usuario: { id: "outro-func", role: "FUNCIONARIO" },
+      headers: { "x-request-id": "req-403-desfinalizar" },
+    };
+    const res = createMockRes();
+
+    await desfinalizarRoteiro(req, res);
+
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body?.error?.code, "not_assigned_to_roteiro");
+  } finally {
+    Roteiro.findByPk = originalFindByPk;
   }
 });

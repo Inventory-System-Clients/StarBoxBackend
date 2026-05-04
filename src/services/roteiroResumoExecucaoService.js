@@ -2,8 +2,10 @@ import { Op } from "sequelize";
 import {
   GastoRoteiro,
   Manutencao,
+  MovimentacaoVeiculo,
   Roteiro,
   RoteiroResumoExecucao,
+  Veiculo,
 } from "../models/index.js";
 
 const STATUS_MANUTENCAO_REALIZADA = new Set(["feito", "concluida"]);
@@ -32,6 +34,95 @@ const formatarMoeda = (valor) => {
 const formatarLista = (lista = []) => {
   const itens = toArrayStrings(lista);
   return itens.length > 0 ? itens.join(", ") : "Nenhum";
+};
+
+const formatarInteiro = (valor) => {
+  const numero = Number.parseInt(valor, 10);
+  if (!Number.isInteger(numero)) return "-";
+  return numero.toLocaleString("pt-BR");
+};
+
+const getFaixaDiaUtc = (data) => {
+  const inicio = new Date(`${data}T00:00:00.000Z`);
+  const fim = new Date(`${data}T23:59:59.999Z`);
+  return { inicio, fim };
+};
+
+const obterResumoQuilometragem = async (resumo) => {
+  if (!resumo?.roteiroId || !resumo?.data) {
+    return {
+      veiculoNome: null,
+      kmInicialRota: null,
+      kmFinalRota: null,
+      kmPercorridoRota: null,
+    };
+  }
+
+  const { inicio, fim } = getFaixaDiaUtc(resumo.data);
+
+  const roteiro = await Roteiro.findByPk(resumo.roteiroId, {
+    attributes: ["id", "veiculoId"],
+    include: [
+      {
+        model: Veiculo,
+        as: "veiculo",
+        attributes: ["id", "nome"],
+      },
+    ],
+  });
+
+  if (!roteiro?.veiculoId) {
+    return {
+      veiculoNome: null,
+      kmInicialRota: null,
+      kmFinalRota: null,
+      kmPercorridoRota: null,
+    };
+  }
+
+  const [retirada, devolucao] = await Promise.all([
+    MovimentacaoVeiculo.findOne({
+      where: {
+        roteiroId: resumo.roteiroId,
+        veiculoId: roteiro.veiculoId,
+        tipo: "retirada",
+        dataHora: {
+          [Op.between]: [inicio, fim],
+        },
+      },
+      order: [["dataHora", "ASC"]],
+    }),
+    MovimentacaoVeiculo.findOne({
+      where: {
+        roteiroId: resumo.roteiroId,
+        veiculoId: roteiro.veiculoId,
+        tipo: "devolucao",
+        dataHora: {
+          [Op.between]: [inicio, fim],
+        },
+      },
+      order: [["dataHora", "DESC"]],
+    }),
+  ]);
+
+  const kmInicialRota = Number.isInteger(Number.parseInt(retirada?.km, 10))
+    ? Number.parseInt(retirada.km, 10)
+    : null;
+  const kmFinalRota = Number.isInteger(Number.parseInt(devolucao?.km, 10))
+    ? Number.parseInt(devolucao.km, 10)
+    : null;
+
+  let kmPercorridoRota = null;
+  if (kmInicialRota !== null && kmFinalRota !== null && kmFinalRota >= kmInicialRota) {
+    kmPercorridoRota = kmFinalRota - kmInicialRota;
+  }
+
+  return {
+    veiculoNome: roteiro.veiculo?.nome || null,
+    kmInicialRota,
+    kmFinalRota,
+    kmPercorridoRota,
+  };
 };
 
 const getFaixaSemanaAtualUtc = () => {
@@ -266,8 +357,10 @@ export const obterResumoExecucao = async ({ roteiroId, data }) => {
   });
 };
 
-export const montarMensagemResumoWhatsapp = (resumo) => {
+export const montarMensagemResumoWhatsapp = async (resumo) => {
   if (!resumo) return "Resumo da rota não encontrado.";
+
+  const resumoQuilometragem = await obterResumoQuilometragem(resumo);
 
   const manutencoesNaoRealizadasPorPonto = Array.isArray(
     resumo.manutencoesNaoRealizadasPorPonto,
@@ -289,12 +382,35 @@ export const montarMensagemResumoWhatsapp = (resumo) => {
     ? resumo.manutencoesNaoRealizadas
     : [];
 
+  const totalPontosFeitos = Array.isArray(resumo.pontosFeitos)
+    ? resumo.pontosFeitos.length
+    : 0;
+  const totalPontosNaoFeitos = Array.isArray(resumo.pontosNaoFeitos)
+    ? resumo.pontosNaoFeitos.length
+    : 0;
+  const totalMaquinasFeitas = Array.isArray(resumo.maquinasFeitas)
+    ? resumo.maquinasFeitas.length
+    : 0;
+  const totalMaquinasNaoFeitas = Array.isArray(resumo.maquinasNaoFeitas)
+    ? resumo.maquinasNaoFeitas.length
+    : 0;
+
+  const blocoVeiculo = resumoQuilometragem.veiculoNome
+    ? [
+        `Veiculo da rota: ${resumoQuilometragem.veiculoNome}`,
+        `KM inicial: ${formatarInteiro(resumoQuilometragem.kmInicialRota)}`,
+        `KM final: ${formatarInteiro(resumoQuilometragem.kmFinalRota)}`,
+        `KM percorrido: ${formatarInteiro(resumoQuilometragem.kmPercorridoRota)}`,
+      ]
+    : [];
+
   return [
     `Roteiro: ${resumo.roteiroNome || "Sem nome"}`,
-    `Pontos feitos: ${formatarLista(resumo.pontosFeitos)}`,
-    `Pontos nao feitos: ${formatarLista(resumo.pontosNaoFeitos)}`,
-    `Maquinas feitas: ${formatarLista(resumo.maquinasFeitas)}`,
-    `Maquinas nao feitas: ${formatarLista(resumo.maquinasNaoFeitas)}`,
+    ...blocoVeiculo,
+    `Pontos feitos: ${totalPontosFeitos}`,
+    `Pontos nao feitos: ${totalPontosNaoFeitos}`,
+    `Maquinas feitas: ${totalMaquinasFeitas}`,
+    `Maquinas nao feitas: ${totalMaquinasNaoFeitas}`,
     `Estoque inicial: ${resumo.estoqueInicialTotal ?? "-"} produtos`,
     `Estoque final: ${resumo.estoqueFinalTotal ?? "-"} produtos`,
     `Total gasto na rota: ${resumo.consumoTotalProdutos ?? "-"} produtos`,
