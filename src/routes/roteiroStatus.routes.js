@@ -1,5 +1,7 @@
 import express from "express";
+import { fn, col, where, Op } from "sequelize";
 import { Roteiro, Loja, Maquina, RoteiroFinalizacaoDiaria } from "../models/index.js";
+import Movimentacao from "../models/Movimentacao.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 
 const router = express.Router();
@@ -34,11 +36,31 @@ router.get("/:id/status-execucao", async (req, res) => {
       statusMap[s.maquina_id] = s.concluida;
     });
 
+    const maquinaIdsRota = roteiro.lojas.flatMap((loja) =>
+      (loja.maquinas || []).map((maquina) => maquina.id),
+    );
+
+    const movimentacoesHoje = maquinaIdsRota.length
+      ? await Movimentacao.findAll({
+          attributes: ["maquinaId"],
+          where: {
+            maquinaId: { [Op.in]: maquinaIdsRota },
+            [Op.and]: [where(fn("DATE", col("dataColeta")), dataHoje)],
+          },
+        })
+      : [];
+
+    const maquinasComMovimentoHoje = new Set(
+      movimentacoesHoje.map((mov) => mov.maquinaId),
+    );
+
     // Montar resposta
     const lojas = roteiro.lojas.map((loja) => {
       let lojaFinalizada = true;
       const maquinas = loja.maquinas.map((maquina) => {
-        const concluida = statusMap[maquina.id] === true;
+        const concluida =
+          statusMap[maquina.id] === true ||
+          maquinasComMovimentoHoje.has(maquina.id);
         if (!concluida) lojaFinalizada = false;
         return {
           id: maquina.id,
