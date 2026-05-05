@@ -380,7 +380,7 @@ const startServer = async () => {
       };
     };
 
-    // Função para resetar status dos roteiros semanalmente (segunda) às 00h
+    // Função para resetar status dos roteiros semanalmente (domingo) às 21h
     const iniciarResetRoteirosSemanal = async () => {
       const { resetarRoteirosDiarios } =
         await import("./utils/resetRoteiros.js");
@@ -390,16 +390,16 @@ const startServer = async () => {
       const executarReset = async () => {
         const agoraSp = getDataHoraSaoPaulo();
 
-        const ehSegunda = agoraSp.diaSemana === 1;
-        const janelaMeiaNoite = agoraSp.hora === 0 && agoraSp.minuto < 5;
+        const ehDomingo = agoraSp.diaSemana === 0;
+        const janelaVinteUmaHoras = agoraSp.hora === 21 && agoraSp.minuto < 5;
         const chaveDataHoje = `${agoraSp.ano}-${String(agoraSp.mes).padStart(2, "0")}-${String(agoraSp.dia).padStart(2, "0")}`;
 
-        // Recuperação: se o servidor reiniciar na segunda, executa uma vez naquele dia.
-        if (ehSegunda && (janelaMeiaNoite || ultimaDataReset !== chaveDataHoje)) {
+        // Recuperação: se o servidor reiniciar no domingo após 21h, executa uma vez naquele dia.
+        if (ehDomingo && (janelaVinteUmaHoras || (agoraSp.hora >= 21 && ultimaDataReset !== chaveDataHoje))) {
           if (ultimaDataReset === chaveDataHoje) return;
 
           console.log(
-            "🔄 Resetando status semanal dos roteiros e lojas para pendente (segunda-feira)...",
+            "🔄 Resetando status semanal dos roteiros e lojas para pendente (domingo 21h)...",
           );
           try {
             await resetarRoteirosDiarios();
@@ -415,7 +415,7 @@ const startServer = async () => {
       setInterval(executarReset, 60 * 1000);
 
       console.log(
-        "⏰ Reset semanal dos roteiros agendado para segunda 00:00 (America/Sao_Paulo)",
+        "⏰ Reset semanal dos roteiros agendado para domingo 21:00 (America/Sao_Paulo)",
       );
     };
   } catch (error) {

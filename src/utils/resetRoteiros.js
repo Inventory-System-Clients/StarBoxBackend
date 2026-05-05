@@ -1,4 +1,5 @@
 // utils/resetRoteiros.js
+import { Op } from "sequelize";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import RoteiroFinalizacaoDiaria from "../models/RoteiroFinalizacaoDiaria.js";
 
@@ -6,11 +7,14 @@ import RoteiroFinalizacaoDiaria from "../models/RoteiroFinalizacaoDiaria.js";
 
 export async function resetarRoteirosDiarios() {
   try {
-    // Limpa status de máquinas concluídas
-    await MovimentacaoStatusDiario.destroy({ where: {} });
+    const seteDiasAtras = new Date();
+    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
 
-    // Limpa finalizações manuais dos roteiros
-    await RoteiroFinalizacaoDiaria.destroy({ where: {} });
+    // Limpa apenas status de máquinas com mais de 7 dias (preserva a semana atual)
+    await MovimentacaoStatusDiario.destroy({ where: { data: { [Op.lt]: seteDiasAtras } } });
+
+    // Limpa finalizações manuais dos roteiros com mais de 7 dias
+    await RoteiroFinalizacaoDiaria.destroy({ where: { data: { [Op.lt]: seteDiasAtras } } });
 
     console.log("🔄 Status semanais de roteiros resetados com sucesso!");
   } catch (error) {

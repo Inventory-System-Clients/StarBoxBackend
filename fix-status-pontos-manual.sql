@@ -16,8 +16,8 @@ SELECT
   COALESCE(sd.concluida, FALSE) AS concluida,
   sd.data
 FROM "Roteiros" r
-JOIN "RoteirosLojas" rl ON rl.roteiro_id = r.id
-JOIN lojas l ON l.id = rl.loja_id
+JOIN "RoteiroLojas" rl ON rl."RoteiroId" = r.id
+JOIN lojas l ON l.id = rl."LojaId"
 JOIN maquinas m ON m.loja_id = l.id
 LEFT JOIN movimentacao_status_diario sd
   ON sd.maquina_id = m.id
@@ -38,8 +38,8 @@ SELECT
   CURRENT_DATE,
   TRUE
 FROM "Roteiros" r
-JOIN "RoteirosLojas" rl ON rl.roteiro_id = r.id
-JOIN maquinas m ON m.loja_id = rl.loja_id
+JOIN "RoteiroLojas" rl ON rl."RoteiroId" = r.id
+JOIN maquinas m ON m."lojaId" = rl."LojaId"
 WHERE r.id = 'SEU_ROTEIRO_ID_AQUI'
 ON CONFLICT (maquina_id, roteiro_id, data)
 DO UPDATE SET concluida = TRUE;
@@ -88,7 +88,69 @@ SELECT id, nome, status FROM "Roteiros" ORDER BY nome;
 SELECT
   l.id   AS loja_id,
   l.nome AS loja_nome
-FROM "RoteirosLojas" rl
-JOIN lojas l ON l.id = rl.loja_id
-WHERE rl.roteiro_id = 'SEU_ROTEIRO_ID_AQUI'
+FROM "RoteiroLojas" rl
+JOIN lojas l ON l.id = rl."LojaId"
+WHERE rl."RoteiroId" = 'SEU_ROTEIRO_ID_AQUI'
 ORDER BY l.nome;
+
+
+-- =============================================================
+-- PASSO 7: Marcar TODAS as máquinas que tiveram MOVIMENTO HOJE como feitas
+-- Encontra máquinas com movimentação em CURRENT_DATE e marca como concluída
+-- =============================================================
+INSERT INTO movimentacao_status_diario (id, maquina_id, roteiro_id, data, concluida)
+SELECT DISTINCT
+  gen_random_uuid(),
+  m.id,
+  r.id,
+  CURRENT_DATE,
+  TRUE
+FROM movimentacoes mov
+JOIN maquinas m ON m.id = mov."maquinaId"
+JOIN lojas l ON l.id = m."lojaId"
+JOIN "RoteiroLojas" rl ON rl."LojaId" = l.id
+JOIN "Roteiros" r ON r.id = rl."RoteiroId"
+WHERE DATE(mov."dataColeta") = CURRENT_DATE
+ON CONFLICT (maquina_id, roteiro_id, data)
+DO UPDATE SET concluida = TRUE;
+
+
+-- =============================================================
+-- PASSO 8: Marcar máquinas com movimento em uma DATA ESPECÍFICA
+-- Troque '2026-05-04' pela data desejada
+-- =============================================================
+INSERT INTO movimentacao_status_diario (id, maquina_id, roteiro_id, data, concluida)
+SELECT DISTINCT
+  gen_random_uuid(),
+  m.id,
+  r.id,
+  '2026-05-04'::date,   -- <-- troque a data aqui
+  TRUE
+FROM movimentacoes mov
+JOIN maquinas m ON m.id = mov."maquinaId"
+JOIN lojas l ON l.id = m."lojaId"
+JOIN "RoteiroLojas" rl ON rl."LojaId" = l.id
+JOIN "Roteiros" r ON r.id = rl."RoteiroId"
+WHERE DATE(mov."dataColeta") = '2026-05-04'::date  -- <-- e aqui também
+ON CONFLICT (maquina_id, roteiro_id, data)
+DO UPDATE SET concluida = TRUE;
+
+
+-- =============================================================
+-- CONFERIR: Ver máquinas que foram marcadas como feitas hoje
+-- =============================================================
+SELECT
+  sd.maquina_id,
+  m.nome AS maquina_nome,
+  l.nome AS loja_nome,
+  sd.roteiro_id,
+  r.nome AS roteiro_nome,
+  sd.data,
+  sd.concluida
+FROM movimentacao_status_diario sd
+JOIN maquinas m ON m.id = sd.maquina_id
+JOIN lojas l ON l.id = m."lojaId"
+JOIN "Roteiros" r ON r.id = sd.roteiro_id
+WHERE sd.data = CURRENT_DATE
+  AND sd.concluida = TRUE
+ORDER BY r.nome, l.nome, m.nome;
