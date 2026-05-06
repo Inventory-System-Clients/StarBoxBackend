@@ -535,7 +535,7 @@ export const finalizarRoteiro = async (req, res) => {
       });
     });
 
-    const usuarioEstoqueId = roteiro.funcionarioId || req.usuario?.id || null;
+    const usuarioEstoqueId = roteiro.funcionarioId || null;
     const totalEstoqueFinal = await obterTotalEstoqueUsuario(usuarioEstoqueId);
 
     const finalizacaoDia = await RoteiroFinalizacaoDiaria.findOne({

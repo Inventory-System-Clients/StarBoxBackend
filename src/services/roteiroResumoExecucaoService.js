@@ -132,17 +132,19 @@ const obterResumoQuilometragem = async (resumo) => {
   };
 };
 
-const obterEstoqueAdicional = async ({ funcionarioId, retiradaDataHora }) => {
-  if (!funcionarioId) return 0;
+const obterEstoqueAdicional = async ({ funcionarioId, retiradaDataHora, data }) => {
+  if (!funcionarioId || !retiradaDataHora || !data) return 0;
+
+  const fimRota = new Date(`${data}T23:59:59.999Z`);
 
   const whereClause = {
     usuarioId: funcionarioId,
     tipoMovimentacao: "entrada",
+    dataMovimentacao: {
+      [Op.gt]: retiradaDataHora,
+      [Op.lte]: fimRota,
+    },
   };
-
-  if (retiradaDataHora) {
-    whereClause.dataMovimentacao = { [Op.gt]: retiradaDataHora };
-  }
 
   const soma = await MovimentacaoEstoqueUsuario.sum("quantidade", {
     where: whereClause,
@@ -391,6 +393,7 @@ export const montarMensagemResumoWhatsapp = async (resumo) => {
   const estoqueAdicional = await obterEstoqueAdicional({
     funcionarioId: resumoQuilometragem.funcionarioId,
     retiradaDataHora: resumoQuilometragem.retiradaDataHora,
+    data: resumo.data,
   });
 
   const manutencoesNaoRealizadasPorPonto = Array.isArray(

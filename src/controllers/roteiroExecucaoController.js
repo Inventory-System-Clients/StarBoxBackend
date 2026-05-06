@@ -149,7 +149,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
       },
     });
 
-    const usuarioEstoqueId = roteiro.funcionarioId || req.usuario?.id || null;
+    const usuarioEstoqueId = roteiro.funcionarioId || null;
     let estoqueInicialTotal = null;
     let estoqueAtualTotal = null;
 
