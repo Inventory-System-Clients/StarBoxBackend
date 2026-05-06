@@ -1,5 +1,5 @@
 import express from "express";
-import { fn, col, where, Op } from "sequelize";
+import { Op } from "sequelize";
 import { Roteiro, Loja, Maquina, RoteiroFinalizacaoDiaria } from "../models/index.js";
 import Movimentacao from "../models/Movimentacao.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
@@ -27,9 +27,10 @@ router.get("/:id/status-execucao", async (req, res) => {
     });
     if (!roteiro) return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    // Buscar status das máquinas concluídas do dia para o roteiro.
+    // Buscar status das máquinas concluídas para o roteiro (sem filtro de data,
+    // pois o status persiste até a finalização da rota ou reset semanal de domingo).
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
-      where: { roteiro_id: roteiroId, concluida: true, data: dataHoje },
+      where: { roteiro_id: roteiroId, concluida: true },
     });
     const statusMap = {};
     statusMaquinas.forEach((s) => {
@@ -40,18 +41,23 @@ router.get("/:id/status-execucao", async (req, res) => {
       (loja.maquinas || []).map((maquina) => maquina.id),
     );
 
-    const movimentacoesHoje = maquinaIdsRota.length
+    // Buscar movimentações dos últimos 7 dias para detectar máquinas feitas
+    // automaticamente mesmo sem marcação manual no status diário.
+    const seteDiasAtras = new Date();
+    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+
+    const movimentacoesRecentes = maquinaIdsRota.length
       ? await Movimentacao.findAll({
           attributes: ["maquinaId"],
           where: {
             maquinaId: { [Op.in]: maquinaIdsRota },
-            [Op.and]: [where(fn("DATE", col("dataColeta")), dataHoje)],
+            dataColeta: { [Op.gte]: seteDiasAtras },
           },
         })
       : [];
 
     const maquinasComMovimentoHoje = new Set(
-      movimentacoesHoje.map((mov) => mov.maquinaId),
+      movimentacoesRecentes.map((mov) => mov.maquinaId),
     );
 
     // Montar resposta
