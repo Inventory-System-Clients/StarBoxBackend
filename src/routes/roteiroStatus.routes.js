@@ -62,18 +62,19 @@ router.get("/:id/status-execucao", async (req, res) => {
 
     // Montar resposta
     const lojas = roteiro.lojas.map((loja) => {
-      let lojaFinalizada = true;
       const maquinas = loja.maquinas.map((maquina) => {
         const concluida =
           statusMap[maquina.id] === true ||
           maquinasComMovimentoHoje.has(maquina.id);
-        if (!concluida) lojaFinalizada = false;
         return {
           id: maquina.id,
           nome: maquina.nome,
           status: concluida ? "finalizado" : "pendente",
         };
       });
+      const lojaFinalizada = maquinas.some(
+        (maquina) => maquina.status === "finalizado",
+      );
       return {
         id: loja.id,
         nome: loja.nome,

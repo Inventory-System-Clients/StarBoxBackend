@@ -236,7 +236,6 @@ async function getRoteiroExecucaoComStatus(req, res) {
     let roteiroTemMaquinas = false;
     const lojas = lojasOrdenadas.map((loja) => {
       const lojaTemMaquinas = (loja.maquinas?.length || 0) > 0;
-      let lojaFinalizada = lojaTemMaquinas;
       if (lojaTemMaquinas) roteiroTemMaquinas = true;
       // Movimentações consideradas para esta loja
       const movimentacoesLoja = statusMaquinas.filter((s) => {
@@ -244,13 +243,15 @@ async function getRoteiroExecucaoComStatus(req, res) {
       });
       const maquinas = loja.maquinas.map((maquina) => {
         const finalizada = maquinasFinalizadas.has(maquina.id);
-        if (!finalizada) lojaFinalizada = false;
         return {
           id: maquina.id,
           nome: maquina.nome,
           status: finalizada ? "finalizado" : "pendente",
         };
       });
+      const lojaFinalizada = maquinas.some(
+        (maquina) => maquina.status === "finalizado",
+      );
       if (!lojaFinalizada) roteiroFinalizado = false;
       return {
         id: loja.id,
@@ -517,20 +518,21 @@ async function getTodosRoteirosComStatus(req, res) {
       let roteiroTemMaquinas = false;
       const lojas = lojasOrdenadas.map((loja) => {
         const lojaTemMaquinas = (loja.maquinas?.length || 0) > 0;
-        let lojaFinalizada = lojaTemMaquinas;
         if (lojaTemMaquinas) roteiroTemMaquinas = true;
         const movimentacoesLoja = statusMaquinasRoteiro.filter((s) => {
           return loja.maquinas.some((m) => m.id === s.maquina_id);
         });
         const maquinas = loja.maquinas.map((maquina) => {
           const finalizada = maquinasFinalizadas.has(maquina.id);
-          if (!finalizada) lojaFinalizada = false;
           return {
             id: maquina.id,
             nome: maquina.nome,
             status: finalizada ? "finalizado" : "pendente",
           };
         });
+        const lojaFinalizada = maquinas.some(
+          (maquina) => maquina.status === "finalizado",
+        );
         if (!lojaFinalizada) roteiroFinalizado = false;
         return {
           id: loja.id,

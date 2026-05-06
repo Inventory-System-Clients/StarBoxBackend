@@ -492,17 +492,34 @@ export const finalizarRoteiro = async (req, res) => {
       }
     }
 
+    // Busca status sem filtrar por data — loja fica concluída até finalizar ou reset semanal
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         roteiro_id: roteiroId,
         concluida: true,
-        data: dataHoje,
       },
     });
 
     const maquinasConcluidas = new Set(
       statusMaquinas.map((item) => item.maquina_id),
     );
+
+    // Também considera máquinas com movimentação nos últimos 7 dias como concluídas
+    const seteDiasAtras = new Date();
+    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+    const maquinaIdsRota = roteiro.lojas.flatMap((loja) =>
+      (loja.maquinas || []).map((maquina) => maquina.id),
+    );
+    if (maquinaIdsRota.length) {
+      const movRecentes = await Movimentacao.findAll({
+        attributes: ["maquinaId"],
+        where: {
+          maquinaId: { [Op.in]: maquinaIdsRota },
+          dataColeta: { [Op.gte]: seteDiasAtras },
+        },
+      });
+      movRecentes.forEach((mov) => maquinasConcluidas.add(mov.maquinaId));
+    }
 
     const maquinasPendentes = [];
     roteiro.lojas.forEach((loja) => {

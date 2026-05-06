@@ -88,9 +88,10 @@ const obterContextoOrdemRoteiro = async (roteiroId) => {
       const loja = lojasPorId.get(normalizarId(rel.LojaId));
       if (!loja) return null;
 
-      const temPendencia = (loja.maquinas || []).some(
-        (m) => !maquinasConcluidas.has(m.id),
+      const lojaConcluida = (loja.maquinas || []).some((m) =>
+        maquinasConcluidas.has(m.id),
       );
+      const temPendencia = !lojaConcluida;
 
       return {
         id: loja.id,
