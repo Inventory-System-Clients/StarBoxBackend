@@ -15,33 +15,6 @@ import {
   MovimentacaoVeiculo,
   EstoqueUsuario,
   RoteiroPontoPulado,
-    const dataHoje = new Date().toISOString().slice(0, 10);
-    const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
-      where: { roteiroId: roteiro.id },
-    });
-
-    if (execucaoExistente?.emAndamento) {
-      if (!execucaoExistente.usuarioId && req.usuario?.id) {
-        await execucaoExistente.update({ usuarioId: req.usuario.id });
-      }
-    } else if (execucaoExistente) {
-      await execucaoExistente.update({
-        usuarioId: req.usuario?.id || execucaoExistente.usuarioId || null,
-        dataInicio: dataHoje,
-        iniciadoEm: new Date(),
-        emAndamento: true,
-        finalizadoEm: null,
-      });
-    } else {
-      await RoteiroExecucaoSemanal.create({
-        roteiroId: roteiro.id,
-        usuarioId: req.usuario?.id || null,
-        dataInicio: dataHoje,
-        iniciadoEm: new Date(),
-        emAndamento: true,
-        finalizadoEm: null,
-      });
-    }
   RoteiroExecucaoSemanal,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
