@@ -28,6 +28,11 @@ import {
   registrarGastoRoteiro,
   atualizarOrcamentoDiarioRoteiro,
 } from "../controllers/gastoRoteiroController.js";
+import {
+  encerrarLocalizacaoRoteiro,
+  listarLocalizacoesAtivas,
+  salvarLocalizacaoRoteiro,
+} from "../controllers/roteiroLocalizacaoController.js";
 import { Op, literal } from "sequelize";
 
 const router = express.Router();
@@ -316,6 +321,32 @@ router.post(
       res.status(500).json({ error: "Erro ao iniciar roteiro" });
     }
   },
+);
+
+router.get(
+  "/localizacoes-ativas",
+  autenticar,
+  (req, res, next) => {
+    if (req.usuario?.role !== "ADMIN") {
+      return res.status(403).json({
+        error: "Acesso negado. Apenas ADMIN pode visualizar localizacoes ativas.",
+      });
+    }
+    return next();
+  },
+  listarLocalizacoesAtivas,
+);
+
+router.post(
+  "/:roteiroId/localizacao",
+  autenticar,
+  salvarLocalizacaoRoteiro,
+);
+
+router.delete(
+  "/:roteiroId/localizacao",
+  autenticar,
+  encerrarLocalizacaoRoteiro,
 );
 
 // Gastos semanais no roteiro (execução)

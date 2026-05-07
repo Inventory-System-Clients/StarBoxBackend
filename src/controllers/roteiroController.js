@@ -16,6 +16,7 @@ import {
   EstoqueUsuario,
   RoteiroPontoPulado,
   RoteiroExecucaoSemanal,
+  RoteiroLocalizacao,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
@@ -26,6 +27,7 @@ import {
   fecharResumoExecucao,
   montarMensagemResumoWhatsapp,
 } from "../services/roteiroResumoExecucaoService.js";
+import { encerrarLocalizacaoAtiva } from "./roteiroLocalizacaoController.js";
 import { resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
 
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
@@ -691,6 +693,19 @@ export const finalizarRoteiro = async (req, res) => {
       });
     }
 
+    try {
+      await encerrarLocalizacaoAtiva({
+        roteiroId,
+        usuarioId: req.usuario?.id || null,
+      });
+    } catch (localizacaoError) {
+      console.warn("Erro ao encerrar localizacao ativa do roteiro:", {
+        roteiroId,
+        usuarioId: req.usuario?.id || null,
+        erro: localizacaoError.message,
+      });
+    }
+
     const lojasResumo = roteiro.lojas.map((loja) => {
       const maquinas = (loja.maquinas || []).map((maquina) => ({
         nome: maquina.nome,
@@ -894,6 +909,10 @@ export const apagarRoteiro = async (req, res) => {
           transaction,
         }),
         RoteiroExecucaoSemanal.destroy({
+          where: { roteiroId },
+          transaction,
+        }),
+        RoteiroLocalizacao.destroy({
           where: { roteiroId },
           transaction,
         }),

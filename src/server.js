@@ -18,6 +18,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.set("trust proxy", 1);
+
 // Middlewares
 app.use(
   helmet({
@@ -26,6 +28,24 @@ app.use(
 );
 
 // Configurar CORS para aceitar localhost e produção
+if (process.env.NODE_ENV === "production") {
+  app.use((req, res, next) => {
+    const forwardedProto = req.headers["x-forwarded-proto"];
+    const protocoloSeguro =
+      req.secure ||
+      String(Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)
+        .split(",")[0]
+        .trim()
+        .toLowerCase() === "https";
+
+    if (protocoloSeguro) {
+      return next();
+    }
+
+    return res.redirect(307, `https://${req.headers.host}${req.originalUrl}`);
+  });
+}
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
