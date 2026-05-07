@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import { Roteiro, Loja, Maquina, RoteiroFinalizacaoDiaria } from "../models/index.js";
 import Movimentacao from "../models/Movimentacao.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
+import { resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
 
 const router = express.Router();
 
@@ -10,7 +11,9 @@ const router = express.Router();
 router.get("/:id/status-execucao", async (req, res) => {
   try {
     const roteiroId = req.params.id;
-    const dataHoje = new Date().toISOString().slice(0, 10);
+    const contextoExecucao = await resolverContextoExecucaoSemanal(roteiroId);
+    const dataHoje = contextoExecucao.dataHoje;
+    const dataInicio = contextoExecucao.dataInicio;
     const roteiro = await Roteiro.findByPk(roteiroId, {
       include: [
         {
@@ -30,7 +33,13 @@ router.get("/:id/status-execucao", async (req, res) => {
     // Buscar status das máquinas concluídas para o roteiro (sem filtro de data,
     // pois o status persiste até a finalização da rota ou reset semanal de domingo).
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
-      where: { roteiro_id: roteiroId, concluida: true },
+      where: {
+        roteiro_id: roteiroId,
+        concluida: true,
+        data: {
+          [Op.gte]: dataInicio,
+        },
+      },
     });
     const statusMap = {};
     statusMaquinas.forEach((s) => {
@@ -43,15 +52,14 @@ router.get("/:id/status-execucao", async (req, res) => {
 
     // Buscar movimentações dos últimos 7 dias para detectar máquinas feitas
     // automaticamente mesmo sem marcação manual no status diário.
-    const seteDiasAtras = new Date();
-    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+    const inicioExecucao = new Date(`${dataInicio}T00:00:00.000Z`);
 
     const movimentacoesRecentes = maquinaIdsRota.length
       ? await Movimentacao.findAll({
           attributes: ["maquinaId"],
           where: {
             maquinaId: { [Op.in]: maquinaIdsRota },
-            dataColeta: { [Op.gte]: seteDiasAtras },
+            dataColeta: { [Op.gte]: inicioExecucao },
           },
         })
       : [];
@@ -89,11 +97,13 @@ router.get("/:id/status-execucao", async (req, res) => {
         finalizado: true,
       },
     });
+    const roteiroFinalizadoSemana =
+      contextoExecucao.finalizadoNaSemana || Boolean(finalizacaoManual);
 
     res.json({
       id: roteiro.id,
       nome: roteiro.nome,
-      status: finalizacaoManual ? "finalizado" : "pendente",
+      status: roteiroFinalizadoSemana ? "finalizado" : "pendente",
       data: dataHoje,
       lojas,
     });

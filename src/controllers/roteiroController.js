@@ -15,6 +15,34 @@ import {
   MovimentacaoVeiculo,
   EstoqueUsuario,
   RoteiroPontoPulado,
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
+      where: { roteiroId: roteiro.id },
+    });
+
+    if (execucaoExistente?.emAndamento) {
+      if (!execucaoExistente.usuarioId && req.usuario?.id) {
+        await execucaoExistente.update({ usuarioId: req.usuario.id });
+      }
+    } else if (execucaoExistente) {
+      await execucaoExistente.update({
+        usuarioId: req.usuario?.id || execucaoExistente.usuarioId || null,
+        dataInicio: dataHoje,
+        iniciadoEm: new Date(),
+        emAndamento: true,
+        finalizadoEm: null,
+      });
+    } else {
+      await RoteiroExecucaoSemanal.create({
+        roteiroId: roteiro.id,
+        usuarioId: req.usuario?.id || null,
+        dataInicio: dataHoje,
+        iniciadoEm: new Date(),
+        emAndamento: true,
+        finalizadoEm: null,
+      });
+    }
+  RoteiroExecucaoSemanal,
 } from "../models/index.js";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { criarAlertaRoteiroPendente } from "../services/whatsappAlertaService.js";
@@ -25,6 +53,7 @@ import {
   fecharResumoExecucao,
   montarMensagemResumoWhatsapp,
 } from "../services/roteiroResumoExecucaoService.js";
+import { resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
 
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -336,6 +365,35 @@ export const iniciarRoteiro = async (req, res) => {
     if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
 
     await roteiro.update(update);
+
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
+      where: { roteiroId: roteiro.id },
+    });
+
+    if (execucaoExistente?.emAndamento) {
+      if (!execucaoExistente.usuarioId && req.usuario?.id) {
+        await execucaoExistente.update({ usuarioId: req.usuario.id });
+      }
+    } else if (execucaoExistente) {
+      await execucaoExistente.update({
+        usuarioId: req.usuario?.id || execucaoExistente.usuarioId || null,
+        dataInicio: dataHoje,
+        iniciadoEm: new Date(),
+        emAndamento: true,
+        finalizadoEm: null,
+      });
+    } else {
+      await RoteiroExecucaoSemanal.create({
+        roteiroId: roteiro.id,
+        usuarioId: req.usuario?.id || null,
+        dataInicio: dataHoje,
+        iniciadoEm: new Date(),
+        emAndamento: true,
+        finalizadoEm: null,
+      });
+    }
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Erro ao iniciar roteiro" });
@@ -492,11 +550,16 @@ export const finalizarRoteiro = async (req, res) => {
       }
     }
 
-    // Busca status sem filtrar por data — loja fica concluída até finalizar ou reset semanal
+    const contextoExecucao = await resolverContextoExecucaoSemanal(roteiroId);
+
+    // Busca status desde o inicio da execucao semanal
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         roteiro_id: roteiroId,
         concluida: true,
+        data: {
+          [Op.gte]: contextoExecucao.dataInicio,
+        },
       },
     });
 
@@ -504,9 +567,10 @@ export const finalizarRoteiro = async (req, res) => {
       statusMaquinas.map((item) => item.maquina_id),
     );
 
-    // Também considera máquinas com movimentação nos últimos 7 dias como concluídas
-    const seteDiasAtras = new Date();
-    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+    // Também considera máquinas com movimentação desde o inicio da execucao como concluídas
+    const inicioExecucao = new Date(
+      `${contextoExecucao.dataInicio}T00:00:00.000Z`,
+    );
     const maquinaIdsRota = roteiro.lojas.flatMap((loja) =>
       (loja.maquinas || []).map((maquina) => maquina.id),
     );
@@ -515,7 +579,7 @@ export const finalizarRoteiro = async (req, res) => {
         attributes: ["maquinaId"],
         where: {
           maquinaId: { [Op.in]: maquinaIdsRota },
-          dataColeta: { [Op.gte]: seteDiasAtras },
+          dataColeta: { [Op.gte]: inicioExecucao },
         },
       });
       movRecentes.forEach((mov) => maquinasConcluidas.add(mov.maquinaId));
@@ -586,6 +650,25 @@ export const finalizarRoteiro = async (req, res) => {
       estoqueFinalTotal: totalEstoqueFinal,
       consumoTotalProdutos,
     });
+
+    const execucaoSemanal = await RoteiroExecucaoSemanal.findOne({
+      where: { roteiroId },
+    });
+    if (execucaoSemanal) {
+      await execucaoSemanal.update({
+        emAndamento: false,
+        finalizadoEm: new Date(),
+      });
+    } else {
+      await RoteiroExecucaoSemanal.create({
+        roteiroId,
+        usuarioId: req.usuario?.id || null,
+        dataInicio: dataHoje,
+        iniciadoEm: new Date(),
+        emAndamento: false,
+        finalizadoEm: new Date(),
+      });
+    }
 
     const lojasResumo = roteiro.lojas.map((loja) => {
       const maquinas = (loja.maquinas || []).map((maquina) => ({
@@ -739,6 +822,25 @@ export const desfinalizarRoteiro = async (req, res) => {
       consumoTotalProdutos: null,
     });
 
+    const execucaoSemanal = await RoteiroExecucaoSemanal.findOne({
+      where: { roteiroId },
+    });
+    if (execucaoSemanal) {
+      await execucaoSemanal.update({
+        emAndamento: true,
+        finalizadoEm: null,
+      });
+    } else {
+      await RoteiroExecucaoSemanal.create({
+        roteiroId,
+        usuarioId: req.usuario?.id || null,
+        dataInicio: dataHoje,
+        iniciadoEm: new Date(),
+        emAndamento: true,
+        finalizadoEm: null,
+      });
+    }
+
     return res.json({
       success: true,
       status: "pendente",
@@ -767,6 +869,10 @@ export const apagarRoteiro = async (req, res) => {
           transaction,
         }),
         RoteiroFinalizacaoDiaria.destroy({
+          where: { roteiroId },
+          transaction,
+        }),
+        RoteiroExecucaoSemanal.destroy({
           where: { roteiroId },
           transaction,
         }),

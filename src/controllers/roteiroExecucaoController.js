@@ -19,6 +19,12 @@ import {
   salvarSnapshotResumoExecucao,
   montarMensagemResumoWhatsapp,
 } from "../services/roteiroResumoExecucaoService.js";
+import {
+  getDataHoje,
+  isFinalizadoNaSemana,
+  resolverContextoExecucaoSemanal,
+} from "../utils/roteiroExecucaoSemanal.js";
+import RoteiroExecucaoSemanal from "../models/RoteiroExecucaoSemanal.js";
 
 const obterFaixaSemanaAtualUtc = () => {
   const referencia = new Date();
@@ -128,17 +134,21 @@ async function getRoteiroExecucaoComStatus(req, res) {
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    const dataHoje = new Date().toISOString().slice(0, 10);
+    const contextoExecucao = await resolverContextoExecucaoSemanal(roteiro.id);
+    const dataHoje = contextoExecucao.dataHoje;
+    const dataInicio = contextoExecucao.dataInicio;
     const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
     const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
     const faixaSemanaAtual = obterFaixaSemanaAtualUtc();
 
-    // Buscar status das máquinas concluídas para o roteiro (somente hoje)
+    // Buscar status das máquinas concluídas para o roteiro (desde o inicio da execucao)
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         roteiro_id: roteiro.id,
         concluida: true,
-        data: dataHoje,
+        data: {
+          [Op.gte]: dataInicio,
+        },
       },
     });
 
@@ -175,9 +185,9 @@ async function getRoteiroExecucaoComStatus(req, res) {
           : Number(finalizacaoDia.estoqueInicialTotal);
     }
 
-    const finalizacaoManual = finalizacaoDia?.finalizado
-      ? finalizacaoDia
-      : null;
+    const finalizacaoManual = finalizacaoDia?.finalizado ? finalizacaoDia : null;
+    const roteiroFinalizadoSemana =
+      contextoExecucao.finalizadoNaSemana || Boolean(finalizacaoManual);
     const maquinasFinalizadas = new Set(
       statusMaquinas.map((s) => s.maquina_id),
     );
@@ -396,7 +406,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
             }
           : null,
       })),
-      status: finalizacaoManual ? "finalizado" : "pendente",
+      status: roteiroFinalizadoSemana ? "finalizado" : "pendente",
       lojas,
       lojasPendentesJustificadasIds,
       pontosPuladosStatus,
@@ -486,12 +496,50 @@ async function getTodosRoteirosComStatus(req, res) {
         },
       ],
     });
-    const dataHoje = new Date().toISOString().slice(0, 10);
+    const dataHoje = getDataHoje();
+    const roteiroIds = roteiros.map((roteiro) => roteiro.id);
+    const execucoes = roteiroIds.length
+      ? await RoteiroExecucaoSemanal.findAll({
+          where: {
+            roteiroId: {
+              [Op.in]: roteiroIds,
+            },
+          },
+        })
+      : [];
+    const execucaoPorRoteiro = new Map(
+      execucoes.map((execucao) => [String(execucao.roteiroId), execucao]),
+    );
+
+    let dataMinima = dataHoje;
+    const contextoPorRoteiro = new Map();
+    roteiros.forEach((roteiro) => {
+      const execucao = execucaoPorRoteiro.get(String(roteiro.id));
+      const dataInicioBase = execucao?.dataInicio
+        ? String(execucao.dataInicio)
+        : dataHoje;
+      const emAndamento = Boolean(execucao?.emAndamento);
+      const finalizadoNaSemana = isFinalizadoNaSemana(execucao);
+      const usarDataInicio = execucao && (emAndamento || finalizadoNaSemana);
+      const dataInicio = usarDataInicio ? dataInicioBase : dataHoje;
+
+      if (usarDataInicio && dataInicio < dataMinima) {
+        dataMinima = dataInicio;
+      }
+
+      contextoPorRoteiro.set(String(roteiro.id), {
+        dataInicio,
+        finalizadoNaSemana,
+      });
+    });
+
     // Buscar status de todas as máquinas concluídas para todos os roteiros
     const statusMaquinas = await MovimentacaoStatusDiario.findAll({
       where: {
         concluida: true,
-        data: dataHoje,
+        data: {
+          [Op.gte]: dataMinima,
+        },
       },
     });
     const finalizacoesManuais = await RoteiroFinalizacaoDiaria.findAll({
@@ -505,9 +553,15 @@ async function getTodosRoteirosComStatus(req, res) {
     );
     // Agrupar por roteiro
     const roteirosComStatus = roteiros.map((roteiro) => {
-      const statusMaquinasRoteiro = statusMaquinas.filter(
-        (s) => s.roteiro_id === roteiro.id,
-      );
+      const contexto = contextoPorRoteiro.get(String(roteiro.id)) || {
+        dataInicio: dataHoje,
+        finalizadoNaSemana: false,
+      };
+      const statusMaquinasRoteiro = statusMaquinas.filter((s) => {
+        if (s.roteiro_id !== roteiro.id) return false;
+        const dataRegistro = String(s.data);
+        return dataRegistro >= contexto.dataInicio;
+      });
       const maquinasFinalizadas = new Set(
         statusMaquinasRoteiro.map((s) => s.maquina_id),
       );
@@ -572,9 +626,10 @@ async function getTodosRoteirosComStatus(req, res) {
             }
           : null,
         diasSemana: roteiro.diasSemana ?? [],
-        status: finalizacoesPorRoteiro.has(roteiro.id)
-          ? "finalizado"
-          : "pendente",
+        status:
+          contexto.finalizadoNaSemana || finalizacoesPorRoteiro.has(roteiro.id)
+            ? "finalizado"
+            : "pendente",
         lojas,
         movimentacoesHoje: statusMaquinasRoteiro.map((s) => ({
           maquina_id: s.maquina_id,

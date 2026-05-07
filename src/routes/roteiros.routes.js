@@ -10,10 +10,12 @@ import {
   RoteiroPontoPulado,
   RoteiroFinalizacaoDiaria,
   MovimentacaoVeiculo,
+  RoteiroExecucaoSemanal,
 } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 import { autenticar, autorizar } from "../middlewares/auth.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
+import { resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
 import {
   finalizarRoteiro,
   desfinalizarRoteiro,
@@ -78,8 +80,16 @@ const obterContextoOrdemRoteiro = async (roteiroId) => {
     await import("../models/MovimentacaoStatusDiario.js")
   ).default;
 
+  const contextoExecucao = await resolverContextoExecucaoSemanal(roteiroId);
+
   const statusConcluido = await MovimentacaoStatusDiario.findAll({
-    where: { roteiro_id: roteiroId, concluida: true },
+    where: {
+      roteiro_id: roteiroId,
+      concluida: true,
+      data: {
+        [Op.gte]: contextoExecucao.dataInicio,
+      },
+    },
   });
   const maquinasConcluidas = new Set(statusConcluido.map((s) => s.maquina_id));
 
@@ -271,6 +281,35 @@ router.post(
         funcionarioNome: result.funcionarioNome,
         veiculoId: result.veiculoId,
       });
+
+      const dataHoje = getDataHoje();
+      const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
+        where: { roteiroId: roteiro.id },
+      });
+
+      if (execucaoExistente?.emAndamento) {
+        if (!execucaoExistente.usuarioId && req.usuario?.id) {
+          await execucaoExistente.update({ usuarioId: req.usuario.id });
+        }
+      } else if (execucaoExistente) {
+        await execucaoExistente.update({
+          usuarioId: req.usuario?.id || execucaoExistente.usuarioId || null,
+          dataInicio: dataHoje,
+          iniciadoEm: new Date(),
+          emAndamento: true,
+          finalizadoEm: null,
+        });
+      } else {
+        await RoteiroExecucaoSemanal.create({
+          roteiroId: roteiro.id,
+          usuarioId: req.usuario?.id || null,
+          dataInicio: dataHoje,
+          iniciadoEm: new Date(),
+          emAndamento: true,
+          finalizadoEm: null,
+        });
+      }
+
       res.json({ success: true });
     } catch (error) {
       console.error("[INICIAR] erro:", error);
