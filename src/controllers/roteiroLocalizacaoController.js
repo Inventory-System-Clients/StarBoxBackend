@@ -1,4 +1,4 @@
-import { Op } from "sequelize";
+import { Op, col, where } from "sequelize";
 import {
   Roteiro,
   RoteiroExecucaoSemanal,
@@ -253,7 +253,7 @@ export const listarLocalizacoesAtivas = async (req, res) => {
         where: {
           ativa: true,
           [Op.or]: [
-            { updatedAt: { [Op.lt]: limiteAtivo } },
+            where(col("updated_at"), Op.lt, limiteAtivo),
             { capturedAt: { [Op.lt]: limiteAtivo } },
           ],
         },
@@ -263,8 +263,10 @@ export const listarLocalizacoesAtivas = async (req, res) => {
     const localizacoes = await RoteiroLocalizacao.findAll({
       where: {
         ativa: true,
-        updatedAt: { [Op.gte]: limiteAtivo },
-        capturedAt: { [Op.gte]: limiteAtivo },
+        [Op.and]: [
+          where(col("updated_at"), Op.gte, limiteAtivo),
+          { capturedAt: { [Op.gte]: limiteAtivo } },
+        ],
       },
       include: [
         {
@@ -273,7 +275,7 @@ export const listarLocalizacoesAtivas = async (req, res) => {
           attributes: ["id", "nome"],
         },
       ],
-      order: [["updatedAt", "DESC"]],
+      order: [[col("updated_at"), "DESC"]],
     });
 
     return res.json(
