@@ -312,7 +312,42 @@ export const listarRoteiros = async (req, res) => {
         { model: Loja, as: "lojas", attributes: ["id", "nome"] },
       ],
     });
-    res.json(roteiros);
+
+    // Enriquecer com informações de execução semanal
+    const roteirosComExecucao = await Promise.all(
+      roteiros.map(async (roteiro) => {
+        const execucao = await RoteiroExecucaoSemanal.findOne({
+          where: { roteiroId: roteiro.id },
+          attributes: ["id", "usuarioId", "emAndamento", "dataInicio", "iniciadoEm", "finalizadoEm"],
+        });
+
+        let usuarioAssociado = null;
+        if (execucao?.usuarioId) {
+          usuarioAssociado = await Usuario.findByPk(execucao.usuarioId, {
+            attributes: ["id", "nome"],
+          });
+        }
+
+        return {
+          ...roteiro.toJSON(),
+          execucaoSemanal: execucao
+            ? {
+                id: execucao.id,
+                emAndamento: execucao.emAndamento,
+                usuarioAssociado: usuarioAssociado ? {
+                  id: usuarioAssociado.id,
+                  nome: usuarioAssociado.nome,
+                } : null,
+                dataInicio: execucao.dataInicio,
+                iniciadoEm: execucao.iniciadoEm,
+                finalizadoEm: execucao.finalizadoEm,
+              }
+            : null,
+        };
+      }),
+    );
+
+    res.json(roteirosComExecucao);
   } catch (error) {
     res.status(500).json({ error: "Erro ao listar roteiros" });
   }
@@ -324,6 +359,20 @@ export const iniciarRoteiro = async (req, res) => {
     const roteiro = await Roteiro.findByPk(req.params.id);
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
+
+    const dataHoje = new Date().toISOString().slice(0, 10);
+    const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
+      where: { roteiroId: roteiro.id },
+    });
+
+    // Se o roteiro já está em andamento por outro usuário, não permite iniciar
+    if (execucaoExistente?.emAndamento && execucaoExistente.usuarioId !== req.usuario?.id) {
+      return res.status(403).json({
+        error: "Este roteiro já foi iniciado por outro usuário",
+        statusRota: "em_andamento_por_outro",
+        usuarioAssociado: execucaoExistente.usuarioId,
+      });
+    }
 
     const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId;
     if (veiculoIdNormalizado) {
@@ -339,24 +388,23 @@ export const iniciarRoteiro = async (req, res) => {
 
     await roteiro.update(update);
 
-    const dataHoje = new Date().toISOString().slice(0, 10);
-    const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
-      where: { roteiroId: roteiro.id },
-    });
-
+    // Se já existe execução e está em andamento pelo mesmo usuário, apenas atualiza os campos
     if (execucaoExistente?.emAndamento) {
-      if (!execucaoExistente.usuarioId && req.usuario?.id) {
-        await execucaoExistente.update({ usuarioId: req.usuario.id });
-      }
-    } else if (execucaoExistente) {
+      // Já está em andamento pelo mesmo usuário, nada a fazer
+      return res.json({ success: true, statusRota: "ja_iniciado_por_voce" });
+    }
+
+    // Se existe execução mas não está em andamento, reinicia
+    if (execucaoExistente) {
       await execucaoExistente.update({
-        usuarioId: req.usuario?.id || execucaoExistente.usuarioId || null,
+        usuarioId: req.usuario?.id || null,
         dataInicio: dataHoje,
         iniciadoEm: new Date(),
         emAndamento: true,
         finalizadoEm: null,
       });
     } else {
+      // Cria nova execução
       await RoteiroExecucaoSemanal.create({
         roteiroId: roteiro.id,
         usuarioId: req.usuario?.id || null,
@@ -367,7 +415,7 @@ export const iniciarRoteiro = async (req, res) => {
       });
     }
 
-    res.json({ success: true });
+    res.json({ success: true, statusRota: "iniciado" });
   } catch (error) {
     res.status(500).json({ error: "Erro ao iniciar roteiro" });
   }
@@ -889,5 +937,198 @@ export const apagarRoteiro = async (req, res) => {
   } catch (error) {
     console.error("Erro ao apagar roteiro:", error);
     return res.status(500).json({ error: "Erro ao apagar roteiro" });
+  }
+};
+
+export const obterStatusRoteiroSemanal = async (req, res) => {
+  try {
+    const roteiroId = req.params.id;
+    const dataHoje = new Date().toISOString().slice(0, 10);
+
+    const roteiro = await Roteiro.findByPk(roteiroId);
+    if (!roteiro) {
+      return res.status(404).json({ error: "Roteiro não encontrado" });
+    }
+
+    const execucao = await RoteiroExecucaoSemanal.findOne({
+      where: { roteiroId },
+      attributes: ["id", "usuarioId", "emAndamento", "dataInicio", "iniciadoEm", "finalizadoEm"],
+    });
+
+    let usuarioAssociado = null;
+    if (execucao?.usuarioId) {
+      usuarioAssociado = await Usuario.findByPk(execucao.usuarioId, {
+        attributes: ["id", "nome"],
+      });
+    }
+
+    return res.json({
+      roteiroId,
+      nome: roteiro.nome,
+      execucaoSemanal: execucao
+        ? {
+            emAndamento: execucao.emAndamento,
+            usuarioAssociado: usuarioAssociado ? {
+              id: usuarioAssociado.id,
+              nome: usuarioAssociado.nome,
+            } : null,
+            dataInicio: execucao.dataInicio,
+            iniciadoEm: execucao.iniciadoEm,
+            finalizadoEm: execucao.finalizadoEm,
+          }
+        : null,
+      usuarioAtualId: req.usuario?.id || null,
+      seuRoteiro: execucao?.usuarioId === req.usuario?.id,
+    });
+  } catch (error) {
+    console.error("Erro ao obter status do roteiro:", error);
+    return res.status(500).json({ error: "Erro ao obter status do roteiro" });
+  }
+};
+
+export const verAndamentoRoteiro = async (req, res) => {
+  try {
+    const roteiroId = req.params.id;
+    const dataHoje = new Date().toISOString().slice(0, 10);
+
+    const roteiro = await Roteiro.findByPk(roteiroId, {
+      include: [
+        {
+          model: Loja,
+          as: "lojas",
+          attributes: ["id", "nome"],
+          include: [
+            {
+              model: Maquina,
+              as: "maquinas",
+              attributes: ["id", "nome"],
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!roteiro) {
+      return res.status(404).json({ error: "Roteiro não encontrado" });
+    }
+
+    const execucao = await RoteiroExecucaoSemanal.findOne({
+      where: { roteiroId },
+      attributes: ["id", "usuarioId", "emAndamento", "dataInicio"],
+    });
+
+    if (!execucao || !execucao.emAndamento) {
+      return res.status(404).json({ error: "Roteiro não está em andamento" });
+    }
+
+    // Obter dados de finalização/resumo do roteiro
+    const finalizacaoDia = await RoteiroFinalizacaoDiaria.findOne({
+      where: {
+        roteiroId,
+        data: dataHoje,
+      },
+    });
+
+    // Buscar status das máquinas
+    const statusMaquinas = await MovimentacaoStatusDiario.findAll({
+      where: {
+        roteiro_id: roteiroId,
+        concluida: true,
+        data: {
+          [Op.gte]: execucao.dataInicio,
+        },
+      },
+    });
+
+    const maquinasConcluidas = new Set(
+      statusMaquinas.map((item) => item.maquina_id),
+    );
+
+    // Também considera máquinas com movimentação desde o inicio da execucao como concluídas
+    const inicioExecucao = new Date(
+      `${execucao.dataInicio}T00:00:00.000Z`,
+    );
+    const maquinaIdsRota = roteiro.lojas.flatMap((loja) =>
+      (loja.maquinas || []).map((maquina) => maquina.id),
+    );
+    if (maquinaIdsRota.length) {
+      const movRecentes = await Movimentacao.findAll({
+        attributes: ["maquinaId"],
+        where: {
+          maquinaId: { [Op.in]: maquinaIdsRota },
+          dataColeta: { [Op.gte]: inicioExecucao },
+        },
+      });
+      movRecentes.forEach((mov) => maquinasConcluidas.add(mov.maquinaId));
+    }
+
+    // Preparar informações das lojas
+    const lojasResumo = roteiro.lojas.map((loja) => {
+      const maquinas = (loja.maquinas || []).map((maquina) => ({
+        id: maquina.id,
+        nome: maquina.nome,
+        status: maquinasConcluidas.has(maquina.id) ? "finalizado" : "pendente",
+      }));
+
+      const lojaFinalizada =
+        maquinas.length > 0 && maquinas.every((maquina) => maquina.status === "finalizado");
+
+      return {
+        id: loja.id,
+        nome: loja.nome,
+        status: lojaFinalizada ? "finalizado" : "pendente",
+        maquinas,
+      };
+    });
+
+    // Obter usuário associado
+    let usuarioAssociado = null;
+    if (execucao.usuarioId) {
+      usuarioAssociado = await Usuario.findByPk(execucao.usuarioId, {
+        attributes: ["id", "nome"],
+      });
+    }
+
+    // Buscar mensagem de resumo se já foi criada
+    const resumoExecucao = await sequelize.query(
+      `SELECT * FROM RoteiroResumoExecucao WHERE roteiroId = ? AND data = ? LIMIT 1`,
+      {
+        replacements: [roteiroId, dataHoje],
+        type: sequelize.QueryTypes.SELECT,
+      },
+    );
+
+    return res.json({
+      roteiro: {
+        id: roteiro.id,
+        nome: roteiro.nome,
+        orcamentoDiario: roteiro.orcamentoDiario,
+        observacao: roteiro.observacao,
+      },
+      execucaoSemanal: {
+        emAndamento: execucao.emAndamento,
+        usuarioAssociado: usuarioAssociado ? {
+          id: usuarioAssociado.id,
+          nome: usuarioAssociado.nome,
+        } : null,
+        dataInicio: execucao.dataInicio,
+      },
+      lojas: lojasResumo,
+      resumoFinalizacao: finalizacaoDia
+        ? {
+            estoqueInicialTotal: finalizacaoDia.estoqueInicialTotal,
+            estoqueFinalTotal: finalizacaoDia.estoqueFinalTotal,
+            consumoTotalProdutos: finalizacaoDia.consumoTotalProdutos,
+            finalizadoPorId: finalizacaoDia.finalizadoPorId,
+            finalizadoEm: finalizacaoDia.finalizadoEm,
+          }
+        : null,
+      mensagemResumo: resumoExecucao?.[0]?.mensagem || null,
+      modoLeitura: true,
+      avisoPermissoes: "Você está visualizando este roteiro em modo de leitura. Não é possível fazer edições enquanto este roteiro está sendo executado por outro usuário.",
+    });
+  } catch (error) {
+    console.error("Erro ao visualizar andamento do roteiro:", error);
+    return res.status(500).json({ error: "Erro ao visualizar andamento do roteiro" });
   }
 };
