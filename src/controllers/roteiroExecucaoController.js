@@ -13,7 +13,6 @@ import {
   LogOrdemRoteiro,
   RoteiroPontoPulado,
 } from "../models/index.js";
-import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import {
   obterResumoExecucao,
   salvarSnapshotResumoExecucao,
@@ -25,6 +24,7 @@ import {
   resolverContextoExecucaoSemanal,
 } from "../utils/roteiroExecucaoSemanal.js";
 import RoteiroExecucaoSemanal from "../models/RoteiroExecucaoSemanal.js";
+import { obterStatusMaquinasConcluidasDaExecucao } from "../utils/roteiroStatusSemanal.js";
 
 const obterFaixaSemanaAtualUtc = () => {
   const referencia = new Date();
@@ -142,16 +142,6 @@ async function getRoteiroExecucaoComStatus(req, res) {
     const faixaSemanaAtual = obterFaixaSemanaAtualUtc();
 
     // Buscar status das máquinas concluídas para o roteiro (desde o inicio da execucao)
-    const statusMaquinas = await MovimentacaoStatusDiario.findAll({
-      where: {
-        roteiro_id: roteiro.id,
-        concluida: true,
-        data: {
-          [Op.gte]: dataInicio,
-        },
-      },
-    });
-
     let finalizacaoDia = await RoteiroFinalizacaoDiaria.findOne({
       where: {
         roteiroId: roteiro.id,
@@ -188,13 +178,21 @@ async function getRoteiroExecucaoComStatus(req, res) {
     const finalizacaoManual = finalizacaoDia?.finalizado ? finalizacaoDia : null;
     const roteiroFinalizadoSemana =
       contextoExecucao.finalizadoNaSemana || Boolean(finalizacaoManual);
-    const maquinasFinalizadas = new Set(
-      statusMaquinas.map((s) => s.maquina_id),
-    );
-
     const lojasOrdenadas = [...roteiro.lojas].sort(
       (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0),
     );
+    const maquinaIdsRota = lojasOrdenadas.flatMap((loja) =>
+      (loja.maquinas || []).map((maquina) => maquina.id),
+    );
+    const {
+      statusMaquinas,
+      movimentacoesConsideradas,
+      maquinasConcluidas: maquinasFinalizadas,
+    } = await obterStatusMaquinasConcluidasDaExecucao({
+      roteiroId: roteiro.id,
+      dataInicio,
+      maquinaIds: maquinaIdsRota,
+    });
 
     const logsQuebraOrdemHoje = await LogOrdemRoteiro.findAll({
       where: {
@@ -416,6 +414,12 @@ async function getRoteiroExecucaoComStatus(req, res) {
         data: s.data,
         concluida: s.concluida,
       })),
+      movimentacoesConsideradas: movimentacoesConsideradas.map((mov) => ({
+        maquina_id: mov.maquinaId,
+        roteiro_id: mov.roteiroId,
+        dataColeta: mov.dataColeta,
+        concluida: true,
+      })),
       resumoConsumoProdutos: {
         usuarioIdReferencia: usuarioEstoqueId,
         estoqueInicialTotal:
@@ -443,7 +447,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
 async function getResumoExecucaoPersistido(req, res) {
   try {
     const { id: roteiroId } = req.params;
-    const data = req.query.data || new Date().toISOString().slice(0, 10);
+    const data = req.query.data || getDataHoje();
 
     const resumo = await obterResumoExecucao({ roteiroId, data });
     if (!resumo) {
@@ -511,7 +515,6 @@ async function getTodosRoteirosComStatus(req, res) {
       execucoes.map((execucao) => [String(execucao.roteiroId), execucao]),
     );
 
-    let dataMinima = dataHoje;
     const contextoPorRoteiro = new Map();
     roteiros.forEach((roteiro) => {
       const execucao = execucaoPorRoteiro.get(String(roteiro.id));
@@ -523,10 +526,6 @@ async function getTodosRoteirosComStatus(req, res) {
       const usarDataInicio = execucao && (emAndamento || finalizadoNaSemana);
       const dataInicio = usarDataInicio ? dataInicioBase : dataHoje;
 
-      if (usarDataInicio && dataInicio < dataMinima) {
-        dataMinima = dataInicio;
-      }
-
       contextoPorRoteiro.set(String(roteiro.id), {
         dataInicio,
         finalizadoNaSemana,
@@ -534,14 +533,6 @@ async function getTodosRoteirosComStatus(req, res) {
     });
 
     // Buscar status de todas as máquinas concluídas para todos os roteiros
-    const statusMaquinas = await MovimentacaoStatusDiario.findAll({
-      where: {
-        concluida: true,
-        data: {
-          [Op.gte]: dataMinima,
-        },
-      },
-    });
     const finalizacoesManuais = await RoteiroFinalizacaoDiaria.findAll({
       where: {
         finalizado: true,
@@ -552,22 +543,26 @@ async function getTodosRoteirosComStatus(req, res) {
       finalizacoesManuais.map((item) => item.roteiroId),
     );
     // Agrupar por roteiro
-    const roteirosComStatus = roteiros.map((roteiro) => {
+    const roteirosComStatus = await Promise.all(roteiros.map(async (roteiro) => {
       const contexto = contextoPorRoteiro.get(String(roteiro.id)) || {
         dataInicio: dataHoje,
         finalizadoNaSemana: false,
       };
-      const statusMaquinasRoteiro = statusMaquinas.filter((s) => {
-        if (s.roteiro_id !== roteiro.id) return false;
-        const dataRegistro = String(s.data);
-        return dataRegistro >= contexto.dataInicio;
-      });
-      const maquinasFinalizadas = new Set(
-        statusMaquinasRoteiro.map((s) => s.maquina_id),
-      );
       const lojasOrdenadas = [...roteiro.lojas].sort(
         (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0),
       );
+      const maquinaIdsRota = lojasOrdenadas.flatMap((loja) =>
+        (loja.maquinas || []).map((maquina) => maquina.id),
+      );
+      const {
+        statusMaquinas: statusMaquinasRoteiro,
+        movimentacoesConsideradas,
+        maquinasConcluidas: maquinasFinalizadas,
+      } = await obterStatusMaquinasConcluidasDaExecucao({
+        roteiroId: roteiro.id,
+        dataInicio: contexto.dataInicio,
+        maquinaIds: maquinaIdsRota,
+      });
       let roteiroFinalizado = lojasOrdenadas.length > 0;
       let roteiroTemMaquinas = false;
       const lojas = lojasOrdenadas.map((loja) => {
@@ -637,8 +632,14 @@ async function getTodosRoteirosComStatus(req, res) {
           data: s.data,
           concluida: s.concluida,
         })),
+        movimentacoesConsideradas: movimentacoesConsideradas.map((mov) => ({
+          maquina_id: mov.maquinaId,
+          roteiro_id: mov.roteiroId,
+          dataColeta: mov.dataColeta,
+          concluida: true,
+        })),
       };
-    });
+    }));
     res.json(roteirosComStatus);
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar status dos roteiros" });

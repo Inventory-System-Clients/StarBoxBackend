@@ -1,6 +1,16 @@
 import RoteiroExecucaoSemanal from "../models/RoteiroExecucaoSemanal.js";
 
-export const getDataHoje = () => new Date().toISOString().slice(0, 10);
+export const getDataHoje = () => {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const porTipo = Object.fromEntries(partes.map((parte) => [parte.type, parte.value]));
+  return `${porTipo.year}-${porTipo.month}-${porTipo.day}`;
+};
 
 export const getFaixaSemanaAtualUtc = () => {
   const referencia = new Date();

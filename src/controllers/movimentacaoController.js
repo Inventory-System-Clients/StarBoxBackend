@@ -17,10 +17,10 @@ import {
 import { Op } from "sequelize";
 import { randomUUID } from "node:crypto";
 import { registrarMovimentacaoPecas } from "./movimentacaoPecaController.js";
-import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
 import AlertManager from "../services/alertManager.js";
 import { calcularEsperadoMovimentacaoRetirada } from "../services/fluxoCaixaCalculoService.js";
+import { registrarMaquinaConcluidaNaExecucao } from "../utils/roteiroStatusSemanal.js";
 
 const possuiNumero = (valor) =>
   valor !== null &&
@@ -1062,24 +1062,11 @@ export const registrarMovimentacao = async (req, res) => {
     }
 
     try {
-      const hoje = new Date();
-      const dataHoje = hoje.toISOString().slice(0, 10);
-      const statusExistente = await MovimentacaoStatusDiario.findOne({
-        where: {
-          maquina_id: maquinaId,
-          roteiro_id: roteiroId,
-          concluida: true,
-        },
+      await registrarMaquinaConcluidaNaExecucao({
+        maquinaId,
+        roteiroId: movimentacao.roteiroId,
+        data: movimentacao.dataColeta,
       });
-
-      if (!statusExistente) {
-        await MovimentacaoStatusDiario.upsert({
-          maquina_id: maquinaId,
-          roteiro_id: roteiroId,
-          data: dataHoje,
-          concluida: true,
-        });
-      }
     } catch (erroSecundario) {
       warnings.push("Falha ao atualizar status diario da movimentacao");
       logMovimentacao("warn", {

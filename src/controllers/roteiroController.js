@@ -28,7 +28,10 @@ import {
   montarMensagemResumoWhatsapp,
 } from "../services/roteiroResumoExecucaoService.js";
 import { encerrarLocalizacaoAtiva } from "./roteiroLocalizacaoController.js";
-import { resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
+import {
+  getDataHoje,
+  resolverContextoExecucaoSemanal,
+} from "../utils/roteiroExecucaoSemanal.js";
 
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -362,7 +365,7 @@ export const iniciarRoteiro = async (req, res) => {
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
 
-    const dataHoje = new Date().toISOString().slice(0, 10);
+    const dataHoje = getDataHoje();
     const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
       where: { roteiroId: roteiro.id },
     });
@@ -445,7 +448,7 @@ export const finalizarRoteiro = async (req, res) => {
     }
 
     const roteiroId = req.params.id;
-    const dataHoje = new Date().toISOString().slice(0, 10);
+    const dataHoje = getDataHoje();
     const requestId = getRequestId(req);
     const userId = req.usuario.id;
     const role = req.usuario.role;
@@ -800,7 +803,7 @@ export const desfinalizarRoteiro = async (req, res) => {
     }
 
     const roteiroId = req.params.id;
-    const dataHoje = new Date().toISOString().slice(0, 10);
+    const dataHoje = getDataHoje();
     const requestId = getRequestId(req);
     const userId = req.usuario.id;
     const role = req.usuario.role;
@@ -962,7 +965,7 @@ export const apagarRoteiro = async (req, res) => {
 export const obterStatusRoteiroSemanal = async (req, res) => {
   try {
     const roteiroId = req.params.id;
-    const dataHoje = new Date().toISOString().slice(0, 10);
+    const dataHoje = getDataHoje();
 
     const roteiro = await Roteiro.findByPk(roteiroId);
     if (!roteiro) {
@@ -1008,7 +1011,7 @@ export const obterStatusRoteiroSemanal = async (req, res) => {
 export const verAndamentoRoteiro = async (req, res) => {
   try {
     const roteiroId = req.params.id;
-    const dataHoje = new Date().toISOString().slice(0, 10);
+    const dataHoje = getDataHoje();
 
     const roteiro = await Roteiro.findByPk(roteiroId, {
       include: [

@@ -15,7 +15,8 @@ import {
 import { sequelize } from "../database/connection.js";
 import { autenticar, autorizar } from "../middlewares/auth.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
-import { resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
+import { getDataHoje, resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
+import { obterStatusMaquinasConcluidasDaExecucao } from "../utils/roteiroStatusSemanal.js";
 import {
   finalizarRoteiro,
   desfinalizarRoteiro,
@@ -43,7 +44,7 @@ const ROLES_OPERACAO_ROTEIRO = ["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"];
 const roteiroFoiFinalizadoHoje = async (roteiroId, transaction) => {
   if (!roteiroId) return false;
 
-  const dataHoje = new Date().toISOString().slice(0, 10);
+  const dataHoje = getDataHoje();
   const finalizacao = await RoteiroFinalizacaoDiaria.findOne({
     where: {
       roteiroId,
@@ -55,8 +56,6 @@ const roteiroFoiFinalizadoHoje = async (roteiroId, transaction) => {
 
   return Boolean(finalizacao);
 };
-
-const getDataHoje = () => new Date().toISOString().slice(0, 10);
 
 const pontoFoiJustificadoNoDia = (pontoPulado) =>
   Boolean(pontoPulado?.foiPulado && pontoPulado?.justificativaEnviada);
@@ -81,22 +80,15 @@ const obterContextoOrdemRoteiro = async (roteiroId) => {
 
   const lojasPorId = new Map(lojas.map((loja) => [normalizarId(loja.id), loja]));
 
-  const MovimentacaoStatusDiario = (
-    await import("../models/MovimentacaoStatusDiario.js")
-  ).default;
-
   const contextoExecucao = await resolverContextoExecucaoSemanal(roteiroId);
-
-  const statusConcluido = await MovimentacaoStatusDiario.findAll({
-    where: {
-      roteiro_id: roteiroId,
-      concluida: true,
-      data: {
-        [Op.gte]: contextoExecucao.dataInicio,
-      },
-    },
+  const maquinaIdsRota = lojas.flatMap((loja) =>
+    (loja.maquinas || []).map((maquina) => maquina.id),
+  );
+  const { maquinasConcluidas } = await obterStatusMaquinasConcluidasDaExecucao({
+    roteiroId,
+    dataInicio: contextoExecucao.dataInicio,
+    maquinaIds: maquinaIdsRota,
   });
-  const maquinasConcluidas = new Set(statusConcluido.map((s) => s.maquina_id));
 
   return lojasRoteiro
     .map((rel) => {

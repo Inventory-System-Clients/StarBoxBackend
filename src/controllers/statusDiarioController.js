@@ -1,6 +1,5 @@
-import { Op } from "sequelize";
-import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import { resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
+import { obterStatusMaquinasConcluidasDaExecucao } from "../utils/roteiroStatusSemanal.js";
 
 export const getStatusDiario = async (req, res) => {
   try {
@@ -15,17 +14,12 @@ export const getStatusDiario = async (req, res) => {
       return res.json({ concluida: false });
     }
 
-    const status = await MovimentacaoStatusDiario.findOne({
-      where: {
-        maquina_id: maquinaId,
-        roteiro_id: roteiroId,
-        concluida: true,
-        data: {
-          [Op.gte]: contextoExecucao.dataInicio,
-        },
-      },
+    const { maquinasConcluidas } = await obterStatusMaquinasConcluidasDaExecucao({
+      roteiroId,
+      dataInicio: contextoExecucao.dataInicio,
+      maquinaIds: [maquinaId],
     });
-    res.json({ concluida: !!(status && status.concluida) });
+    res.json({ concluida: maquinasConcluidas.has(maquinaId) });
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar status diário" });
   }
