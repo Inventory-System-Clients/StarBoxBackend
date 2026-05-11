@@ -26,6 +26,7 @@ import { Op } from "sequelize";
 import {
   fecharResumoExecucao,
   montarMensagemResumoWhatsapp,
+  obterResumoExecucao,
 } from "../services/roteiroResumoExecucaoService.js";
 import { encerrarLocalizacaoAtiva } from "./roteiroLocalizacaoController.js";
 import {
@@ -725,7 +726,7 @@ export const finalizarRoteiro = async (req, res) => {
       }));
 
       const lojaFinalizada =
-        maquinas.length > 0 && maquinas.every((maquina) => maquina.status === "finalizado");
+        maquinas.some((maquina) => maquina.status === "finalizado");
 
       return {
         nome: loja.nome,
@@ -1045,7 +1046,14 @@ export const verAndamentoRoteiro = async (req, res) => {
 
     const execucao = await RoteiroExecucaoSemanal.findOne({
       where: { roteiroId },
-      attributes: ["id", "usuarioId", "emAndamento", "dataInicio"],
+      attributes: [
+        "id",
+        "usuarioId",
+        "emAndamento",
+        "dataInicio",
+        "iniciadoEm",
+        "finalizadoEm",
+      ],
     });
 
     if (!execucao || !execucao.emAndamento) {
@@ -1121,13 +1129,13 @@ export const verAndamentoRoteiro = async (req, res) => {
     }
 
     // Buscar mensagem de resumo se já foi criada
-    const resumoExecucao = await sequelize.query(
-      `SELECT * FROM RoteiroResumoExecucao WHERE roteiroId = ? AND data = ? LIMIT 1`,
-      {
-        replacements: [roteiroId, dataHoje],
-        type: sequelize.QueryTypes.SELECT,
-      },
-    );
+    const resumoExecucao = await obterResumoExecucao({
+      roteiroId,
+      data: dataHoje,
+    });
+    const mensagemResumo = resumoExecucao
+      ? await montarMensagemResumoWhatsapp(resumoExecucao)
+      : null;
 
     return res.json({
       roteiro: {
@@ -1143,6 +1151,8 @@ export const verAndamentoRoteiro = async (req, res) => {
           nome: usuarioAssociado.nome,
         } : null,
         dataInicio: execucao.dataInicio,
+        iniciadoEm: execucao.iniciadoEm,
+        finalizadoEm: execucao.finalizadoEm,
       },
       lojas: lojasResumo,
       resumoFinalizacao: finalizacaoDia
@@ -1154,7 +1164,8 @@ export const verAndamentoRoteiro = async (req, res) => {
             finalizadoEm: finalizacaoDia.finalizadoEm,
           }
         : null,
-      mensagemResumo: resumoExecucao?.[0]?.mensagem || null,
+      resumoExecucao,
+      mensagemResumo,
       modoLeitura: true,
       avisoPermissoes: "Você está visualizando este roteiro em modo de leitura. Não é possível fazer edições enquanto este roteiro está sendo executado por outro usuário.",
     });

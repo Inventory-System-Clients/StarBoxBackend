@@ -27,6 +27,8 @@ import {
   criarRoteiro,
   atualizarDiasSemana,
   apagarRoteiro,
+  obterStatusRoteiroSemanal,
+  verAndamentoRoteiro,
 } from "../controllers/roteiroController.js";
 import {
   listarGastosRoteiro,
@@ -920,5 +922,7 @@ import {
 
 router.get("/:id/executar", autenticar, getRoteiroExecucaoComStatus);
 router.get("/:id/resumo-execucao", autenticar, getResumoExecucaoPersistido);
+router.get("/:id/status-semanal", autenticar, obterStatusRoteiroSemanal);
+router.get("/:id/ver-andamento", autenticar, verAndamentoRoteiro);
 
 export default router;
