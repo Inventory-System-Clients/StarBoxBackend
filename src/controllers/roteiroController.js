@@ -347,7 +347,7 @@ export const listarRoteiros = async (req, res) => {
                 } : null,
                 dataInicio: execucao.dataInicio,
                 iniciadoEm: execucao.iniciadoEm,
-                finalizadoEm: execucao.finalizadoEm,
+                finalizadoEm: execucao.emAndamento ? null : execucao.finalizadoEm,
               }
             : null,
         };
@@ -405,7 +405,9 @@ export const iniciarRoteiro = async (req, res) => {
 
     // Se já existe execução e está em andamento pelo mesmo usuário, apenas atualiza os campos
     if (execucaoExistente?.emAndamento) {
-      // Já está em andamento pelo mesmo usuário, nada a fazer
+      if (execucaoExistente.finalizadoEm) {
+        await execucaoExistente.update({ finalizadoEm: null });
+      }
       return res.json({ success: true, statusRota: "ja_iniciado_por_voce" });
     }
 
@@ -1006,7 +1008,7 @@ export const obterStatusRoteiroSemanal = async (req, res) => {
             } : null,
             dataInicio: execucao.dataInicio,
             iniciadoEm: execucao.iniciadoEm,
-            finalizadoEm: execucao.finalizadoEm,
+            finalizadoEm: execucao.emAndamento ? null : execucao.finalizadoEm,
           }
         : null,
       usuarioAtualId: req.usuario?.id || null,
@@ -1152,7 +1154,7 @@ export const verAndamentoRoteiro = async (req, res) => {
         } : null,
         dataInicio: execucao.dataInicio,
         iniciadoEm: execucao.iniciadoEm,
-        finalizadoEm: execucao.finalizadoEm,
+        finalizadoEm: execucao.emAndamento ? null : execucao.finalizadoEm,
       },
       lojas: lojasResumo,
       resumoFinalizacao: finalizacaoDia

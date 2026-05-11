@@ -310,8 +310,15 @@ router.post(
       }
 
       if (execucaoExistente?.emAndamento) {
+        const updateExecucao = {};
         if (!execucaoExistente.usuarioId && req.usuario?.id) {
-          await execucaoExistente.update({ usuarioId: req.usuario.id });
+          updateExecucao.usuarioId = req.usuario.id;
+        }
+        if (execucaoExistente.finalizadoEm) {
+          updateExecucao.finalizadoEm = null;
+        }
+        if (Object.keys(updateExecucao).length > 0) {
+          await execucaoExistente.update(updateExecucao);
         }
       } else if (execucaoExistente) {
         await execucaoExistente.update({

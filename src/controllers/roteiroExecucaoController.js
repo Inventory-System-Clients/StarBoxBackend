@@ -397,7 +397,9 @@ async function getRoteiroExecucaoComStatus(req, res) {
             emAndamento: contextoExecucao.emAndamento,
             dataInicio: contextoExecucao.dataInicioBase,
             iniciadoEm: contextoExecucao.execucao.iniciadoEm,
-            finalizadoEm: contextoExecucao.execucao.finalizadoEm,
+            finalizadoEm: contextoExecucao.emAndamento
+              ? null
+              : contextoExecucao.execucao.finalizadoEm,
             usuarioId: contextoExecucao.execucao.usuarioId,
           }
         : null,
@@ -634,7 +636,9 @@ async function getTodosRoteirosComStatus(req, res) {
               emAndamento: contexto.emAndamento,
               dataInicio: contexto.dataInicioBase,
               iniciadoEm: contexto.execucao.iniciadoEm,
-              finalizadoEm: contexto.execucao.finalizadoEm,
+              finalizadoEm: contexto.emAndamento
+                ? null
+                : contexto.execucao.finalizadoEm,
               usuarioId: contexto.execucao.usuarioId,
             }
           : null,

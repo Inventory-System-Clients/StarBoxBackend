@@ -81,7 +81,9 @@ router.get("/:id/status-execucao", async (req, res) => {
             emAndamento: contextoExecucao.emAndamento,
             dataInicio: contextoExecucao.dataInicioBase,
             iniciadoEm: contextoExecucao.execucao.iniciadoEm,
-            finalizadoEm: contextoExecucao.execucao.finalizadoEm,
+            finalizadoEm: contextoExecucao.emAndamento
+              ? null
+              : contextoExecucao.execucao.finalizadoEm,
             usuarioId: contextoExecucao.execucao.usuarioId,
           }
         : null,
