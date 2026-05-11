@@ -19,30 +19,13 @@ import {
   montarMensagemResumoWhatsapp,
 } from "../services/roteiroResumoExecucaoService.js";
 import {
+  getFaixaSemanaAtualUtc,
   getDataHoje,
   isFinalizadoNaSemana,
   resolverContextoExecucaoSemanal,
 } from "../utils/roteiroExecucaoSemanal.js";
 import RoteiroExecucaoSemanal from "../models/RoteiroExecucaoSemanal.js";
 import { obterStatusMaquinasConcluidasDaExecucao } from "../utils/roteiroStatusSemanal.js";
-
-const obterFaixaSemanaAtualUtc = () => {
-  const referencia = new Date();
-  const inicioSemana = new Date(referencia);
-  inicioSemana.setUTCDate(inicioSemana.getUTCDate() - inicioSemana.getUTCDay());
-  inicioSemana.setUTCHours(0, 0, 0, 0);
-
-  const fimSemana = new Date(inicioSemana);
-  fimSemana.setUTCDate(fimSemana.getUTCDate() + 6);
-  fimSemana.setUTCHours(23, 59, 59, 999);
-
-  return {
-    inicio: inicioSemana,
-    fim: fimSemana,
-    inicioSemana: inicioSemana.toISOString().slice(0, 10),
-    fimSemana: fimSemana.toISOString().slice(0, 10),
-  };
-};
 
 const obterTotalEstoqueUsuario = async (usuarioId) => {
   if (!usuarioId) return null;
@@ -139,7 +122,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
     const dataInicio = contextoExecucao.dataInicio;
     const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
     const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
-    const faixaSemanaAtual = obterFaixaSemanaAtualUtc();
+    const faixaSemanaAtual = getFaixaSemanaAtualUtc();
 
     // Buscar status das máquinas concluídas para o roteiro (desde o inicio da execucao)
     let finalizacaoDia = await RoteiroFinalizacaoDiaria.findOne({
@@ -404,7 +387,20 @@ async function getRoteiroExecucaoComStatus(req, res) {
             }
           : null,
       })),
-      status: roteiroFinalizadoSemana ? "finalizado" : "pendente",
+      status: roteiroFinalizadoSemana
+        ? "finalizado"
+        : contextoExecucao.emAndamento
+          ? "em_andamento"
+          : "pendente",
+      execucaoSemanal: contextoExecucao.execucao
+        ? {
+            emAndamento: contextoExecucao.emAndamento,
+            dataInicio: contextoExecucao.dataInicioBase,
+            iniciadoEm: contextoExecucao.execucao.iniciadoEm,
+            finalizadoEm: contextoExecucao.execucao.finalizadoEm,
+            usuarioId: contextoExecucao.execucao.usuarioId,
+          }
+        : null,
       lojas,
       lojasPendentesJustificadasIds,
       pontosPuladosStatus,
@@ -528,7 +524,10 @@ async function getTodosRoteirosComStatus(req, res) {
 
       contextoPorRoteiro.set(String(roteiro.id), {
         dataInicio,
+        dataInicioBase,
+        emAndamento,
         finalizadoNaSemana,
+        execucao,
       });
     });
 
@@ -546,7 +545,10 @@ async function getTodosRoteirosComStatus(req, res) {
     const roteirosComStatus = await Promise.all(roteiros.map(async (roteiro) => {
       const contexto = contextoPorRoteiro.get(String(roteiro.id)) || {
         dataInicio: dataHoje,
+        dataInicioBase: dataHoje,
+        emAndamento: false,
         finalizadoNaSemana: false,
+        execucao: null,
       };
       const lojasOrdenadas = [...roteiro.lojas].sort(
         (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0),
@@ -624,7 +626,18 @@ async function getTodosRoteirosComStatus(req, res) {
         status:
           contexto.finalizadoNaSemana || finalizacoesPorRoteiro.has(roteiro.id)
             ? "finalizado"
-            : "pendente",
+            : contexto.emAndamento
+              ? "em_andamento"
+              : "pendente",
+        execucaoSemanal: contexto.execucao
+          ? {
+              emAndamento: contexto.emAndamento,
+              dataInicio: contexto.dataInicioBase,
+              iniciadoEm: contexto.execucao.iniciadoEm,
+              finalizadoEm: contexto.execucao.finalizadoEm,
+              usuarioId: contexto.execucao.usuarioId,
+            }
+          : null,
         lojas,
         movimentacoesHoje: statusMaquinasRoteiro.map((s) => ({
           maquina_id: s.maquina_id,

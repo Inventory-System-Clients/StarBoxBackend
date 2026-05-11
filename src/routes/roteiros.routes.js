@@ -15,7 +15,11 @@ import {
 import { sequelize } from "../database/connection.js";
 import { autenticar, autorizar } from "../middlewares/auth.js";
 import justificativasPendentes from "../utils/justificativasPendentes.js";
-import { getDataHoje, resolverContextoExecucaoSemanal } from "../utils/roteiroExecucaoSemanal.js";
+import {
+  getDataHoje,
+  isFinalizadoNaSemana,
+  resolverContextoExecucaoSemanal,
+} from "../utils/roteiroExecucaoSemanal.js";
 import { obterStatusMaquinasConcluidasDaExecucao } from "../utils/roteiroStatusSemanal.js";
 import {
   finalizarRoteiro,
@@ -41,14 +45,25 @@ const router = express.Router();
 const ROLES_GESTAO_ROTEIROS = ["ADMIN", "GERENCIADOR"];
 const ROLES_OPERACAO_ROTEIRO = ["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"];
 
-const roteiroFoiFinalizadoHoje = async (roteiroId, transaction) => {
+const roteiroFoiFinalizadoNoCicloAtual = async (roteiroId, transaction) => {
   if (!roteiroId) return false;
 
-  const dataHoje = getDataHoje();
+  const execucao = await RoteiroExecucaoSemanal.findOne({
+    where: { roteiroId },
+    transaction,
+  });
+
+  if (isFinalizadoNaSemana(execucao)) {
+    return true;
+  }
+
+  const contexto = await resolverContextoExecucaoSemanal(roteiroId);
   const finalizacao = await RoteiroFinalizacaoDiaria.findOne({
     where: {
       roteiroId,
-      data: dataHoje,
+      data: {
+        [Op.gte]: contexto.dataInicio,
+      },
       finalizado: true,
     },
     transaction,
@@ -284,6 +299,14 @@ router.post(
         where: { roteiroId: roteiro.id },
       });
 
+      if (isFinalizadoNaSemana(execucaoExistente)) {
+        return res.status(409).json({
+          error: "Este roteiro ja foi finalizado e so pode ser iniciado novamente apos o reset semanal de domingo as 21h",
+          statusRota: "finalizado_ate_reset",
+          finalizadoEm: execucaoExistente.finalizadoEm,
+        });
+      }
+
       if (execucaoExistente?.emAndamento) {
         if (!execucaoExistente.usuarioId && req.usuario?.id) {
           await execucaoExistente.update({ usuarioId: req.usuario.id });
@@ -389,7 +412,7 @@ router.post(
           .json({ error: "Roteiro de destino não encontrado" });
 
       await sequelize.transaction(async (t) => {
-        const destinoFinalizado = await roteiroFoiFinalizadoHoje(
+        const destinoFinalizado = await roteiroFoiFinalizadoNoCicloAtual(
           roteiroDestinoId,
           t,
         );
@@ -403,7 +426,7 @@ router.post(
         }
 
         if (roteiroOrigemId) {
-          const origemFinalizado = await roteiroFoiFinalizadoHoje(
+          const origemFinalizado = await roteiroFoiFinalizadoNoCicloAtual(
             roteiroOrigemId,
             t,
           );
@@ -507,7 +530,7 @@ router.patch(
       const { id: roteiroId } = req.params;
       const { lojaId, novaOrdem } = req.body;
 
-      const roteiroFinalizado = await roteiroFoiFinalizadoHoje(roteiroId);
+      const roteiroFinalizado = await roteiroFoiFinalizadoNoCicloAtual(roteiroId);
       if (roteiroFinalizado) {
         return res.status(409).json({
           error: "Roteiro finalizado: não é permitido reordenar lojas.",

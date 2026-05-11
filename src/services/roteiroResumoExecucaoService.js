@@ -8,6 +8,7 @@ import {
   RoteiroResumoExecucao,
   Veiculo,
 } from "../models/index.js";
+import { getFaixaSemanaAtualUtc } from "../utils/roteiroExecucaoSemanal.js";
 
 const STATUS_MANUTENCAO_REALIZADA = new Set(["feito", "concluida"]);
 
@@ -151,22 +152,6 @@ const obterEstoqueAdicional = async ({ funcionarioId, retiradaDataHora, data }) 
   });
 
   return Number.isFinite(soma) ? soma : 0;
-};
-
-const getFaixaSemanaAtualUtc = () => {
-  const referencia = new Date();
-  const inicioSemana = new Date(referencia);
-  inicioSemana.setUTCDate(inicioSemana.getUTCDate() - inicioSemana.getUTCDay());
-  inicioSemana.setUTCHours(0, 0, 0, 0);
-
-  const fimSemana = new Date(inicioSemana);
-  fimSemana.setUTCDate(fimSemana.getUTCDate() + 6);
-  fimSemana.setUTCHours(23, 59, 59, 999);
-
-  return {
-    inicio: inicioSemana,
-    fim: fimSemana,
-  };
 };
 
 const montarResumoManutencoes = async (roteiroId) => {

@@ -8,6 +8,7 @@ import {
 } from "../models/index.js";
 import { sequelize } from "../database/connection.js";
 import { verificarRevisaoPendente } from "../services/revisaoVeiculoService.js";
+import { getFaixaSemanaAtualUtc } from "../utils/roteiroExecucaoSemanal.js";
 
 const CATEGORIAS_GASTO = [
   "transporte",
@@ -37,19 +38,15 @@ const parseLitros = (valor) => {
 
 const getFaixaSemana = (dataParam) => {
   const dataReferencia = dataParam || new Date().toISOString().slice(0, 10);
-  const referencia = new Date(`${dataReferencia}T00:00:00.000Z`);
+  const referencia = dataParam
+    ? new Date(`${dataReferencia}T12:00:00-03:00`)
+    : new Date();
 
   if (Number.isNaN(referencia.getTime())) {
     return null;
   }
 
-  const inicio = new Date(referencia);
-  inicio.setUTCDate(inicio.getUTCDate() - inicio.getUTCDay());
-  inicio.setUTCHours(0, 0, 0, 0);
-
-  const fim = new Date(inicio);
-  fim.setUTCDate(fim.getUTCDate() + 6);
-  fim.setUTCHours(23, 59, 59, 999);
+  const { inicio, fim, inicioSemana, fimSemana } = getFaixaSemanaAtualUtc(referencia);
 
   if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime())) {
     return null;
@@ -59,8 +56,8 @@ const getFaixaSemana = (dataParam) => {
     dataReferencia,
     inicio,
     fim,
-    inicioSemana: inicio.toISOString().slice(0, 10),
-    fimSemana: fim.toISOString().slice(0, 10),
+    inicioSemana,
+    fimSemana,
   };
 };
 

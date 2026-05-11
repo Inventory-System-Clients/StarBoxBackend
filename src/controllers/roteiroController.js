@@ -30,6 +30,7 @@ import {
 import { encerrarLocalizacaoAtiva } from "./roteiroLocalizacaoController.js";
 import {
   getDataHoje,
+  isFinalizadoNaSemana,
   resolverContextoExecucaoSemanal,
 } from "../utils/roteiroExecucaoSemanal.js";
 
@@ -369,6 +370,14 @@ export const iniciarRoteiro = async (req, res) => {
     const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
       where: { roteiroId: roteiro.id },
     });
+
+    if (isFinalizadoNaSemana(execucaoExistente)) {
+      return res.status(409).json({
+        error: "Este roteiro ja foi finalizado e so pode ser iniciado novamente apos o reset semanal de domingo as 21h",
+        statusRota: "finalizado_ate_reset",
+        finalizadoEm: execucaoExistente.finalizadoEm,
+      });
+    }
 
     // Se o roteiro já está em andamento por outro usuário, não permite iniciar
     if (execucaoExistente?.emAndamento && execucaoExistente.usuarioId !== req.usuario?.id) {

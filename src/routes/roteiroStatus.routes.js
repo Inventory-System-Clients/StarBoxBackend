@@ -71,7 +71,20 @@ router.get("/:id/status-execucao", async (req, res) => {
     return res.json({
       id: roteiro.id,
       nome: roteiro.nome,
-      status: roteiroFinalizadoSemana ? "finalizado" : "pendente",
+      status: roteiroFinalizadoSemana
+        ? "finalizado"
+        : contextoExecucao.emAndamento
+          ? "em_andamento"
+          : "pendente",
+      execucaoSemanal: contextoExecucao.execucao
+        ? {
+            emAndamento: contextoExecucao.emAndamento,
+            dataInicio: contextoExecucao.dataInicioBase,
+            iniciadoEm: contextoExecucao.execucao.iniciadoEm,
+            finalizadoEm: contextoExecucao.execucao.finalizadoEm,
+            usuarioId: contextoExecucao.execucao.usuarioId,
+          }
+        : null,
       data: dataHoje,
       lojas,
     });

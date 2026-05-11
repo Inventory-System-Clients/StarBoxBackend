@@ -3,23 +3,27 @@ import { Op } from "sequelize";
 import MovimentacaoStatusDiario from "../models/MovimentacaoStatusDiario.js";
 import RoteiroFinalizacaoDiaria from "../models/RoteiroFinalizacaoDiaria.js";
 import RoteiroExecucaoSemanal from "../models/RoteiroExecucaoSemanal.js";
-
-// Reseta o status semanal dos roteiros
+import {
+  getFaixaSemanaAtualUtc,
+  isHorarioResetSemanalSaoPaulo,
+} from "./roteiroExecucaoSemanal.js";
 
 export async function resetarRoteirosDiarios() {
   try {
-    const hoje = new Date();
-    const ehDomingo = hoje.getDay() === 0;
-    const seteDiasAtras = new Date();
-    seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
+    const agora = new Date();
+    const deveResetarSemana = isHorarioResetSemanalSaoPaulo(agora);
+    const { inicioSemana } = getFaixaSemanaAtualUtc(agora);
 
-    // Limpa apenas status de máquinas com mais de 7 dias (preserva a semana atual)
-    await MovimentacaoStatusDiario.destroy({ where: { data: { [Op.lt]: seteDiasAtras } } });
+    // Mantem o ciclo atual intacto; remove apenas residuos de ciclos anteriores.
+    await MovimentacaoStatusDiario.destroy({
+      where: { data: { [Op.lt]: inicioSemana } },
+    });
 
-    // Limpa finalizações manuais dos roteiros com mais de 7 dias
-    await RoteiroFinalizacaoDiaria.destroy({ where: { data: { [Op.lt]: seteDiasAtras } } });
+    await RoteiroFinalizacaoDiaria.destroy({
+      where: { data: { [Op.lt]: inicioSemana } },
+    });
 
-    if (ehDomingo) {
+    if (deveResetarSemana) {
       await MovimentacaoStatusDiario.destroy({ where: {} });
       await RoteiroFinalizacaoDiaria.destroy({ where: {} });
       await RoteiroExecucaoSemanal.update(
@@ -28,8 +32,12 @@ export async function resetarRoteirosDiarios() {
       );
     }
 
-    console.log("🔄 Status semanais de roteiros resetados com sucesso!");
+    console.log(
+      deveResetarSemana
+        ? "Status semanais de roteiros resetados com sucesso!"
+        : "Limpeza de dados antigos de roteiros concluida; ciclo atual preservado.",
+    );
   } catch (error) {
-    console.error("❌ Erro ao resetar status semanal dos roteiros:", error);
+    console.error("Erro ao resetar status semanal dos roteiros:", error);
   }
 }
