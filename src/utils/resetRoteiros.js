@@ -27,7 +27,13 @@ export async function resetarRoteirosDiarios() {
       await MovimentacaoStatusDiario.destroy({ where: {} });
       await RoteiroFinalizacaoDiaria.destroy({ where: {} });
       await RoteiroExecucaoSemanal.update(
-        { emAndamento: false, finalizadoEm: null },
+        {
+          emAndamento: false,
+          finalizadoEm: null,
+          veiculoId: null,
+          kmInicialVeiculo: null,
+          kmInicialRegistradoEm: null,
+        },
         { where: {} },
       );
     }

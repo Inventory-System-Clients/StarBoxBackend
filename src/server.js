@@ -316,6 +316,35 @@ const startServer = async () => {
       );
     }
 
+    // Migration: KM inicial semanal persistente na execucao de roteiro
+    try {
+      await sequelize.query(`
+        ALTER TABLE roteiro_execucao_semanal
+        ADD COLUMN IF NOT EXISTS veiculo_id UUID REFERENCES veiculos(id) ON DELETE SET NULL;
+      `);
+      await sequelize.query(`
+        ALTER TABLE roteiro_execucao_semanal
+        ADD COLUMN IF NOT EXISTS km_inicial_veiculo INTEGER;
+      `);
+      await sequelize.query(`
+        ALTER TABLE roteiro_execucao_semanal
+        ADD COLUMN IF NOT EXISTS km_inicial_registrado_em TIMESTAMP WITH TIME ZONE;
+      `);
+      await sequelize.query(`
+        CREATE INDEX IF NOT EXISTS idx_roteiro_execucao_semanal_veiculo_id
+        ON roteiro_execucao_semanal (veiculo_id);
+      `);
+
+      console.log(
+        "âœ… Migration: KM inicial semanal adicionado em roteiro_execucao_semanal",
+      );
+    } catch (migErr) {
+      console.warn(
+        "âš ï¸ Migration inline (roteiro_execucao_semanal km inicial):",
+        migErr.message,
+      );
+    }
+
     // Criar admin padrão se não existir
     const { Usuario } = await import("./models/index.js");
     const adminEmail = process.env.ADMIN_EMAIL || "admin@agarramais.com";

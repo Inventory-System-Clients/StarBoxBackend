@@ -27,6 +27,25 @@ const RoteiroExecucaoSemanal = sequelize.define(
         key: "id",
       },
     },
+    veiculoId: {
+      type: DataTypes.UUID,
+      allowNull: true,
+      field: "veiculo_id",
+      references: {
+        model: "veiculos",
+        key: "id",
+      },
+    },
+    kmInicialVeiculo: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: "km_inicial_veiculo",
+    },
+    kmInicialRegistradoEm: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: "km_inicial_registrado_em",
+    },
     dataInicio: {
       type: DataTypes.DATEONLY,
       allowNull: false,

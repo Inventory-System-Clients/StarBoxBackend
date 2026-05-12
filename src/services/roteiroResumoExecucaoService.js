@@ -5,6 +5,7 @@ import {
   MovimentacaoEstoqueUsuario,
   MovimentacaoVeiculo,
   Roteiro,
+  RoteiroExecucaoSemanal,
   RoteiroResumoExecucao,
   Veiculo,
 } from "../models/index.js";
@@ -86,11 +87,22 @@ const obterResumoQuilometragem = async (resumo) => {
     };
   }
 
+  const execucaoSemanal = await RoteiroExecucaoSemanal.findOne({
+    where: { roteiroId: resumo.roteiroId },
+    attributes: ["veiculoId", "kmInicialVeiculo", "kmInicialRegistradoEm"],
+  });
+  const veiculoIdResumo = execucaoSemanal?.veiculoId || roteiro.veiculoId;
+
+  const veiculoExecucao =
+    String(veiculoIdResumo) !== String(roteiro?.veiculoId || "")
+      ? await Veiculo.findByPk(veiculoIdResumo, { attributes: ["id", "nome"] })
+      : roteiro?.veiculo;
+
   const [retirada, devolucao] = await Promise.all([
     MovimentacaoVeiculo.findOne({
       where: {
         roteiroId: resumo.roteiroId,
-        veiculoId: roteiro.veiculoId,
+        veiculoId: veiculoIdResumo,
         tipo: "retirada",
         dataHora: {
           [Op.between]: [inicio, fim],
@@ -101,7 +113,7 @@ const obterResumoQuilometragem = async (resumo) => {
     MovimentacaoVeiculo.findOne({
       where: {
         roteiroId: resumo.roteiroId,
-        veiculoId: roteiro.veiculoId,
+        veiculoId: veiculoIdResumo,
         tipo: "devolucao",
         dataHora: {
           [Op.between]: [inicio, fim],
@@ -111,9 +123,18 @@ const obterResumoQuilometragem = async (resumo) => {
     }),
   ]);
 
-  const kmInicialRota = Number.isInteger(Number.parseInt(retirada?.km, 10))
-    ? Number.parseInt(retirada.km, 10)
-    : null;
+  const kmInicialPersistido = Number.parseInt(
+    execucaoSemanal?.kmInicialVeiculo,
+    10,
+  );
+  const kmInicialRota = Number.isInteger(kmInicialPersistido)
+    ? kmInicialPersistido
+    : Number.isInteger(Number.parseInt(retirada?.km, 10))
+      ? Number.parseInt(retirada.km, 10)
+      : null;
+  const retiradaDataHora = execucaoSemanal?.kmInicialRegistradoEm
+    ? execucaoSemanal.kmInicialRegistradoEm
+    : retirada?.dataHora || null;
   const kmFinalRota = Number.isInteger(Number.parseInt(devolucao?.km, 10))
     ? Number.parseInt(devolucao.km, 10)
     : null;
@@ -124,12 +145,12 @@ const obterResumoQuilometragem = async (resumo) => {
   }
 
   return {
-    veiculoNome: roteiro.veiculo?.nome || null,
+    veiculoNome: veiculoExecucao?.nome || null,
     kmInicialRota,
     kmFinalRota,
     kmPercorridoRota,
     funcionarioId: roteiro.funcionarioId || null,
-    retiradaDataHora: retirada?.dataHora || null,
+    retiradaDataHora,
   };
 };
 

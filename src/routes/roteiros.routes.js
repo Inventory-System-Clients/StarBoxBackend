@@ -193,10 +193,29 @@ router.post(
         });
       }
 
+      const dataHoje = getDataHoje();
+      const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
+        where: { roteiroId: roteiro.id },
+      });
+
+      if (isFinalizadoNaSemana(execucaoExistente)) {
+        return res.status(409).json({
+          error: "Este roteiro ja foi finalizado e so pode ser iniciado novamente apos o reset semanal de domingo as 21h",
+          statusRota: "finalizado_ate_reset",
+          finalizadoEm: execucaoExistente.finalizadoEm,
+        });
+      }
+
       const veiculoIdNormalizado = veiculoId === "" ? null : veiculoId;
       const veiculoIdEfetivo =
         veiculoId !== undefined ? veiculoIdNormalizado : roteiro.veiculoId;
       let kmInicialNumerico = null;
+      let kmInicialSemanal = null;
+      let kmInicialRegistradoEm = null;
+      let veiculoIdSemanal = null;
+      const kmInicialJaPersistido =
+        execucaoExistente?.kmInicialVeiculo !== null &&
+        execucaoExistente?.kmInicialVeiculo !== undefined;
 
       if (
         kmInicialVeiculo !== undefined &&
@@ -217,7 +236,6 @@ router.post(
         if (!veiculo)
           return res.status(404).json({ error: "Veículo não encontrado" });
 
-        const dataHoje = getDataHoje();
         const retiradaDia = await MovimentacaoVeiculo.findOne({
           where: {
             roteiroId: roteiro.id,
@@ -233,14 +251,15 @@ router.post(
           order: [["dataHora", "ASC"]],
         });
 
-        if (kmInicialNumerico === null && !retiradaDia) {
+        if (kmInicialNumerico === null && !retiradaDia && !kmInicialJaPersistido) {
           return res.status(400).json({
             error:
               "kmInicialVeiculo é obrigatório para iniciar roteiro com veículo quando não existe retirada registrada no dia",
           });
         }
 
-        if (kmInicialNumerico !== null) {
+        if (kmInicialNumerico !== null && !kmInicialJaPersistido) {
+          const agoraRetirada = new Date();
           const ultimaMovimentacaoComKm = await MovimentacaoVeiculo.findOne({
             where: {
               veiculoId: veiculoIdEfetivo,
@@ -273,14 +292,25 @@ router.post(
             veiculoId: veiculoIdEfetivo,
             usuarioId: req.usuario.id,
             tipo: "retirada",
-            dataHora: new Date(),
+            dataHora: agoraRetirada,
             km: kmInicialNumerico,
             roteiroId: roteiro.id,
             obs: "Retirada registrada no início do roteiro",
           });
 
+          kmInicialSemanal = kmInicialNumerico;
+          kmInicialRegistradoEm = agoraRetirada;
+          veiculoIdSemanal = veiculoIdEfetivo;
+
           if (kmInicialNumerico > Number(veiculo.km || 0)) {
             await veiculo.update({ km: kmInicialNumerico });
+          }
+        } else if (retiradaDia?.km !== null && retiradaDia?.km !== undefined) {
+          const kmRetiradaDia = Number.parseInt(retiradaDia.km, 10);
+          if (Number.isInteger(kmRetiradaDia)) {
+            kmInicialSemanal = kmRetiradaDia;
+            kmInicialRegistradoEm = retiradaDia.dataHora || null;
+            veiculoIdSemanal = veiculoIdEfetivo;
           }
         }
       }
@@ -305,19 +335,6 @@ router.post(
         veiculoId: result.veiculoId,
       });
 
-      const dataHoje = getDataHoje();
-      const execucaoExistente = await RoteiroExecucaoSemanal.findOne({
-        where: { roteiroId: roteiro.id },
-      });
-
-      if (isFinalizadoNaSemana(execucaoExistente)) {
-        return res.status(409).json({
-          error: "Este roteiro ja foi finalizado e so pode ser iniciado novamente apos o reset semanal de domingo as 21h",
-          statusRota: "finalizado_ate_reset",
-          finalizadoEm: execucaoExistente.finalizadoEm,
-        });
-      }
-
       if (execucaoExistente?.emAndamento) {
         const updateExecucao = {};
         if (!execucaoExistente.usuarioId && req.usuario?.id) {
@@ -325,6 +342,14 @@ router.post(
         }
         if (execucaoExistente.finalizadoEm) {
           updateExecucao.finalizadoEm = null;
+        }
+        if (
+          execucaoExistente.kmInicialVeiculo == null &&
+          Number.isInteger(kmInicialSemanal)
+        ) {
+          updateExecucao.veiculoId = veiculoIdSemanal;
+          updateExecucao.kmInicialVeiculo = kmInicialSemanal;
+          updateExecucao.kmInicialRegistradoEm = kmInicialRegistradoEm;
         }
         if (Object.keys(updateExecucao).length > 0) {
           await execucaoExistente.update(updateExecucao);
@@ -336,6 +361,13 @@ router.post(
           iniciadoEm: new Date(),
           emAndamento: true,
           finalizadoEm: null,
+          veiculoId: Number.isInteger(kmInicialSemanal) ? veiculoIdSemanal : null,
+          kmInicialVeiculo: Number.isInteger(kmInicialSemanal)
+            ? kmInicialSemanal
+            : null,
+          kmInicialRegistradoEm: Number.isInteger(kmInicialSemanal)
+            ? kmInicialRegistradoEm
+            : null,
         });
       } else {
         await RoteiroExecucaoSemanal.create({
@@ -345,6 +377,13 @@ router.post(
           iniciadoEm: new Date(),
           emAndamento: true,
           finalizadoEm: null,
+          veiculoId: Number.isInteger(kmInicialSemanal) ? veiculoIdSemanal : null,
+          kmInicialVeiculo: Number.isInteger(kmInicialSemanal)
+            ? kmInicialSemanal
+            : null,
+          kmInicialRegistradoEm: Number.isInteger(kmInicialSemanal)
+            ? kmInicialRegistradoEm
+            : null,
         });
       }
 
