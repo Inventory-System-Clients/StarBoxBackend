@@ -22,6 +22,11 @@ import {
 } from "../utils/roteiroExecucaoSemanal.js";
 import { obterStatusMaquinasConcluidasDaExecucao } from "../utils/roteiroStatusSemanal.js";
 import {
+  garantirFuncionarioPersistenteRoteiro,
+  hasFuncionarioPayload,
+  resolverAtualizacaoFuncionarioRoteiro,
+} from "../services/roteiroFuncionarioService.js";
+import {
   finalizarRoteiro,
   desfinalizarRoteiro,
   criarRoteiro,
@@ -282,9 +287,13 @@ router.post(
 
       const update = {};
       if (usuarioEhGestor) {
-        if (funcionarioId !== undefined) update.funcionarioId = funcionarioId;
-        if (funcionarioNome !== undefined)
-          update.funcionarioNome = funcionarioNome;
+        Object.assign(
+          update,
+          await resolverAtualizacaoFuncionarioRoteiro({
+            funcionarioId,
+            funcionarioNome,
+          }),
+        );
         if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
       }
 
@@ -341,6 +350,9 @@ router.post(
 
       res.json({ success: true });
     } catch (error) {
+      if (error.status) {
+        return res.status(error.status).json({ error: error.message });
+      }
       console.error("[INICIAR] erro:", error);
       res.status(500).json({ error: "Erro ao iniciar roteiro" });
     }
@@ -842,14 +854,22 @@ router.patch(
         "diasSemana",
         "nome",
         "observacao",
-        "funcionarioId",
-        "funcionarioNome",
         "veiculoId",
       ];
       const update = {};
       camposPermitidos.forEach((c) => {
         if (req.body[c] !== undefined) update[c] = req.body[c];
       });
+
+      if (hasFuncionarioPayload(req.body)) {
+        Object.assign(
+          update,
+          await resolverAtualizacaoFuncionarioRoteiro({
+            funcionarioId: req.body.funcionarioId,
+            funcionarioNome: req.body.funcionarioNome,
+          }),
+        );
+      }
 
       if (update.observacao !== undefined) {
         if (typeof update.observacao !== "string") {
@@ -871,9 +891,17 @@ router.patch(
         update.veiculoId = veiculoIdNormalizado;
       }
 
+      if (Object.keys(update).length === 0) {
+        await garantirFuncionarioPersistenteRoteiro(roteiro);
+        return res.json(roteiro);
+      }
+
       await roteiro.update(update);
       res.json(roteiro);
     } catch (error) {
+      if (error.status) {
+        return res.status(error.status).json({ error: error.message });
+      }
       console.error("Erro ao atualizar roteiro:", error);
       res.status(500).json({ error: "Erro ao atualizar roteiro" });
     }

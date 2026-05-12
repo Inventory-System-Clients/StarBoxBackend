@@ -34,6 +34,10 @@ import {
   isFinalizadoNaSemana,
   resolverContextoExecucaoSemanal,
 } from "../utils/roteiroExecucaoSemanal.js";
+import {
+  garantirFuncionarioPersistenteRoteiro,
+  resolverAtualizacaoFuncionarioRoteiro,
+} from "../services/roteiroFuncionarioService.js";
 
 const DIAS_VALIDOS = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB", "DOM"];
 
@@ -396,9 +400,10 @@ export const iniciarRoteiro = async (req, res) => {
         return res.status(404).json({ error: "Veículo não encontrado" });
     }
 
-    const update = {};
-    if (funcionarioId !== undefined) update.funcionarioId = funcionarioId;
-    if (funcionarioNome !== undefined) update.funcionarioNome = funcionarioNome;
+    const update = await resolverAtualizacaoFuncionarioRoteiro({
+      funcionarioId,
+      funcionarioNome,
+    });
     if (veiculoId !== undefined) update.veiculoId = veiculoIdNormalizado;
 
     await roteiro.update(update);
@@ -434,6 +439,9 @@ export const iniciarRoteiro = async (req, res) => {
 
     res.json({ success: true, statusRota: "iniciado" });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ error: error.message });
+    }
     res.status(500).json({ error: "Erro ao iniciar roteiro" });
   }
 };
@@ -492,6 +500,8 @@ export const finalizarRoteiro = async (req, res) => {
     if (!roteiro) {
       return res.status(404).json({ error: "Roteiro não encontrado" });
     }
+
+    await garantirFuncionarioPersistenteRoteiro(roteiro);
 
     const roteiroFuncionarioId = roteiro.funcionarioId || null;
     const { autorizado, motivo } = validarPermissaoFinalizacao({
@@ -828,6 +838,8 @@ export const desfinalizarRoteiro = async (req, res) => {
       return res.status(404).json({ error: "Roteiro não encontrado" });
     }
 
+    await garantirFuncionarioPersistenteRoteiro(roteiro);
+
     const roteiroFuncionarioId = roteiro.funcionarioId || null;
     const { autorizado, motivo } = validarPermissaoFinalizacao({
       userId,
@@ -984,6 +996,8 @@ export const obterStatusRoteiroSemanal = async (req, res) => {
       return res.status(404).json({ error: "Roteiro não encontrado" });
     }
 
+    await garantirFuncionarioPersistenteRoteiro(roteiro);
+
     const execucao = await RoteiroExecucaoSemanal.findOne({
       where: { roteiroId },
       attributes: ["id", "usuarioId", "emAndamento", "dataInicio", "iniciadoEm", "finalizadoEm"],
@@ -1045,6 +1059,8 @@ export const verAndamentoRoteiro = async (req, res) => {
     if (!roteiro) {
       return res.status(404).json({ error: "Roteiro não encontrado" });
     }
+
+    await garantirFuncionarioPersistenteRoteiro(roteiro);
 
     const execucao = await RoteiroExecucaoSemanal.findOne({
       where: { roteiroId },

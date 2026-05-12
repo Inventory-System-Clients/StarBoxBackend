@@ -26,6 +26,7 @@ import {
 } from "../utils/roteiroExecucaoSemanal.js";
 import RoteiroExecucaoSemanal from "../models/RoteiroExecucaoSemanal.js";
 import { obterStatusMaquinasConcluidasDaExecucao } from "../utils/roteiroStatusSemanal.js";
+import { garantirFuncionarioPersistenteRoteiro } from "../services/roteiroFuncionarioService.js";
 
 const obterTotalEstoqueUsuario = async (usuarioId) => {
   if (!usuarioId) return null;
@@ -116,6 +117,8 @@ async function getRoteiroExecucaoComStatus(req, res) {
     });
     if (!roteiro)
       return res.status(404).json({ error: "Roteiro não encontrado" });
+
+    await garantirFuncionarioPersistenteRoteiro(roteiro);
 
     const contextoExecucao = await resolverContextoExecucaoSemanal(roteiro.id);
     const dataHoje = contextoExecucao.dataHoje;
@@ -545,6 +548,8 @@ async function getTodosRoteirosComStatus(req, res) {
     );
     // Agrupar por roteiro
     const roteirosComStatus = await Promise.all(roteiros.map(async (roteiro) => {
+      await garantirFuncionarioPersistenteRoteiro(roteiro);
+
       const contexto = contextoPorRoteiro.get(String(roteiro.id)) || {
         dataInicio: dataHoje,
         dataInicioBase: dataHoje,
