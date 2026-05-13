@@ -213,9 +213,12 @@ router.post(
       let kmInicialSemanal = null;
       let kmInicialRegistradoEm = null;
       let veiculoIdSemanal = null;
+      const kmInicialPersistido = Number.parseInt(
+        execucaoExistente?.kmInicialVeiculo,
+        10,
+      );
       const kmInicialJaPersistido =
-        execucaoExistente?.kmInicialVeiculo !== null &&
-        execucaoExistente?.kmInicialVeiculo !== undefined;
+        Number.isInteger(kmInicialPersistido) && kmInicialPersistido > 0;
 
       if (
         kmInicialVeiculo !== undefined &&
@@ -344,7 +347,7 @@ router.post(
           updateExecucao.finalizadoEm = null;
         }
         if (
-          execucaoExistente.kmInicialVeiculo == null &&
+          !kmInicialJaPersistido &&
           Number.isInteger(kmInicialSemanal)
         ) {
           updateExecucao.veiculoId = veiculoIdSemanal;

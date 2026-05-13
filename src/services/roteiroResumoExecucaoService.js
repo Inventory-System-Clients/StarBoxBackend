@@ -45,6 +45,11 @@ const formatarInteiro = (valor) => {
   return numero.toLocaleString("pt-BR");
 };
 
+const parseKmInicialValido = (valor) => {
+  const numero = Number.parseInt(valor, 10);
+  return Number.isInteger(numero) && numero > 0 ? numero : null;
+};
+
 const getFaixaDiaUtc = (data) => {
   const inicio = new Date(`${data}T00:00:00.000Z`);
   const fim = new Date(`${data}T23:59:59.999Z`);
@@ -89,7 +94,13 @@ const obterResumoQuilometragem = async (resumo) => {
 
   const execucaoSemanal = await RoteiroExecucaoSemanal.findOne({
     where: { roteiroId: resumo.roteiroId },
-    attributes: ["veiculoId", "kmInicialVeiculo", "kmInicialRegistradoEm"],
+    attributes: [
+      "id",
+      "veiculoId",
+      "kmInicialVeiculo",
+      "kmInicialRegistradoEm",
+      "dataInicio",
+    ],
   });
   const veiculoIdResumo = execucaoSemanal?.veiculoId || roteiro.veiculoId;
 
@@ -98,7 +109,7 @@ const obterResumoQuilometragem = async (resumo) => {
       ? await Veiculo.findByPk(veiculoIdResumo, { attributes: ["id", "nome"] })
       : roteiro?.veiculo;
 
-  const [retirada, devolucao] = await Promise.all([
+  const [retiradaDiaResumo, devolucao] = await Promise.all([
     MovimentacaoVeiculo.findOne({
       where: {
         roteiroId: resumo.roteiroId,
@@ -123,18 +134,45 @@ const obterResumoQuilometragem = async (resumo) => {
     }),
   ]);
 
-  const kmInicialPersistido = Number.parseInt(
-    execucaoSemanal?.kmInicialVeiculo,
-    10,
-  );
-  const kmInicialRota = Number.isInteger(kmInicialPersistido)
-    ? kmInicialPersistido
-    : Number.isInteger(Number.parseInt(retirada?.km, 10))
-      ? Number.parseInt(retirada.km, 10)
+  let kmInicialRota = parseKmInicialValido(execucaoSemanal?.kmInicialVeiculo);
+  let retiradaDataHora =
+    kmInicialRota !== null && execucaoSemanal?.kmInicialRegistradoEm
+      ? execucaoSemanal.kmInicialRegistradoEm
       : null;
-  const retiradaDataHora = execucaoSemanal?.kmInicialRegistradoEm
-    ? execucaoSemanal.kmInicialRegistradoEm
-    : retirada?.dataHora || null;
+
+  if (kmInicialRota === null) {
+    const dataInicioRota = execucaoSemanal?.dataInicio || resumo.data;
+    const faixaInicioRota = getFaixaDiaUtc(dataInicioRota);
+    const retiradaInicioRota = await MovimentacaoVeiculo.findOne({
+      where: {
+        roteiroId: resumo.roteiroId,
+        veiculoId: veiculoIdResumo,
+        tipo: "retirada",
+        km: {
+          [Op.ne]: null,
+        },
+        dataHora: {
+          [Op.between]: [faixaInicioRota.inicio, faixaInicioRota.fim],
+        },
+      },
+      order: [["dataHora", "ASC"]],
+    });
+
+    kmInicialRota =
+      parseKmInicialValido(retiradaInicioRota?.km) ??
+      parseKmInicialValido(retiradaDiaResumo?.km);
+    retiradaDataHora =
+      retiradaInicioRota?.dataHora || retiradaDiaResumo?.dataHora || null;
+
+    if (execucaoSemanal && kmInicialRota !== null) {
+      await execucaoSemanal.update({
+        veiculoId: veiculoIdResumo,
+        kmInicialVeiculo: kmInicialRota,
+        kmInicialRegistradoEm: retiradaDataHora,
+      });
+    }
+  }
+
   const kmFinalRota = Number.isInteger(Number.parseInt(devolucao?.km, 10))
     ? Number.parseInt(devolucao.km, 10)
     : null;
