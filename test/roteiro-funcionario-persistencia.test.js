@@ -50,6 +50,58 @@ test("troca de funcionario exige usuario ativo com role de funcionario", async (
   }
 });
 
+test("responsavel do roteiro pode ser ADMIN ativo quando escolhido explicitamente", async () => {
+  const originalFindByPk = Usuario.findByPk;
+
+  Usuario.findByPk = async () => ({
+    id: "admin-1",
+    nome: "Admin Um",
+    role: "ADMIN",
+    ativo: true,
+  });
+
+  try {
+    assert.deepEqual(
+      await resolverAtualizacaoFuncionarioRoteiro({
+        funcionarioId: "admin-1",
+      }),
+      {
+        funcionarioId: "admin-1",
+        funcionarioNome: "Admin Um",
+      },
+    );
+  } finally {
+    Usuario.findByPk = originalFindByPk;
+  }
+});
+
+test("responsavel do roteiro rejeita usuario inativo", async () => {
+  const originalFindByPk = Usuario.findByPk;
+
+  Usuario.findByPk = async () => ({
+    id: "admin-inativo",
+    nome: "Admin Inativo",
+    role: "ADMIN",
+    ativo: false,
+  });
+
+  try {
+    await assert.rejects(
+      () =>
+        resolverAtualizacaoFuncionarioRoteiro({
+          funcionarioId: "admin-inativo",
+        }),
+      {
+        status: 400,
+        message:
+          "Usuario informado nao e um responsavel ativo permitido para roteiro",
+      },
+    );
+  } finally {
+    Usuario.findByPk = originalFindByPk;
+  }
+});
+
 test("roteiro sem funcionario recupera responsavel da execucao semanal ativa", async () => {
   const originalFindOne = RoteiroExecucaoSemanal.findOne;
   const originalFindByPk = Usuario.findByPk;

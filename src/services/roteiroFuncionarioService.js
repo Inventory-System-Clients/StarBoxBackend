@@ -5,6 +5,13 @@ const ROLES_FUNCIONARIO_ROTEIRO = new Set([
   "FUNCIONARIO_TODAS_LOJAS",
 ]);
 
+const ROLES_RESPONSAVEL_ROTEIRO = new Set([
+  "ADMIN",
+  "GERENCIADOR",
+  "FUNCIONARIO",
+  "FUNCIONARIO_TODAS_LOJAS",
+]);
+
 const valorVazio = (valor) =>
   valor === null || valor === undefined || String(valor).trim() === "";
 
@@ -31,8 +38,10 @@ export const resolverAtualizacaoFuncionarioRoteiro = async ({
     throw erroValidacao("Funcionario nao encontrado", 404);
   }
 
-  if (!funcionario.ativo || !ROLES_FUNCIONARIO_ROTEIRO.has(funcionario.role)) {
-    throw erroValidacao("Usuario informado nao e um funcionario ativo");
+  if (!funcionario.ativo || !ROLES_RESPONSAVEL_ROTEIRO.has(funcionario.role)) {
+    throw erroValidacao(
+      "Usuario informado nao e um responsavel ativo permitido para roteiro",
+    );
   }
 
   return {
