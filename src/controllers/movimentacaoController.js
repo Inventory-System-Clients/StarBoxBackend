@@ -1377,6 +1377,14 @@ export const atualizarMovimentacao = async (req, res) => {
       produtoId,
     } = req.body;
 
+    if (totalPre !== undefined && req.usuario.role !== "ADMIN") {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: "Somente ADMIN pode editar a quantidade pre de produtos.",
+        code: "MOVIMENTACAO_TOTAL_PRE_ADMIN_ONLY",
+      });
+    }
+
     // LÓGICA DE TROCA DE PRODUTO COM AJUSTE DE ESTOQUE
     // Se produtoId for passado e for diferente do produto atual, fazer swap
     if (produtoId) {

@@ -52,6 +52,12 @@ const router = express.Router();
 const ROLES_GESTAO_ROTEIROS = ["ADMIN", "GERENCIADOR"];
 const ROLES_OPERACAO_ROTEIRO = ["FUNCIONARIO", "FUNCIONARIO_TODAS_LOJAS"];
 
+const usuarioPodeAssumirExecucao = (execucao, usuarioId) => {
+  if (!execucao?.emAndamento) return true;
+  if (!execucao.usuarioId) return true;
+  return String(execucao.usuarioId) === String(usuarioId || "");
+};
+
 const roteiroFoiFinalizadoNoCicloAtual = async (roteiroId, transaction) => {
   if (!roteiroId) return false;
 
@@ -198,11 +204,22 @@ router.post(
         where: { roteiroId: roteiro.id },
       });
 
-      if (isFinalizadoNaSemana(execucaoExistente)) {
+      const roteiroFinalizadoNoCiclo = await roteiroFoiFinalizadoNoCicloAtual(
+        roteiro.id,
+      );
+      if (roteiroFinalizadoNoCiclo) {
         return res.status(409).json({
           error: "Este roteiro ja foi finalizado e so pode ser iniciado novamente apos o reset semanal de domingo as 21h",
           statusRota: "finalizado_ate_reset",
-          finalizadoEm: execucaoExistente.finalizadoEm,
+          finalizadoEm: execucaoExistente?.finalizadoEm || null,
+        });
+      }
+
+      if (!usuarioPodeAssumirExecucao(execucaoExistente, req.usuario?.id)) {
+        return res.status(409).json({
+          error: "Este roteiro ja esta em uso por outro usuario",
+          statusRota: "em_uso_por_outro_usuario",
+          usuarioId: execucaoExistente.usuarioId,
         });
       }
 
