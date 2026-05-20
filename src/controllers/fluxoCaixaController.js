@@ -189,6 +189,8 @@ export const listarFluxoCaixa = async (req, res) => {
             "contadorIn",
             "contadorOut",
             "observacoes",
+            "createdAt",
+            "updatedAt",
           ],
         },
         {
