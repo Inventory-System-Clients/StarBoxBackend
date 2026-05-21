@@ -1,5 +1,5 @@
 import express from "express";
-import { autenticar, autorizar } from "../middlewares/auth.js";
+import { autenticar, autorizar, registrarLog } from "../middlewares/auth.js";
 import {
   limparDadosAntigos,
   verificarDadosParaLimpeza,
@@ -11,6 +11,10 @@ import {
   confirmarDevolucaoPorFuncionario,
   esvaziarBasePecasDefeituosas,
 } from "../controllers/pecaDefeituosaController.js";
+import {
+  obterAjusteAtualMaquina,
+  atualizarAjusteAtualMaquina,
+} from "../controllers/adminAjusteMaquinaController.js";
 
 const router = express.Router();
 
@@ -52,6 +56,22 @@ router.get(
   autenticar,
   autorizar("ADMIN"),
   listarTodosCarrinhos
+);
+
+// Ajuste administrativo dos valores atuais exibidos para a maquina.
+router.get(
+  "/maquinas/:maquinaId/ajuste-atual",
+  autenticar,
+  autorizar("ADMIN"),
+  obterAjusteAtualMaquina,
+);
+
+router.patch(
+  "/maquinas/:maquinaId/ajuste-atual",
+  autenticar,
+  autorizar("ADMIN"),
+  registrarLog("AJUSTAR_VALORES_ATUAIS_MAQUINA", "Maquina"),
+  atualizarAjusteAtualMaquina,
 );
 
 // Listar pendencias e itens confirmados de pecas defeituosas por funcionario
