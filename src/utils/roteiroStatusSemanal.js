@@ -16,6 +16,27 @@ export const getDataSaoPaulo = (data = new Date()) => {
 
 const getInicioDiaSaoPaulo = (data) => new Date(`${data}T00:00:00-03:00`);
 
+const deduplicarPorMaquina = (itens, getMaquinaId) => {
+  const vistos = new Set();
+  const unicos = [];
+
+  for (const item of itens) {
+    const maquinaId = getMaquinaId(item);
+    if (!maquinaId) {
+      unicos.push(item);
+      continue;
+    }
+
+    const chave = String(maquinaId);
+    if (vistos.has(chave)) continue;
+
+    vistos.add(chave);
+    unicos.push(item);
+  }
+
+  return unicos;
+};
+
 export const registrarMaquinaConcluidaNaExecucao = async ({
   maquinaId,
   roteiroId,
@@ -72,7 +93,18 @@ export const obterStatusMaquinasConcluidasDaExecucao = async ({
     where: whereMovimentacao,
   });
 
-  const maquinasConcluidas = new Set(statusMaquinas.map((item) => item.maquina_id));
+  const statusMaquinasUnicas = deduplicarPorMaquina(
+    statusMaquinas,
+    (item) => item.maquina_id,
+  );
+  const movimentacoesConsideradasUnicas = deduplicarPorMaquina(
+    movimentacoesConsideradas,
+    (item) => item.maquinaId,
+  );
+
+  const maquinasConcluidas = new Set(
+    statusMaquinas.map((item) => item.maquina_id),
+  );
   movimentacoesConsideradas.forEach((movimentacao) => {
     if (movimentacao.maquinaId) {
       maquinasConcluidas.add(movimentacao.maquinaId);
@@ -80,8 +112,8 @@ export const obterStatusMaquinasConcluidasDaExecucao = async ({
   });
 
   return {
-    statusMaquinas,
-    movimentacoesConsideradas,
+    statusMaquinas: statusMaquinasUnicas,
+    movimentacoesConsideradas: movimentacoesConsideradasUnicas,
     maquinasConcluidas,
   };
 };

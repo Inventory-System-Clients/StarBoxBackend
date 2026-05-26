@@ -40,6 +40,28 @@ const obterTotalEstoqueUsuario = async (usuarioId) => {
   return Number(total) || 0;
 };
 
+const chaveMaquinaRoteiro = (maquina) => {
+  const codigo = String(maquina?.codigo ?? "").trim();
+  if (codigo) return `codigo:${codigo.toLowerCase()}`;
+
+  const id = String(maquina?.id ?? "").trim();
+  return id ? `id:${id}` : "";
+};
+
+const deduplicarMaquinasRoteiro = (maquinas = []) => {
+  const vistas = new Set();
+  const unicas = [];
+
+  for (const maquina of maquinas || []) {
+    const chave = chaveMaquinaRoteiro(maquina);
+    if (chave && vistas.has(chave)) continue;
+    if (chave) vistas.add(chave);
+    unicas.push(maquina);
+  }
+
+  return unicas;
+};
+
 const obterInicioContagemConsumoRota = async ({ roteiroId, dataHoje }) => {
   const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
   const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
@@ -168,7 +190,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
       (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0),
     );
     const maquinaIdsRota = lojasOrdenadas.flatMap((loja) =>
-      (loja.maquinas || []).map((maquina) => maquina.id),
+      deduplicarMaquinasRoteiro(loja.maquinas).map((maquina) => maquina.id),
     );
     const {
       statusMaquinas,
@@ -229,17 +251,19 @@ async function getRoteiroExecucaoComStatus(req, res) {
     let roteiroFinalizado = lojasOrdenadas.length > 0;
     let roteiroTemMaquinas = false;
     const lojas = lojasOrdenadas.map((loja) => {
-      const lojaTemMaquinas = (loja.maquinas?.length || 0) > 0;
+      const maquinasDaLoja = deduplicarMaquinasRoteiro(loja.maquinas);
+      const lojaTemMaquinas = maquinasDaLoja.length > 0;
       if (lojaTemMaquinas) roteiroTemMaquinas = true;
       // Movimentações consideradas para esta loja
       const movimentacoesLoja = statusMaquinas.filter((s) => {
-        return loja.maquinas.some((m) => m.id === s.maquina_id);
+        return maquinasDaLoja.some((m) => m.id === s.maquina_id);
       });
-      const maquinas = loja.maquinas.map((maquina) => {
+      const maquinas = maquinasDaLoja.map((maquina) => {
         const finalizada = maquinasFinalizadas.has(maquina.id);
         return {
           id: maquina.id,
           nome: maquina.nome,
+          codigo: maquina.codigo,
           status: finalizada ? "finalizado" : "pendente",
         };
       });
@@ -561,7 +585,7 @@ async function getTodosRoteirosComStatus(req, res) {
         (a, b) => (a.RoteiroLojas?.ordem ?? 0) - (b.RoteiroLojas?.ordem ?? 0),
       );
       const maquinaIdsRota = lojasOrdenadas.flatMap((loja) =>
-        (loja.maquinas || []).map((maquina) => maquina.id),
+        deduplicarMaquinasRoteiro(loja.maquinas).map((maquina) => maquina.id),
       );
       const {
         statusMaquinas: statusMaquinasRoteiro,
@@ -575,16 +599,18 @@ async function getTodosRoteirosComStatus(req, res) {
       let roteiroFinalizado = lojasOrdenadas.length > 0;
       let roteiroTemMaquinas = false;
       const lojas = lojasOrdenadas.map((loja) => {
-        const lojaTemMaquinas = (loja.maquinas?.length || 0) > 0;
+        const maquinasDaLoja = deduplicarMaquinasRoteiro(loja.maquinas);
+        const lojaTemMaquinas = maquinasDaLoja.length > 0;
         if (lojaTemMaquinas) roteiroTemMaquinas = true;
         const movimentacoesLoja = statusMaquinasRoteiro.filter((s) => {
-          return loja.maquinas.some((m) => m.id === s.maquina_id);
+          return maquinasDaLoja.some((m) => m.id === s.maquina_id);
         });
-        const maquinas = loja.maquinas.map((maquina) => {
+        const maquinas = maquinasDaLoja.map((maquina) => {
           const finalizada = maquinasFinalizadas.has(maquina.id);
           return {
             id: maquina.id,
             nome: maquina.nome,
+            codigo: maquina.codigo,
             status: finalizada ? "finalizado" : "pendente",
           };
         });

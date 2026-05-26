@@ -45,6 +45,40 @@ const formatarInteiro = (valor) => {
   return numero.toLocaleString("pt-BR");
 };
 
+const chaveMaquinaResumo = (maquina) => {
+  const codigo = String(
+    maquina?.codigo ?? maquina?.numero ?? maquina?.numeroMaquina ?? "",
+  ).trim();
+  if (codigo) return `codigo:${codigo.toLowerCase()}`;
+
+  const id = String(maquina?.id ?? "").trim();
+  if (id) return `id:${id}`;
+
+  const nome = String(maquina?.nome ?? "").trim();
+  return nome ? `nome:${nome.toLowerCase()}` : "";
+};
+
+const coletarMaquinaResumo = ({ maquina, status, mapa, semChave }) => {
+  const chave = chaveMaquinaResumo(maquina);
+  const item = {
+    nome: maquina.nome,
+    status,
+  };
+
+  if (!chave) {
+    semChave.push(item);
+    return;
+  }
+
+  const existente = mapa.get(chave);
+  if (
+    !existente ||
+    (existente.status !== "finalizado" && status === "finalizado")
+  ) {
+    mapa.set(chave, item);
+  }
+};
+
 const parseKmInicialValido = (valor) => {
   const numero = Number.parseInt(valor, 10);
   return Number.isInteger(numero) && numero > 0 ? numero : null;
@@ -280,19 +314,31 @@ const montarPayloadResumo = async ({
     .filter((loja) => loja.status !== "finalizado")
     .map((loja) => loja.nome);
 
-  const maquinasFeitas = [];
-  const maquinasNaoFeitas = [];
+  const maquinasResumoPorChave = new Map();
+  const maquinasResumoSemChave = [];
 
   for (const loja of lojas) {
     const maquinas = Array.isArray(loja.maquinas) ? loja.maquinas : [];
     for (const maquina of maquinas) {
-      if (maquina.status === "finalizado") {
-        maquinasFeitas.push(maquina.nome);
-      } else {
-        maquinasNaoFeitas.push(maquina.nome);
-      }
+      coletarMaquinaResumo({
+        maquina,
+        status: maquina.status,
+        mapa: maquinasResumoPorChave,
+        semChave: maquinasResumoSemChave,
+      });
     }
   }
+
+  const maquinasResumo = [
+    ...maquinasResumoPorChave.values(),
+    ...maquinasResumoSemChave,
+  ];
+  const maquinasFeitas = maquinasResumo
+    .filter((maquina) => maquina.status === "finalizado")
+    .map((maquina) => maquina.nome);
+  const maquinasNaoFeitas = maquinasResumo
+    .filter((maquina) => maquina.status !== "finalizado")
+    .map((maquina) => maquina.nome);
 
   const faixaSemana = getFaixaSemanaAtualUtc();
   const roteiro = await Roteiro.findByPk(roteiroId, {
