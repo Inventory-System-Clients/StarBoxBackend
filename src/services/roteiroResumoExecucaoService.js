@@ -298,6 +298,73 @@ const montarResumoManutencoes = async (roteiroId) => {
   };
 };
 
+const getResumoPlain = (resumo) =>
+  typeof resumo?.toJSON === "function" ? resumo.toJSON() : { ...resumo };
+
+const montarManutencaoRealizadaEstruturada = (manutencao) => {
+  const lojaNome = manutencao.loja?.nome || "Ponto sem nome";
+  const descricao = manutencao.descricao || "Manutencao sem descricao";
+
+  return {
+    id: manutencao.id,
+    descricao,
+    lojaId: manutencao.lojaId || null,
+    lojaNome,
+    maquinaId: manutencao.maquinaId || null,
+    status: manutencao.status,
+    concluidoEm: manutencao.concluidoEm || null,
+    dataConclusao: manutencao.concluidoEm || null,
+    texto: `${descricao} (${lojaNome})`,
+    createdAt: manutencao.createdAt || null,
+    updatedAt: manutencao.updatedAt || null,
+  };
+};
+
+export const serializarResumoExecucao = async (resumo) => {
+  if (!resumo) return null;
+
+  const resumoPlain = getResumoPlain(resumo);
+  const [execucaoSemanal, manutencoesRealizadas] = await Promise.all([
+    RoteiroExecucaoSemanal.findOne({
+      where: { roteiroId: resumoPlain.roteiroId },
+      attributes: [
+        "id",
+        "dataInicio",
+        "iniciadoEm",
+        "emAndamento",
+        "finalizadoEm",
+      ],
+    }),
+    Manutencao.findAll({
+      where: { roteiroId: resumoPlain.roteiroId },
+      include: [
+        {
+          association: "loja",
+          attributes: ["id", "nome"],
+        },
+      ],
+      order: [["createdAt", "ASC"]],
+    }),
+  ]);
+
+  const finalizadoEm =
+    execucaoSemanal?.finalizadoEm || resumoPlain.fechadoEm || null;
+
+  return {
+    ...resumoPlain,
+    dataInicio: execucaoSemanal?.dataInicio || null,
+    iniciadoEm: execucaoSemanal?.iniciadoEm || null,
+    finalizadoEm,
+    manutencoesRealizadas: manutencoesRealizadas
+      .filter((manutencao) =>
+        STATUS_MANUTENCAO_REALIZADA.has(
+          String(manutencao.status || "").toLowerCase(),
+        ),
+      )
+      .map(montarManutencaoRealizadaEstruturada),
+  };
+};
+
 const montarPayloadResumo = async ({
   roteiroId,
   data,

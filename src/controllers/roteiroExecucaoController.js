@@ -17,6 +17,7 @@ import {
   obterResumoExecucao,
   salvarSnapshotResumoExecucao,
   montarMensagemResumoWhatsapp,
+  serializarResumoExecucao,
 } from "../services/roteiroResumoExecucaoService.js";
 import {
   getFaixaSemanaAtualUtc,
@@ -354,6 +355,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
     const mensagemResumoWhatsapp = await montarMensagemResumoWhatsapp(
       resumoPersistido,
     );
+    const resumoExecucao = await serializarResumoExecucao(resumoPersistido);
 
     res.json({
       id: roteiro.id,
@@ -461,7 +463,8 @@ async function getRoteiroExecucaoComStatus(req, res) {
             ? Number(finalizacaoDia?.consumoTotalProdutos)
             : null,
       },
-      resumoExecucaoPersistido: resumoPersistido,
+      resumoExecucao,
+      resumoExecucaoPersistido: resumoExecucao,
       mensagemResumoWhatsapp,
     });
   } catch (error) {
@@ -482,8 +485,10 @@ async function getResumoExecucaoPersistido(req, res) {
     }
 
     const mensagemResumoWhatsapp = await montarMensagemResumoWhatsapp(resumo);
+    const resumoExecucao = await serializarResumoExecucao(resumo);
     return res.json({
-      resumo,
+      resumo: resumoExecucao,
+      resumoExecucao,
       mensagemResumoWhatsapp,
     });
   } catch (error) {

@@ -27,6 +27,7 @@ import {
   fecharResumoExecucao,
   montarMensagemResumoWhatsapp,
   obterResumoExecucao,
+  serializarResumoExecucao,
 } from "../services/roteiroResumoExecucaoService.js";
 import { encerrarLocalizacaoAtiva } from "./roteiroLocalizacaoController.js";
 import {
@@ -779,6 +780,9 @@ export const finalizarRoteiro = async (req, res) => {
     const mensagemResumoWhatsapp = await montarMensagemResumoWhatsapp(
       resumoExecucaoPersistido,
     );
+    const resumoExecucao = await serializarResumoExecucao(
+      resumoExecucaoPersistido,
+    );
 
     let alerta = null;
     if (maquinasPendentes.length > 0) {
@@ -801,7 +805,8 @@ export const finalizarRoteiro = async (req, res) => {
         estoqueFinalTotal: totalEstoqueFinal,
         consumoTotalProdutos,
       },
-      resumoExecucaoPersistido,
+      resumoExecucao,
+      resumoExecucaoPersistido: resumoExecucao,
       mensagemResumoWhatsapp,
       resumoTextoCopiar: mensagemResumoWhatsapp,
       alertaWhatsApp: alerta
