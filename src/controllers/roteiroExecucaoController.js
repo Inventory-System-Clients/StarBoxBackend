@@ -18,6 +18,7 @@ import {
   salvarSnapshotResumoExecucao,
   montarMensagemResumoWhatsapp,
   serializarResumoExecucao,
+  calcularConsumoProdutosRota,
 } from "../services/roteiroResumoExecucaoService.js";
 import {
   getFaixaSemanaAtualUtc,
@@ -317,30 +318,47 @@ async function getRoteiroExecucaoComStatus(req, res) {
       (orcamentoDiario - totalGastoSemana).toFixed(2),
     );
 
+    const consumoCalculadoMovimentacoes =
+      estoqueInicialTotal !== null
+        ? await calcularConsumoProdutosRota({
+            roteiroId: roteiro.id,
+            data: dataHoje,
+            lojas: lojasOrdenadas,
+            usuarioId: usuarioEstoqueId,
+            fimExecucao: contextoExecucao.execucao?.finalizadoEm || null,
+          })
+        : null;
+
+    const estoqueAdicionalTotal =
+      estoqueInicialTotal !== null
+        ? await obterEstoqueAdicionalRota({
+            usuarioId: usuarioEstoqueId,
+            roteiroId: roteiro.id,
+            dataHoje,
+          })
+        : null;
+
+    const estoqueFinalCalculado =
+      estoqueInicialTotal !== null
+        ? Math.max(
+            0,
+            Number(estoqueInicialTotal) +
+              Number(estoqueAdicionalTotal || 0) -
+              Number(consumoCalculadoMovimentacoes || 0),
+          )
+        : null;
+
     const estoqueFinalSnapshot =
       finalizacaoDia?.estoqueFinalTotal !== null &&
       finalizacaoDia?.estoqueFinalTotal !== undefined
         ? Number(finalizacaoDia.estoqueFinalTotal)
-        : estoqueAtualTotal;
+        : estoqueFinalCalculado ?? estoqueAtualTotal;
 
     const consumoSnapshot =
       finalizacaoDia?.consumoTotalProdutos !== null &&
       finalizacaoDia?.consumoTotalProdutos !== undefined
         ? Number(finalizacaoDia.consumoTotalProdutos)
-        : estoqueInicialTotal !== null && estoqueFinalSnapshot !== null
-          ? Math.max(
-              0,
-              Number(estoqueInicialTotal) +
-                Number(
-                  (await obterEstoqueAdicionalRota({
-                    usuarioId: usuarioEstoqueId,
-                    roteiroId: roteiro.id,
-                    dataHoje,
-                  })) || 0,
-                ) -
-                Number(estoqueFinalSnapshot),
-            )
-          : null;
+        : consumoCalculadoMovimentacoes;
 
     const resumoPersistido = await salvarSnapshotResumoExecucao({
       roteiroId: roteiro.id,

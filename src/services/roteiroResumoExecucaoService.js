@@ -2,12 +2,16 @@ import { Op } from "sequelize";
 import {
   GastoRoteiro,
   Manutencao,
+  Movimentacao,
+  MovimentacaoProduto,
   MovimentacaoEstoqueUsuario,
   MovimentacaoVeiculo,
   Roteiro,
   RoteiroExecucaoSemanal,
   RoteiroResumoExecucao,
   Veiculo,
+  Loja,
+  Maquina,
 } from "../models/index.js";
 import { getFaixaSemanaAtualUtc } from "../utils/roteiroExecucaoSemanal.js";
 
@@ -88,6 +92,170 @@ const getFaixaDiaUtc = (data) => {
   const inicio = new Date(`${data}T00:00:00.000Z`);
   const fim = new Date(`${data}T23:59:59.999Z`);
   return { inicio, fim };
+};
+
+const dataValidaOuNull = (valor) => {
+  if (!valor) return null;
+  const data = valor instanceof Date ? valor : new Date(valor);
+  return Number.isNaN(data.getTime()) ? null : data;
+};
+
+const coletarEscopoLojas = (lojas = []) => {
+  const lojaIds = new Set();
+  const maquinaIds = new Set();
+
+  for (const loja of lojas || []) {
+    const lojaId = String(loja?.id || loja?.lojaId || "").trim();
+    if (lojaId) lojaIds.add(lojaId);
+
+    const maquinas = Array.isArray(loja?.maquinas) ? loja.maquinas : [];
+    for (const maquina of maquinas) {
+      const maquinaId = String(maquina?.id || maquina?.maquinaId || "").trim();
+      if (maquinaId) maquinaIds.add(maquinaId);
+    }
+  }
+
+  return { lojaIds, maquinaIds };
+};
+
+const obterEscopoRoteiro = async (roteiroId) => {
+  const roteiro = await Roteiro.findByPk(roteiroId, {
+    attributes: ["id"],
+    include: [
+      {
+        model: Loja,
+        as: "lojas",
+        attributes: ["id"],
+        include: [
+          {
+            model: Maquina,
+            as: "maquinas",
+            attributes: ["id"],
+          },
+        ],
+      },
+    ],
+  });
+
+  return coletarEscopoLojas(roteiro?.lojas || []);
+};
+
+const obterEscopoManutencoes = async ({ roteiroId, lojas }) => {
+  const escopoInformado = coletarEscopoLojas(lojas);
+  if (escopoInformado.lojaIds.size && escopoInformado.maquinaIds.size) {
+    return escopoInformado;
+  }
+
+  return obterEscopoRoteiro(roteiroId);
+};
+
+const montarFiltroEscopoManutencoes = ({ lojaIds, maquinaIds }) => {
+  const filtro = {};
+  if (lojaIds?.size) filtro.lojaId = { [Op.in]: Array.from(lojaIds) };
+  if (maquinaIds?.size) filtro.maquinaId = { [Op.in]: Array.from(maquinaIds) };
+  return filtro;
+};
+
+const manutencaoPertenceAoEscopo = (manutencao, { lojaIds, maquinaIds }) => {
+  const lojaId = String(manutencao.lojaId || "").trim();
+  const maquinaId = String(manutencao.maquinaId || "").trim();
+
+  if (lojaIds?.size && !lojaIds.has(lojaId)) return false;
+  if (maquinaIds?.size && !maquinaIds.has(maquinaId)) return false;
+
+  return true;
+};
+
+const obterJanelaExecucaoManutencoes = async ({ roteiroId, data }) => {
+  const execucaoSemanal = await RoteiroExecucaoSemanal.findOne({
+    where: { roteiroId },
+    attributes: ["id", "dataInicio", "iniciadoEm", "finalizadoEm"],
+  });
+
+  const dataInicio = execucaoSemanal?.dataInicio || data;
+  const inicio =
+    dataValidaOuNull(execucaoSemanal?.iniciadoEm) ||
+    new Date(`${dataInicio}T00:00:00.000Z`);
+  const fim = dataValidaOuNull(execucaoSemanal?.finalizadoEm);
+
+  return { inicio, fim, execucaoSemanal };
+};
+
+const manutencaoFoiRealizadaNaExecucao = (manutencao, { inicio, fim }) => {
+  if (
+    !STATUS_MANUTENCAO_REALIZADA.has(
+      String(manutencao.status || "").toLowerCase(),
+    )
+  ) {
+    return false;
+  }
+
+  const concluidoEm = dataValidaOuNull(manutencao.concluidoEm);
+  if (!concluidoEm || (inicio && concluidoEm < inicio)) return false;
+  if (fim && concluidoEm > fim) return false;
+
+  return true;
+};
+
+const somarQuantidadeAbastecida = (movimentacoes = []) => {
+  return movimentacoes.reduce((total, movimentacao) => {
+    const detalhes = Array.isArray(movimentacao.detalhesProdutos)
+      ? movimentacao.detalhesProdutos
+      : [];
+
+    const totalDetalhes = detalhes.reduce(
+      (acc, detalhe) =>
+        acc + Math.max(0, Number(detalhe.quantidadeAbastecida || 0)),
+      0,
+    );
+
+    return total + totalDetalhes;
+  }, 0);
+};
+
+export const calcularConsumoProdutosRota = async ({
+  roteiroId,
+  data,
+  lojas = [],
+  usuarioId,
+  fimExecucao,
+}) => {
+  if (!roteiroId || !data || !usuarioId) return 0;
+
+  const [escopo, janelaBase] = await Promise.all([
+    obterEscopoManutencoes({ roteiroId, lojas }),
+    obterJanelaExecucaoManutencoes({ roteiroId, data }),
+  ]);
+
+  const maquinaIds = Array.from(escopo.maquinaIds || []);
+  if (!maquinaIds.length) return 0;
+
+  const fim = dataValidaOuNull(fimExecucao) || janelaBase.fim || new Date();
+  const whereDataColeta = fim
+    ? { [Op.between]: [janelaBase.inicio, fim] }
+    : { [Op.gte]: janelaBase.inicio };
+
+  const movimentacoes = await Movimentacao.findAll({
+    where: {
+      usuarioId,
+      maquinaId: { [Op.in]: maquinaIds },
+      dataColeta: whereDataColeta,
+    },
+    attributes: ["id", "maquinaId", "usuarioId", "dataColeta"],
+    include: [
+      {
+        model: MovimentacaoProduto,
+        as: "detalhesProdutos",
+        attributes: ["id", "quantidadeAbastecida"],
+        required: true,
+        where: {
+          quantidadeAbastecida: { [Op.gt]: 0 },
+        },
+      },
+    ],
+  });
+
+  return somarQuantidadeAbastecida(movimentacoes);
 };
 
 const obterResumoQuilometragem = async (resumo) => {
@@ -247,9 +415,17 @@ const obterEstoqueAdicional = async ({ funcionarioId, retiradaDataHora, data }) 
   return Number.isFinite(soma) ? soma : 0;
 };
 
-const montarResumoManutencoes = async (roteiroId) => {
+const montarResumoManutencoes = async ({ roteiroId, data, lojas }) => {
+  const [escopo, janela] = await Promise.all([
+    obterEscopoManutencoes({ roteiroId, lojas }),
+    obterJanelaExecucaoManutencoes({ roteiroId, data }),
+  ]);
+
   const manutencoes = await Manutencao.findAll({
-    where: { roteiroId },
+    where: {
+      roteiroId,
+      ...montarFiltroEscopoManutencoes(escopo),
+    },
     include: [
       {
         association: "loja",
@@ -265,13 +441,23 @@ const montarResumoManutencoes = async (roteiroId) => {
   const mapaNaoRealizadasPorPonto = new Map();
 
   for (const manutencao of manutencoes) {
+    if (!manutencaoPertenceAoEscopo(manutencao, escopo)) continue;
+
     const lojaNome = manutencao.loja?.nome || "Ponto sem nome";
     const descricao = manutencao.descricao || "Manutenção sem descrição";
     const itemTexto = `${descricao} (${lojaNome})`;
 
-    if (STATUS_MANUTENCAO_REALIZADA.has(String(manutencao.status || "").toLowerCase())) {
+    if (manutencaoFoiRealizadaNaExecucao(manutencao, janela)) {
       realizadas.push(itemTexto);
       lojasComManutencaoRealizada.add(lojaNome);
+      continue;
+    }
+
+    if (
+      STATUS_MANUTENCAO_REALIZADA.has(
+        String(manutencao.status || "").toLowerCase(),
+      )
+    ) {
       continue;
     }
 
@@ -325,18 +511,20 @@ export const serializarResumoExecucao = async (resumo) => {
 
   const resumoPlain = getResumoPlain(resumo);
   const [execucaoSemanal, manutencoesRealizadas] = await Promise.all([
-    RoteiroExecucaoSemanal.findOne({
-      where: { roteiroId: resumoPlain.roteiroId },
-      attributes: [
-        "id",
-        "dataInicio",
-        "iniciadoEm",
-        "emAndamento",
-        "finalizadoEm",
-      ],
+    obterJanelaExecucaoManutencoes({
+      roteiroId: resumoPlain.roteiroId,
+      data: resumoPlain.data,
     }),
-    Manutencao.findAll({
-      where: { roteiroId: resumoPlain.roteiroId },
+    obterEscopoManutencoes({
+      roteiroId: resumoPlain.roteiroId,
+      lojas: [],
+    }),
+  ]).then(async ([janela, escopo]) => {
+    const manutencoes = await Manutencao.findAll({
+      where: {
+        roteiroId: resumoPlain.roteiroId,
+        ...montarFiltroEscopoManutencoes(escopo),
+      },
       include: [
         {
           association: "loja",
@@ -344,8 +532,17 @@ export const serializarResumoExecucao = async (resumo) => {
         },
       ],
       order: [["createdAt", "ASC"]],
-    }),
-  ]);
+    });
+
+    return [
+      janela.execucaoSemanal,
+      manutencoes.filter(
+        (manutencao) =>
+          manutencaoPertenceAoEscopo(manutencao, escopo) &&
+          manutencaoFoiRealizadaNaExecucao(manutencao, janela),
+      ),
+    ];
+  });
 
   const finalizadoEm =
     execucaoSemanal?.finalizadoEm || resumoPlain.fechadoEm || null;
@@ -355,13 +552,9 @@ export const serializarResumoExecucao = async (resumo) => {
     dataInicio: execucaoSemanal?.dataInicio || null,
     iniciadoEm: execucaoSemanal?.iniciadoEm || null,
     finalizadoEm,
-    manutencoesRealizadas: manutencoesRealizadas
-      .filter((manutencao) =>
-        STATUS_MANUTENCAO_REALIZADA.has(
-          String(manutencao.status || "").toLowerCase(),
-        ),
-      )
-      .map(montarManutencaoRealizadaEstruturada),
+    manutencoesRealizadas: manutencoesRealizadas.map(
+      montarManutencaoRealizadaEstruturada,
+    ),
   };
 };
 
@@ -425,7 +618,11 @@ const montarPayloadResumo = async ({
   const orcamento = normalizarNumero(roteiro?.orcamentoDiario, 2000);
   const sobraValorDespesa = Number.parseFloat((orcamento - despesaTotal).toFixed(2));
 
-  const resumoManutencoes = await montarResumoManutencoes(roteiroId);
+  const resumoManutencoes = await montarResumoManutencoes({
+    roteiroId,
+    data,
+    lojas,
+  });
 
   return {
     roteiroId,

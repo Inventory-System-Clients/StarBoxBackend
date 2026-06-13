@@ -25,6 +25,7 @@ import { randomUUID } from "crypto";
 import { Op } from "sequelize";
 import {
   fecharResumoExecucao,
+  calcularConsumoProdutosRota,
   montarMensagemResumoWhatsapp,
   obterResumoExecucao,
   serializarResumoExecucao,
@@ -649,7 +650,9 @@ export const finalizarRoteiro = async (req, res) => {
     });
 
     const usuarioEstoqueId = roteiro.funcionarioId || null;
-    const totalEstoqueFinal = await obterTotalEstoqueUsuario(usuarioEstoqueId);
+    const totalEstoqueAtualUsuario =
+      await obterTotalEstoqueUsuario(usuarioEstoqueId);
+    const finalizadoEm = new Date();
 
     const finalizacaoDia = await RoteiroFinalizacaoDiaria.findOne({
       where: {
@@ -662,7 +665,7 @@ export const finalizarRoteiro = async (req, res) => {
       finalizacaoDia?.estoqueInicialTotal !== null &&
       finalizacaoDia?.estoqueInicialTotal !== undefined
         ? Number(finalizacaoDia.estoqueInicialTotal)
-        : totalEstoqueFinal;
+        : totalEstoqueAtualUsuario;
 
     const estoqueAdicionalTotal = await obterEstoqueAdicionalRota({
       usuarioId: usuarioEstoqueId,
@@ -670,13 +673,23 @@ export const finalizarRoteiro = async (req, res) => {
       dataHoje,
     });
 
-    const consumoTotalProdutos =
-      estoqueInicialTotal !== null && totalEstoqueFinal !== null
+    const consumoTotalProdutos = await calcularConsumoProdutosRota({
+      roteiroId,
+      data: dataHoje,
+      lojas: roteiro.lojas,
+      usuarioId: usuarioEstoqueId,
+      fimExecucao: finalizadoEm,
+    });
+
+    const totalEstoqueFinal =
+      estoqueInicialTotal !== null
         ? Math.max(
             0,
-            Number(estoqueInicialTotal) + Number(estoqueAdicionalTotal || 0) - Number(totalEstoqueFinal),
+            Number(estoqueInicialTotal) +
+              Number(estoqueAdicionalTotal || 0) -
+              Number(consumoTotalProdutos || 0),
           )
-        : null;
+        : totalEstoqueAtualUsuario;
 
     console.info({
       evento: "roteiro_consumo_produtos_resumo",
@@ -685,6 +698,8 @@ export const finalizarRoteiro = async (req, res) => {
       data: dataHoje,
       usuarioIdReferencia: usuarioEstoqueId,
       estoqueInicialTotal,
+      estoqueAdicionalTotal,
+      estoqueAtualUsuario: totalEstoqueAtualUsuario,
       estoqueFinalTotal: totalEstoqueFinal,
       consumoTotalProdutos,
     });
@@ -694,7 +709,7 @@ export const finalizarRoteiro = async (req, res) => {
       data: dataHoje,
       finalizado: true,
       finalizadoPorId: req.usuario?.id || null,
-      finalizadoEm: new Date(),
+      finalizadoEm,
       estoqueInicialTotal,
       estoqueFinalTotal: totalEstoqueFinal,
       consumoTotalProdutos,
@@ -706,16 +721,16 @@ export const finalizarRoteiro = async (req, res) => {
     if (execucaoSemanal) {
       await execucaoSemanal.update({
         emAndamento: false,
-        finalizadoEm: new Date(),
+        finalizadoEm,
       });
     } else {
       await RoteiroExecucaoSemanal.create({
         roteiroId,
         usuarioId: req.usuario?.id || null,
         dataInicio: dataHoje,
-        iniciadoEm: new Date(),
+        iniciadoEm: finalizadoEm,
         emAndamento: false,
-        finalizadoEm: new Date(),
+        finalizadoEm,
       });
     }
 
@@ -734,6 +749,7 @@ export const finalizarRoteiro = async (req, res) => {
 
     const lojasResumo = roteiro.lojas.map((loja) => {
       const maquinas = (loja.maquinas || []).map((maquina) => ({
+        id: maquina.id,
         nome: maquina.nome,
         status: maquinasConcluidas.has(maquina.id) ? "finalizado" : "pendente",
       }));
@@ -742,6 +758,7 @@ export const finalizarRoteiro = async (req, res) => {
         maquinas.some((maquina) => maquina.status === "finalizado");
 
       return {
+        id: loja.id,
         nome: loja.nome,
         status: lojaFinalizada ? "finalizado" : "pendente",
         maquinas,
