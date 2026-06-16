@@ -42,6 +42,9 @@ router.get("/:id/status-execucao", async (req, res) => {
         return {
           id: maquina.id,
           nome: maquina.nome,
+          codigo: maquina.codigo,
+          valorFicha: maquina.valorFicha,
+          usaFichas: Boolean(maquina.usaFichas),
           status: concluida ? "finalizado" : "pendente",
         };
       });

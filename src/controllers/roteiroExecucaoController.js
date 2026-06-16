@@ -64,6 +64,15 @@ const deduplicarMaquinasRoteiro = (maquinas = []) => {
   return unicas;
 };
 
+export const serializarMaquinaRoteiroExecucao = (maquina, finalizada) => ({
+  id: maquina.id,
+  nome: maquina.nome,
+  codigo: maquina.codigo,
+  valorFicha: maquina.valorFicha,
+  usaFichas: Boolean(maquina.usaFichas),
+  status: finalizada ? "finalizado" : "pendente",
+});
+
 const obterInicioContagemConsumoRota = async ({ roteiroId, dataHoje }) => {
   const inicioDia = new Date(`${dataHoje}T00:00:00.000Z`);
   const fimDia = new Date(`${dataHoje}T23:59:59.999Z`);
@@ -127,6 +136,8 @@ async function getRoteiroExecucaoComStatus(req, res) {
                 "codigo",
                 "tipo",
                 "capacidadePadrao",
+                "valorFicha",
+                "usaFichas",
                 "lojaId",
               ],
             },
@@ -262,12 +273,7 @@ async function getRoteiroExecucaoComStatus(req, res) {
       });
       const maquinas = maquinasDaLoja.map((maquina) => {
         const finalizada = maquinasFinalizadas.has(maquina.id);
-        return {
-          id: maquina.id,
-          nome: maquina.nome,
-          codigo: maquina.codigo,
-          status: finalizada ? "finalizado" : "pendente",
-        };
+        return serializarMaquinaRoteiroExecucao(maquina, finalizada);
       });
       const lojaFinalizada = maquinas.some(
         (maquina) => maquina.status === "finalizado",
@@ -536,6 +542,8 @@ async function getTodosRoteirosComStatus(req, res) {
                 "codigo",
                 "tipo",
                 "capacidadePadrao",
+                "valorFicha",
+                "usaFichas",
                 "lojaId",
               ],
             },
@@ -630,12 +638,7 @@ async function getTodosRoteirosComStatus(req, res) {
         });
         const maquinas = maquinasDaLoja.map((maquina) => {
           const finalizada = maquinasFinalizadas.has(maquina.id);
-          return {
-            id: maquina.id,
-            nome: maquina.nome,
-            codigo: maquina.codigo,
-            status: finalizada ? "finalizado" : "pendente",
-          };
+          return serializarMaquinaRoteiroExecucao(maquina, finalizada);
         });
         const lojaFinalizada = maquinas.some(
           (maquina) => maquina.status === "finalizado",

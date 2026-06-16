@@ -492,7 +492,7 @@ export const finalizarRoteiro = async (req, res) => {
             {
               model: Maquina,
               as: "maquinas",
-              attributes: ["id", "nome"],
+              attributes: ["id", "nome", "codigo", "valorFicha", "usaFichas"],
             },
           ],
         },
@@ -751,6 +751,9 @@ export const finalizarRoteiro = async (req, res) => {
       const maquinas = (loja.maquinas || []).map((maquina) => ({
         id: maquina.id,
         nome: maquina.nome,
+        codigo: maquina.codigo,
+        valorFicha: maquina.valorFicha,
+        usaFichas: Boolean(maquina.usaFichas),
         status: maquinasConcluidas.has(maquina.id) ? "finalizado" : "pendente",
       }));
 
@@ -1071,7 +1074,7 @@ export const verAndamentoRoteiro = async (req, res) => {
             {
               model: Maquina,
               as: "maquinas",
-              attributes: ["id", "nome"],
+              attributes: ["id", "nome", "codigo", "valorFicha", "usaFichas"],
             },
           ],
         },
@@ -1146,6 +1149,9 @@ export const verAndamentoRoteiro = async (req, res) => {
       const maquinas = (loja.maquinas || []).map((maquina) => ({
         id: maquina.id,
         nome: maquina.nome,
+        codigo: maquina.codigo,
+        valorFicha: maquina.valorFicha,
+        usaFichas: Boolean(maquina.usaFichas),
         status: maquinasConcluidas.has(maquina.id) ? "finalizado" : "pendente",
       }));
 

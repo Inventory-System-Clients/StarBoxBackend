@@ -44,6 +44,12 @@ const Maquina = sequelize.define(
       defaultValue: 5.0,
       comment: "Valor em R$ de cada ficha",
     },
+    usaFichas: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: "usa_fichas",
+    },
     comissaoLojaPercentual: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,

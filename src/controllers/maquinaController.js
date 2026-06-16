@@ -18,6 +18,17 @@ const inteiroSeguro = (valor, fallback = 0) => {
   return parseInt(valor, 10);
 };
 
+const booleanoOuDefault = (valor, fallback = false) => {
+  if (valor === undefined || valor === null || valor === "") return fallback;
+  if (typeof valor === "boolean") return valor;
+  if (typeof valor === "number") return valor === 1;
+
+  const texto = String(valor).trim().toLowerCase();
+  if (["true", "1", "sim", "s", "yes"].includes(texto)) return true;
+  if (["false", "0", "nao", "não", "n", "no"].includes(texto)) return false;
+  return fallback;
+};
+
 const normalizarNomeGasto = (nome) =>
   String(nome || "")
     .trim()
@@ -367,6 +378,8 @@ export const criarMaquina = async (req, res) => {
       lojaId,
       capacidadePadrao,
       valorFicha,
+      usaFichas,
+      usa_fichas: usaFichasSnake,
       comissaoLojaPercentual,
       fichasNecessarias,
       forcaForte,
@@ -426,6 +439,7 @@ export const criarMaquina = async (req, res) => {
         lojaId,
         capacidadePadrao: capacidadePadrao || 100,
         valorFicha: valorFicha || 5.0,
+        usaFichas: booleanoOuDefault(usaFichas ?? usaFichasSnake, false),
         comissaoLojaPercentual:
           comissaoLojaPercentual !== undefined &&
           comissaoLojaPercentual !== null
@@ -511,6 +525,8 @@ export const atualizarMaquina = async (req, res) => {
       lojaId,
       capacidadePadrao,
       valorFicha,
+      usaFichas,
+      usa_fichas: usaFichasSnake,
       comissaoLojaPercentual,
       fichasNecessarias,
       forcaForte,
@@ -574,6 +590,10 @@ export const atualizarMaquina = async (req, res) => {
       lojaId: lojaId ?? maquina.lojaId,
       capacidadePadrao: capacidadePadrao ?? maquina.capacidadePadrao,
       valorFicha: valorFicha ?? maquina.valorFicha,
+      usaFichas: booleanoOuDefault(
+        usaFichas ?? usaFichasSnake,
+        maquina.usaFichas,
+      ),
       comissaoLojaPercentual:
         comissaoLojaPercentual ?? maquina.comissaoLojaPercentual,
       fichasNecessarias: fichasNecessarias ?? maquina.fichasNecessarias,
