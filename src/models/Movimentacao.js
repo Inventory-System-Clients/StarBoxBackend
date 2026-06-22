@@ -74,6 +74,9 @@ const Movimentacao = sequelize.define(
       allowNull: true,
       field: "contador_in",
       comment: "Valor do contador IN da máquina",
+      validate: {
+        min: 0,
+      },
     },
     contadorInDigital: {
       type: DataTypes.INTEGER,
@@ -92,6 +95,9 @@ const Movimentacao = sequelize.define(
       allowNull: true,
       field: "contador_out",
       comment: "Valor do contador OUT da máquina",
+      validate: {
+        min: 0,
+      },
     },
     contadorOutDigital: {
       type: DataTypes.INTEGER,

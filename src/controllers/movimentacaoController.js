@@ -13,6 +13,9 @@ import {
   ContasFinanceiro,
   FluxoCaixa,
   ValorEsperadoMovimentacao,
+  Roteiro,
+  RoteiroLoja,
+  UsuarioLoja,
 } from "../models/index.js";
 import { Op } from "sequelize";
 import { randomUUID } from "node:crypto";
@@ -252,26 +255,35 @@ export const registrarMovimentacao = async (req, res) => {
       origemEstoque === "loja" ? "loja" : "usuario";
 
     const isAdmin = ["ADMIN", "GERENCIADOR"].includes(req.usuario?.role);
+    const contadorEhInvalido = (valor) =>
+      valor !== undefined &&
+      valor !== null &&
+      valor !== "" &&
+      (!Number.isInteger(Number(valor)) || Number(valor) < 0);
+
+    if (contadorEhInvalido(contadorIn)) {
+      return res.status(400).json({
+        error: "O contador IN deve ser um número inteiro não negativo.",
+      });
+    }
+
+    if (contadorEhInvalido(contadorOut)) {
+      return res.status(400).json({
+        error: "O contador OUT deve ser um número inteiro não negativo.",
+      });
+    }
+
     const normalizarContador = (valor) => {
       if (!possuiNumero(valor)) return null;
-      return inteiroSeguro(valor, null);
+      return Number(valor);
     };
 
-    const funcionarioSemContador = req.usuario?.role === "FUNCIONARIO";
-    const contadorInDigitalSanitizado = funcionarioSemContador
-      ? null
-      : normalizarContador(contadorInDigital);
-    const contadorOutDigitalSanitizado = funcionarioSemContador
-      ? null
-      : normalizarContador(contadorOutDigital);
-    const contadorInSanitizado = funcionarioSemContador
-      ? null
-      : (normalizarContador(contadorIn) ?? contadorInDigitalSanitizado ?? null);
-    const contadorOutSanitizado = funcionarioSemContador
-      ? null
-      : (normalizarContador(contadorOut) ??
-        contadorOutDigitalSanitizado ??
-        null);
+    const contadorInDigitalSanitizado = normalizarContador(contadorInDigital);
+    const contadorOutDigitalSanitizado = normalizarContador(contadorOutDigital);
+    const contadorInSanitizado =
+      normalizarContador(contadorIn) ?? contadorInDigitalSanitizado ?? null;
+    const contadorOutSanitizado =
+      normalizarContador(contadorOut) ?? contadorOutDigitalSanitizado ?? null;
     const ignoreInOutNormalizado = normalizarBooleano(ignoreInOut, false);
     const retiradaDinheiroNormalizada =
       retiradaDinheiro === undefined || retiradaDinheiro === null
@@ -279,12 +291,9 @@ export const registrarMovimentacao = async (req, res) => {
           contadorInSanitizado !== null &&
           contadorOutSanitizado !== null
         : normalizarBooleano(retiradaDinheiro, false);
-    const contadorInAnteriorSanitizado = funcionarioSemContador
-      ? null
-      : normalizarContador(contadorInAnterior);
-    const contadorOutAnteriorSanitizado = funcionarioSemContador
-      ? null
-      : normalizarContador(contadorOutAnterior);
+    const contadorInAnteriorSanitizado = normalizarContador(contadorInAnterior);
+    const contadorOutAnteriorSanitizado =
+      normalizarContador(contadorOutAnterior);
 
     // (Removido alerta/bloqueio de pular loja: agora permite movimentação em qualquer loja do roteiro)
 
@@ -1524,6 +1533,33 @@ export const atualizarMovimentacao = async (req, res) => {
       }
     }
 
+    const normalizarContadorAtualizacao = (valor, nomeCampo) => {
+      if (valor === undefined) return undefined;
+      if (valor === null || valor === "") return null;
+
+      const numero = Number(valor);
+      if (!Number.isInteger(numero) || numero < 0) {
+        const erro = new Error(
+          `O contador ${nomeCampo} deve ser um número inteiro não negativo.`,
+        );
+        erro.status = 400;
+        throw erro;
+      }
+
+      return numero;
+    };
+
+    let contadorInAtualizado;
+    let contadorOutAtualizado;
+    try {
+      contadorInAtualizado = normalizarContadorAtualizacao(contadorIn, "IN");
+      contadorOutAtualizado = normalizarContadorAtualizacao(contadorOut, "OUT");
+    } catch (error) {
+      await transaction.rollback();
+      transaction = null;
+      return res.status(error.status || 400).json({ error: error.message });
+    }
+
     // Preparar dados para atualização
     const updateData = {
       observacoes: observacoes ?? movimentacao.observacoes,
@@ -1542,11 +1578,11 @@ export const atualizarMovimentacao = async (req, res) => {
           : movimentacao.abastecidas,
       contadorIn:
         contadorIn !== undefined
-          ? parseInt(contadorIn) || null
+          ? contadorInAtualizado
           : movimentacao.contadorIn,
       contadorOut:
         contadorOut !== undefined
-          ? parseInt(contadorOut) || null
+          ? contadorOutAtualizado
           : movimentacao.contadorOut,
       contadorMaquina:
         contadorMaquina !== undefined
@@ -1753,96 +1789,262 @@ export const atualizarMovimentacao = async (req, res) => {
   }
 };
 
-// Registrar abastecimento extra (somente quantidade + produto, sem alterar contadores)
+// Registra somente produto e quantidade, preservando os contadores IN/OUT.
 export const registrarAbastecimentoExtra = async (req, res) => {
   let transaction = null;
+  const contextoLog = {
+    evento: "abastecimento_extra",
+    usuarioId: req.usuario?.id || null,
+    perfil: req.usuario?.role || null,
+    movimentacaoId: req.params.id,
+    produtoId: req.body?.produtoId || null,
+    quantidade: req.body?.quantidadeAbastecida ?? null,
+    estoqueEncontrado: null,
+  };
+
+  const logRejeicao = (motivo, extras = {}) => {
+    console.warn("[abastecimento-extra] rejeitado", {
+      ...contextoLog,
+      ...extras,
+      motivo,
+    });
+  };
+
+  const rollback = async () => {
+    if (!transaction) return;
+    const transactionAtual = transaction;
+    transaction = null;
+    await transactionAtual.rollback();
+  };
+
+  const rejeitar = async (status, error, motivo, extras = {}) => {
+    await rollback();
+    logRejeicao(motivo, extras);
+    return res.status(status).json({ error });
+  };
+
   try {
     const { produtoId, quantidadeAbastecida } = req.body;
-    const quantidadeExtra = Number(quantidadeAbastecida || 0);
+    const quantidadeExtra = Number(quantidadeAbastecida);
 
-    if (!produtoId) {
+    console.info("[abastecimento-extra] solicitado", contextoLog);
+
+    if (!produtoId || !String(produtoId).trim()) {
+      logRejeicao("produtoId ausente");
       return res.status(400).json({ error: "produtoId é obrigatório" });
     }
 
-    if (!Number.isFinite(quantidadeExtra) || quantidadeExtra <= 0) {
-      return res
-        .status(400)
-        .json({ error: "quantidadeAbastecida deve ser maior que zero" });
+    if (!Number.isInteger(quantidadeExtra) || quantidadeExtra <= 0) {
+      logRejeicao("quantidade inválida");
+      return res.status(400).json({
+        error: "quantidadeAbastecida deve ser um número inteiro maior que zero",
+      });
     }
 
     transaction = await Movimentacao.sequelize.transaction();
+    const lock =
+      transaction.LOCK?.UPDATE !== undefined
+        ? { lock: transaction.LOCK.UPDATE }
+        : {};
 
     const movimentacao = await Movimentacao.findByPk(req.params.id, {
-      include: [
-        {
-          model: MovimentacaoProduto,
-          as: "detalhesProdutos",
-          include: [
-            {
-              model: Produto,
-              as: "produto",
-              attributes: ["id", "nome"],
-            },
-          ],
-        },
-      ],
       transaction,
+      ...lock,
     });
 
     if (!movimentacao) {
-      await transaction.rollback();
-      return res.status(404).json({ error: "Movimentação não encontrada" });
+      return rejeitar(
+        404,
+        "Movimentação não encontrada",
+        "movimentação não encontrada",
+      );
     }
 
-    if (
-      !["ADMIN", "GERENCIADOR"].includes(req.usuario.role) &&
-      movimentacao.usuarioId !== req.usuario.id
-    ) {
-      await transaction.rollback();
-      return res
-        .status(403)
-        .json({ error: "Você não pode editar esta movimentação" });
-    }
-
-    const estoqueUsuario = await EstoqueUsuario.findOne({
-      where: {
-        usuarioId: movimentacao.usuarioId,
-        produtoId,
-      },
+    const maquina = await Maquina.findByPk(movimentacao.maquinaId, {
+      attributes: ["id", "codigo", "nome", "lojaId", "tipo"],
       transaction,
     });
 
-    if (!estoqueUsuario) {
-      await transaction.rollback();
-      return res.status(400).json({
-        error: "Produto sem estoque no usuário para abastecimento extra.",
-      });
+    if (!maquina) {
+      return rejeitar(404, "Máquina não encontrada", "máquina não encontrada");
     }
 
-    const saldoAtual = Number(estoqueUsuario.quantidade || 0);
+    const produto = await Produto.findByPk(produtoId, {
+      attributes: ["id", "nome"],
+      transaction,
+    });
+
+    if (!produto) {
+      return rejeitar(404, "Produto não encontrado", "produto não encontrado");
+    }
+
+    const role = req.usuario?.role;
+    const isGestor = ["ADMIN", "GERENCIADOR"].includes(role);
+    const isFuncionario = [
+      "FUNCIONARIO",
+      "FUNCIONARIO_TODAS_LOJAS",
+    ].includes(role);
+
+    if (!isGestor && !isFuncionario) {
+      return rejeitar(
+        403,
+        "Usuário sem acesso para executar este roteiro",
+        "perfil não autorizado para executar roteiro",
+      );
+    }
+
+    let roteiro = null;
+    if (movimentacao.roteiroId) {
+      roteiro = await Roteiro.findByPk(movimentacao.roteiroId, {
+        attributes: ["id", "funcionarioId"],
+        transaction,
+      });
+
+      if (!roteiro) {
+        return rejeitar(404, "Roteiro não encontrado", "roteiro não encontrado");
+      }
+
+      const lojaNoRoteiro = await RoteiroLoja.findOne({
+        where: {
+          RoteiroId: roteiro.id,
+          LojaId: maquina.lojaId,
+        },
+        transaction,
+      });
+
+      if (!lojaNoRoteiro) {
+        return rejeitar(
+          403,
+          "A máquina não pertence a uma loja deste roteiro",
+          "loja da máquina não pertence ao roteiro",
+          { lojaId: maquina.lojaId, roteiroId: roteiro.id },
+        );
+      }
+    } else if (!isGestor) {
+      return rejeitar(
+        403,
+        "Movimentação sem roteiro acessível para este usuário",
+        "movimentação não vinculada a roteiro",
+      );
+    }
+
+    if (
+      !isGestor &&
+      String(roteiro?.funcionarioId || "") !== String(req.usuario.id)
+    ) {
+      return rejeitar(
+        403,
+        "Você não é o funcionário responsável por este roteiro",
+        "usuário não é o responsável pelo roteiro",
+        {
+          roteiroId: roteiro?.id || null,
+          funcionarioId: roteiro?.funcionarioId || null,
+        },
+      );
+    }
+
+    if (!isGestor && role === "FUNCIONARIO") {
+      const permissaoLoja = await UsuarioLoja.findOne({
+        where: {
+          usuarioId: req.usuario.id,
+          lojaId: maquina.lojaId,
+        },
+        transaction,
+      });
+      const podeRegistrar =
+        permissaoLoja &&
+        permissaoLoja.permissoes?.registrarMovimentacao !== false;
+
+      if (!podeRegistrar) {
+        return rejeitar(
+          403,
+          "Usuário sem acesso para registrar movimentações nesta loja",
+          "usuário sem permissão na loja do roteiro",
+          { lojaId: maquina.lojaId, roteiroId: roteiro?.id || null },
+        );
+      }
+    }
+
+    const usuarioEstoqueId =
+      roteiro?.funcionarioId || req.usuario?.id || movimentacao.usuarioId;
+    const estoqueUsuario = await EstoqueUsuario.findOne({
+      where: {
+        usuarioId: usuarioEstoqueId,
+        produtoId,
+      },
+      transaction,
+      ...lock,
+    });
+
+    const estoqueLoja = estoqueUsuario
+      ? null
+      : await EstoqueLoja.findOne({
+          where: {
+            lojaId: maquina.lojaId,
+            produtoId,
+          },
+          transaction,
+          ...lock,
+        });
+    const estoqueOrigem = estoqueUsuario || estoqueLoja;
+    const origemEstoque = estoqueUsuario ? "usuario" : "loja";
+
+    if (!estoqueOrigem) {
+      return rejeitar(
+        404,
+        "Estoque não encontrado para o produto selecionado",
+        "estoque do usuário e da loja não encontrado",
+        {
+          usuarioEstoqueId,
+          lojaId: maquina.lojaId,
+        },
+      );
+    }
+
+    const saldoAtual = Number(estoqueOrigem.quantidade || 0);
+    contextoLog.estoqueEncontrado = {
+      id: estoqueOrigem.id,
+      origem: origemEstoque,
+      saldoAtual,
+      usuarioId: estoqueUsuario ? usuarioEstoqueId : null,
+      lojaId: estoqueLoja ? maquina.lojaId : null,
+    };
+    console.info("[abastecimento-extra] estoque encontrado", contextoLog);
+
     if (saldoAtual < quantidadeExtra) {
-      await transaction.rollback();
-      return res.status(400).json({
-        error: "Estoque do usuário insuficiente para abastecimento extra.",
-      });
+      return rejeitar(
+        409,
+        "Estoque insuficiente para o abastecimento extra",
+        "estoque insuficiente",
+        {
+          origemEstoque,
+          saldoDisponivel: saldoAtual,
+          quantidadeSolicitada: quantidadeExtra,
+        },
+      );
     }
 
-    await estoqueUsuario.update(
+    await estoqueOrigem.update(
       { quantidade: saldoAtual - quantidadeExtra },
       { transaction },
     );
 
-    const detalheExistente = Array.isArray(movimentacao.detalhesProdutos)
-      ? movimentacao.detalhesProdutos.find(
-          (item) => String(item?.produtoId || "") === String(produtoId),
-        )
-      : null;
+    const detalheExistente = await MovimentacaoProduto.findOne({
+      where: {
+        movimentacaoId: movimentacao.id,
+        produtoId,
+      },
+      transaction,
+      ...lock,
+    });
 
     if (detalheExistente) {
-      const novaQtdDetalhe =
-        Number(detalheExistente.quantidadeAbastecida || 0) + quantidadeExtra;
       await detalheExistente.update(
-        { quantidadeAbastecida: novaQtdDetalhe },
+        {
+          quantidadeAbastecida:
+            Number(detalheExistente.quantidadeAbastecida || 0) +
+            quantidadeExtra,
+        },
         { transaction },
       );
     } else {
@@ -1858,13 +2060,13 @@ export const registrarAbastecimentoExtra = async (req, res) => {
       );
     }
 
-    const abastecidasAtuais = Number(movimentacao.abastecidas || 0);
-    const abastecidasNovas = abastecidasAtuais + quantidadeExtra;
-
+    const abastecidasNovas =
+      Number(movimentacao.abastecidas || 0) + quantidadeExtra;
     await movimentacao.update(
       {
         abastecidas: abastecidasNovas,
         totalPos: Number(movimentacao.totalPre || 0) + abastecidasNovas,
+        produtoNaMaquinaId: produtoId,
       },
       { transaction },
     );
@@ -1899,19 +2101,29 @@ export const registrarAbastecimentoExtra = async (req, res) => {
     await transaction.commit();
     transaction = null;
 
-    return res.json(movimentacaoAtualizada);
+    console.info("[abastecimento-extra] concluído", {
+      ...contextoLog,
+      origemEstoque,
+      saldoFinal: saldoAtual - quantidadeExtra,
+    });
+
+    return res.status(200).json(movimentacaoAtualizada);
   } catch (error) {
     if (transaction) {
       try {
-        await transaction.rollback();
+        await rollback();
       } catch {
-        // Sem ação adicional.
+        // O erro original é o mais relevante para o diagnóstico.
       }
     }
-    console.error("Erro ao registrar abastecimento extra:", error);
-    return res
-      .status(500)
-      .json({ error: "Erro ao registrar abastecimento extra" });
+    console.error("[abastecimento-extra] erro interno", {
+      ...contextoLog,
+      motivo: error?.message || String(error),
+      stack: error?.stack,
+    });
+    return res.status(500).json({
+      error: "Erro interno ao registrar abastecimento",
+    });
   }
 };
 

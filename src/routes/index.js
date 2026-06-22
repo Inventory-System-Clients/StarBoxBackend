@@ -29,6 +29,7 @@ import manutencaoWhatsAppPromptRoutes from "./manutencaoWhatsAppPrompt.routes.js
 import dashboardRoutes from "./dashboard.routes.js";
 import gastosFixosLojaRoutes from "./gastosFixosLoja.routes.js";
 import fluxoCaixaRoutes from "./fluxoCaixa.routes.js";
+import assistenteIaRoutes from "./assistenteIa.routes.js";
 const router = express.Router();
 
 router.use("/auth", authRoutes);
@@ -71,5 +72,6 @@ router.use("/gastos-fixos-loja", gastosFixosLojaRoutes);
 
 // Rota para Fluxo de Caixa
 router.use("/fluxo-caixa", fluxoCaixaRoutes);
+router.use("/assistente-ia", assistenteIaRoutes);
 
 export default router;
